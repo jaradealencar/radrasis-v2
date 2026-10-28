@@ -82,6 +82,9 @@ type Proposta = {
   /** Dias desde a última compra registrada no histórico local — null quando
    * o cliente é novo (sem nenhuma compra anterior) ou não há data disponível. */
   diasSemComprar: number | null;
+  totalCotacoes?: number;
+  totalCompras?: number;
+  taxaConversao?: number | null;
   estadoCliente: string | null;
 };
 
@@ -469,7 +472,7 @@ function PropostaRow({ p, vendedor, onRefresh, showVendedor, faixasConfig }: {
                         </span>
                       </TooltipTrigger>
                       <TooltipContent side="top" className="text-xs">
-                        Cliente novo — sem compras anteriores
+                        Cliente novo — sem compras anteriores ({p.totalCotacoes || 1} {(p.totalCotacoes || 1) === 1 ? "cotação registrada" : "cotações registradas"})
                       </TooltipContent>
                     </Tooltip>
                   </TooltipProvider>
@@ -483,6 +486,20 @@ function PropostaRow({ p, vendedor, onRefresh, showVendedor, faixasConfig }: {
               <div className="flex items-center gap-1.5 flex-wrap">
                 <span className="text-xs text-muted-foreground">{fmt(p.valor)}</span>
                 <ProbabilidadeBadge p={p.probabilidadeCompra} explicacao={p.probabilidadeExplicacao} />
+                {p.clienteNovo && (
+                  <TooltipProvider>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <span className="inline-flex items-center px-1.5 py-0.5 rounded-full border text-[10px] font-semibold bg-amber-50 text-amber-800 border-amber-300 cursor-default">
+                          {p.totalCotacoes === 1 ? "1ª cotação" : `${p.totalCotacoes || 1} cotações`}
+                        </span>
+                      </TooltipTrigger>
+                      <TooltipContent side="top" className="text-xs max-w-[220px]">
+                        Cliente novo (sem compras anteriores). Já realizou {p.totalCotacoes || 1} {(p.totalCotacoes || 1) === 1 ? "cotação" : "cotações"} no sistema.
+                      </TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
+                )}
                 {p.qtdComprasCliente > 0 && (
                   <TooltipProvider>
                     <Tooltip>
@@ -501,6 +518,20 @@ function PropostaRow({ p, vendedor, onRefresh, showVendedor, faixasConfig }: {
                           : `${p.qtdComprasCliente} compra${p.qtdComprasCliente === 1 ? "" : "s"} no histórico`}
                         <br />
                         <span className="text-gray-400">Histórico local (2024 em diante); nov-dez/2025 não sincronizados, pode faltar alguma compra desse período.</span>
+                      </TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
+                )}
+                {p.taxaConversao != null && (
+                  <TooltipProvider>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <span className="inline-flex items-center px-1.5 py-0.5 rounded-full border text-[10px] font-semibold bg-emerald-50 text-emerald-800 border-emerald-300 cursor-default">
+                          {p.taxaConversao}% conv.
+                        </span>
+                      </TooltipTrigger>
+                      <TooltipContent side="top" className="text-xs max-w-[220px]">
+                        Taxa de conversão: {p.qtdComprasCliente} compras em {p.totalCotacoes || 1} cotações registradas.
                       </TooltipContent>
                     </Tooltip>
                   </TooltipProvider>
@@ -805,6 +836,16 @@ export default function CRM() {
     { refetchOnWindowFocus: false, retry: 1 }
   );
 
+  const sincronizarPropostasRecentes = trpc.crm.sincronizarPropostasRecentes.useMutation({
+    onSuccess: async (resultado) => {
+      await refetch();
+      toast.success(
+        `Propostas sincronizadas: ${resultado.quantidade} encontradas entre ${resultado.di} e ${resultado.df}.`,
+      );
+    },
+    onError: (erro) => toast.error(erro.message),
+  });
+
   const { data: vendedoresData } = trpc.crm.getVendedores.useQuery(undefined, { refetchOnWindowFocus: false, retry: 1 });
   const { data: sugestoesData, isLoading: sugestoesLoading, refetch: refetchSugestoes } = trpc.crm.getSugestoesContato.useQuery(
     { vendedor: vendedor || undefined },
@@ -935,9 +976,23 @@ export default function CRM() {
             )}
           </p>
         </div>
-        <Button variant="outline" size="sm" onClick={() => refetch()} className="gap-2 self-start sm:self-auto">
-          <RefreshCw className="w-4 h-4" /> Atualizar
-        </Button>
+        {isAdmin ? (
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => sincronizarPropostasRecentes.mutate()}
+            disabled={sincronizarPropostasRecentes.isPending}
+            className="gap-2 self-start sm:self-auto"
+          >
+            {sincronizarPropostasRecentes.isPending
+              ? <><Spinner /> Sincronizando...</>
+              : <><RefreshCw className="w-4 h-4" /> Sincronizar recentes</>}
+          </Button>
+        ) : (
+          <Button variant="outline" size="sm" onClick={() => refetch()} className="gap-2 self-start sm:self-auto">
+            <RefreshCw className="w-4 h-4" /> Atualizar
+          </Button>
+        )}
       </div>
 
       {/* Biblioteca de mídias: arsenal de imagens para copiar e colar nas conversas */}
@@ -1303,7 +1358,15 @@ export default function CRM() {
                     <div key={p.id} className="flex items-center gap-2 bg-white rounded border border-yellow-100 px-2 py-1">
                       <span className="text-xs font-bold text-yellow-700">#{p.sequencial || p.id}</span>
                       <span className="text-xs text-gray-700 truncate flex-1" title={p.nomeCliente}>{p.nomeCliente}</span>
-                      {p.clienteNovo && <Star className="w-3 h-3 text-yellow-500 fill-yellow-400 flex-shrink-0" aria-label="Cliente novo" />}
+                      {p.clienteNovo && (
+                        <span
+                          className="inline-flex items-center gap-0.5 text-[10px] font-semibold text-amber-800 bg-amber-50 border border-amber-200 rounded px-1 flex-shrink-0"
+                          title={`Cliente novo — ${p.totalCotacoes || 1} ${(p.totalCotacoes || 1) === 1 ? "cotação registrada" : "cotações registradas"}`}
+                        >
+                          <Star className="w-2.5 h-2.5 text-yellow-500 fill-yellow-400" />
+                          {p.totalCotacoes === 1 ? "1ª cot." : `${p.totalCotacoes || 1} cot.`}
+                        </span>
+                      )}
                       <WhatsAppAgendaBotao p={p} faixa={1} faixasConfig={faixasConfig} />
                     </div>
                   ))}
@@ -1327,7 +1390,15 @@ export default function CRM() {
                     <div key={p.id} className="flex items-center gap-2 bg-white rounded border border-pink-100 px-2 py-1">
                       <span className="text-xs font-bold text-pink-700">#{p.sequencial || p.id}</span>
                       <span className="text-xs text-gray-700 truncate flex-1" title={p.nomeCliente}>{p.nomeCliente}</span>
-                      {p.clienteNovo && <Star className="w-3 h-3 text-yellow-500 fill-yellow-400 flex-shrink-0" aria-label="Cliente novo" />}
+                      {p.clienteNovo && (
+                        <span
+                          className="inline-flex items-center gap-0.5 text-[10px] font-semibold text-amber-800 bg-amber-50 border border-amber-200 rounded px-1 flex-shrink-0"
+                          title={`Cliente novo — ${p.totalCotacoes || 1} ${(p.totalCotacoes || 1) === 1 ? "cotação registrada" : "cotações registradas"}`}
+                        >
+                          <Star className="w-2.5 h-2.5 text-yellow-500 fill-yellow-400" />
+                          {p.totalCotacoes === 1 ? "1ª cot." : `${p.totalCotacoes || 1} cot.`}
+                        </span>
+                      )}
                       <WhatsAppAgendaBotao p={p} faixa={2} faixasConfig={faixasConfig} />
                     </div>
                   ))}
@@ -1351,7 +1422,15 @@ export default function CRM() {
                     <div key={p.id} className="flex items-center gap-2 bg-white rounded border border-orange-100 px-2 py-1">
                       <span className="text-xs font-bold text-orange-700">#{p.sequencial || p.id}</span>
                       <span className="text-xs text-gray-700 truncate flex-1" title={p.nomeCliente}>{p.nomeCliente}</span>
-                      {p.clienteNovo && <Star className="w-3 h-3 text-yellow-500 fill-yellow-400 flex-shrink-0" aria-label="Cliente novo" />}
+                      {p.clienteNovo && (
+                        <span
+                          className="inline-flex items-center gap-0.5 text-[10px] font-semibold text-amber-800 bg-amber-50 border border-amber-200 rounded px-1 flex-shrink-0"
+                          title={`Cliente novo — ${p.totalCotacoes || 1} ${(p.totalCotacoes || 1) === 1 ? "cotação registrada" : "cotações registradas"}`}
+                        >
+                          <Star className="w-2.5 h-2.5 text-yellow-500 fill-yellow-400" />
+                          {p.totalCotacoes === 1 ? "1ª cot." : `${p.totalCotacoes || 1} cot.`}
+                        </span>
+                      )}
                       <WhatsAppAgendaBotao p={p} faixa={3} faixasConfig={faixasConfig} />
                     </div>
                   ))}
