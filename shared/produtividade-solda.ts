@@ -3,7 +3,7 @@
  *
  * As linhas "Produtividade …" do MubiSys (mão de obra da solda e afins) ganham três marcações locais, que o MubiSys não tem:
  * - tipo de solda (fixação): até 3 entre barra roscada, patinha para LED, chapinha dupla-face, orelhinha e sem fixação;
- * - tamanho: menor ou igual a 11 cm e/ou maior que 11 cm (uma produtividade pode valer para os dois tamanhos);
+ * - tamanho: menor que 8 cm, entre 8 e 11 cm e/ou maior que 11 cm (uma produtividade pode valer para mais de um tamanho);
  * - materiais: a quais materiais a solda se aplica (inox, galvanizado, latão, acrílico, alumínio), sem limite;
  * - estilo do letreiro (pedido de 06/10/2026), cada grupo com marcação múltipla: categoria (Frontlight ou Tradicionais, e o aro do
  *   Frontlight: normal ou recuado), formato (cursiva ou tradicional) e fundo (com ou sem fundo).
@@ -23,12 +23,16 @@ export const ROTULO_TIPO_SOLDA: Record<TipoSolda, string> = {
   sem_fixacao: "Sem fixação",
 };
 
-export const TAMANHOS_PRODUTIVIDADE = ["ate_11cm", "acima_11cm"] as const;
-export type TamanhoProdutividade = (typeof TAMANHOS_PRODUTIVIDADE)[number];
+export const TAMANHOS_PRODUTIVIDADE = ["abaixo_8cm", "entre_8_11cm", "acima_11cm"] as const;
+export const TAMANHOS_PRODUTIVIDADE_LEGADOS = ["ate_11cm"] as const;
+export type TamanhoProdutividade = (typeof TAMANHOS_PRODUTIVIDADE)[number] | (typeof TAMANHOS_PRODUTIVIDADE_LEGADOS)[number];
+export type TamanhoProdutividadeAtual = (typeof TAMANHOS_PRODUTIVIDADE)[number];
 
 export const ROTULO_TAMANHO_PRODUTIVIDADE: Record<TamanhoProdutividade, string> = {
-  ate_11cm: "Menor ou igual a 11 cm",
+  abaixo_8cm: "Menor que 8 cm",
+  entre_8_11cm: "Entre 8-11cm",
   acima_11cm: "Maior que 11 cm",
+  ate_11cm: "Até 11 cm (regra legada)",
 };
 
 export const MATERIAIS_SOLDA = ["inox", "galvanizado", "latao", "acrilico", "aluminio"] as const;
@@ -58,13 +62,21 @@ export function ehTipoSolda(valor: unknown): valor is TipoSolda {
 }
 
 export function ehTamanhoProdutividade(valor: unknown): valor is TamanhoProdutividade {
-  return typeof valor === "string" && (TAMANHOS_PRODUTIVIDADE as readonly string[]).includes(valor);
+  return typeof valor === "string" && ([...TAMANHOS_PRODUTIVIDADE, ...TAMANHOS_PRODUTIVIDADE_LEGADOS] as readonly string[]).includes(valor);
 }
 
-/** Lê os tamanhos do banco: descarta desconhecidos e repetidos e devolve na ordem fixa de `TAMANHOS_PRODUTIVIDADE`. */
-export function normalizarTamanhosProdutividade(valor: unknown): TamanhoProdutividade[] {
+/**
+ * Lê tamanhos do banco. O valor legado `ate_11cm` representava todo o intervalo até 11 cm, então continua habilitando as
+ * duas faixas novas abaixo de 11 cm até que a classificação seja revisada manualmente.
+ */
+export function normalizarTamanhosProdutividade(valor: unknown): TamanhoProdutividadeAtual[] {
   if (!Array.isArray(valor)) return [];
-  return TAMANHOS_PRODUTIVIDADE.filter(tamanho => valor.includes(tamanho));
+  const valores = new Set(valor);
+  if (valores.has("ate_11cm")) {
+    valores.add("abaixo_8cm");
+    valores.add("entre_8_11cm");
+  }
+  return TAMANHOS_PRODUTIVIDADE.filter(tamanho => valores.has(tamanho));
 }
 
 /** Mensagem de erro se houver tamanhos repetidos; `null` se estiver ok. */
@@ -72,8 +84,8 @@ export function erroTamanhosProdutividade(tamanhos: readonly TamanhoProdutividad
   return new Set(tamanhos).size !== tamanhos.length ? "Há tamanhos repetidos." : null;
 }
 
-/** Marca ou desmarca um tamanho, mantendo a ordem fixa (uma produtividade pode valer para os dois). */
-export function alternarTamanhoProdutividade(selecionados: readonly TamanhoProdutividade[], tamanho: TamanhoProdutividade): TamanhoProdutividade[] {
+/** Marca ou desmarca uma faixa, mantendo a ordem fixa (uma produtividade pode valer para mais de uma). */
+export function alternarTamanhoProdutividade(selecionados: readonly TamanhoProdutividadeAtual[], tamanho: TamanhoProdutividadeAtual): TamanhoProdutividadeAtual[] {
   return TAMANHOS_PRODUTIVIDADE.filter(item => (item === tamanho ? !selecionados.includes(item) : selecionados.includes(item)));
 }
 
