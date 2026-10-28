@@ -27,7 +27,8 @@ import {
   calcularEconomia, calcularMarketing, calcularVendedores, calcularPipeline,
   calcularDistribuicoes, resumirFila, gerarRecomendacoes, resumirSinaisMercado,
 } from "../services/consultoriaMeta";
-import { construirMapaConversaoClientes, calcularProbabilidade } from "../services/probabilidadeCompra";
+import { construirMapaConversaoClientes, calcularProbabilidade, calcularTaxaConversaoCliente } from "../services/probabilidadeCompra";
+import { isOsNormalDb } from "../utils/os-valida";
 import { perguntarSobreClientes } from "../integrations/anthropic-client";
 
 // ─── Cache em memória para evitar chamadas duplicadas à API ────────────────────
@@ -190,18 +191,9 @@ function deleteCache(key: string): void {
 
 // ─── Buscar dados do banco (histórico importado) ─────────────────────────────
 
-/** Filtra OS normais do banco local: exclui retrabalhos (tipoOs começa com 'Retrabalho'),
- * amostras, cortesias, canceladas e registros sem tipoOs (NULL = importação antiga sem custo). */
-export function isOsNormalDb(os: { tipoOs?: string | null; status?: string | null }): boolean {
-  if (os.tipoOs === null || os.tipoOs === undefined) return false;
-  const tipo = (os.tipoOs ?? "").toLowerCase();
-  const status = (os.status ?? "").toLowerCase();
-  if (tipo.startsWith("retrabalho")) return false;
-  if (tipo === "amostra") return false;
-  if (tipo === "cortesia") return false;
-  if (status === "cancelada") return false;
-  return true;
-}
+// isOsNormalDb mora em ../utils/os-valida (regra compartilhada com services/probabilidadeCompra.ts,
+// sem dependência circular); reexportada aqui para os imports existentes.
+export { isOsNormalDb };
 
 /** Mesma regra de isOsNormalDb, mas para OS vindas ao vivo da API MubiSys (campo
  * `tipo`, não `tipoOs`). Usa startsWith("retrabalho") como o banco local — o tipo
@@ -3651,13 +3643,9 @@ export const performanceComercialRouter = router({
         const totalCompras = conversao?.qtdCompras ?? 0;
         const totalCotacoes = Math.max(conversao?.totalOrcamentos ?? 0, orcsSet ? orcsSet.size : 1);
 
-        const cotacoesBase = Math.max(conversao?.totalOrcamentos ?? 0, totalCotacoes);
-        const fechados = (conversao?.orcamentosFechados && conversao.orcamentosFechados > 0)
-          ? conversao.orcamentosFechados
-          : Math.min(totalCompras, cotacoesBase);
-        const taxaConversao = cotacoesBase > 0 && totalCompras > 0
-          ? Math.min(100, Math.round((fechados / cotacoesBase) * 100))
-          : null;
+        // Conversão = orçamentos fechados ÷ orçamentos, os dois do histórico de orçamentos.
+        const orcamentosFechados = Math.min(conversao?.orcamentosFechados ?? 0, totalCotacoes);
+        const taxaConversao = calcularTaxaConversaoCliente(totalCotacoes, orcamentosFechados, conversao?.totalOrcamentos ?? 0);
 
         return {
           orcNumero: numero,
@@ -3677,6 +3665,7 @@ export const performanceComercialRouter = router({
             : null,
           totalCotacoes,
           totalCompras,
+          orcamentosFechados,
           taxaConversao,
           contatado: marca?.contatado ?? false,
           contatadoPor: marca?.contatado ? marca.usuarioNome : null,

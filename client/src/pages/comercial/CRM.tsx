@@ -84,6 +84,7 @@ type Proposta = {
   diasSemComprar: number | null;
   totalCotacoes?: number;
   totalCompras?: number;
+  orcamentosFechados?: number;
   taxaConversao?: number | null;
   estadoCliente: string | null;
 };
@@ -531,7 +532,7 @@ function PropostaRow({ p, vendedor, onRefresh, showVendedor, faixasConfig }: {
                         </span>
                       </TooltipTrigger>
                       <TooltipContent side="top" className="text-xs max-w-[220px]">
-                        Taxa de conversão: {p.qtdComprasCliente} compras em {p.totalCotacoes || 1} cotações registradas.
+                        Taxa de conversão: {p.orcamentosFechados ?? 0} orçamento{(p.orcamentosFechados ?? 0) === 1 ? "" : "s"} fechado{(p.orcamentosFechados ?? 0) === 1 ? "" : "s"} em {p.totalCotacoes || 1} cotações registradas.
                       </TooltipContent>
                     </Tooltip>
                   </TooltipProvider>

@@ -28,6 +28,7 @@
 import { historicoOrcamentos, historicoOs } from "../../drizzle/schema";
 import { STATUS_GANHO, STATUS_PERDIDO, STATUS_ABERTO, parseDataFlexivel, calcularConversaoPorFaixaTicket, faixaTicketDoValor, type FaixaTicketConversao } from "./inteligenciaClientes";
 import { UF_PARA_REGIAO, normalizarUf } from "../utils/regioesBrasil";
+import { isOsNormalDb } from "../utils/os-valida";
 
 /**
  * "Perdido" explícito (STATUS_PERDIDO) OU "em aberto" há mais de
@@ -114,6 +115,72 @@ export interface MapaConversaoClientes {
   taxaGeral: number;
 }
 
+/**
+ * Taxa de conversão exibida ao lado do cliente: orçamentos fechados ÷ orçamentos feitos,
+ * ambos do histórico de orçamentos (mesma janela de tempo). Não usa o total de compras,
+ * que vem das OS desde 2024 e cobre um período maior que o histórico de orçamentos —
+ * dividir uma coisa pela outra dava taxas sem sentido (ex.: 10 compras ÷ 12 orçamentos).
+ * `null` quando o cliente não tem nenhum orçamento no histórico (sem base para calcular).
+ */
+export function calcularTaxaConversaoCliente(
+  cotacoes: number,
+  fechados: number,
+  orcamentosNoHistorico: number,
+): number | null {
+  if (orcamentosNoHistorico <= 0 || cotacoes <= 0) return null;
+  const ganhos = Math.min(Math.max(fechados, 0), cotacoes);
+  return Math.round((ganhos / cotacoes) * 100);
+}
+
+export interface OsParaContagem {
+  empresa: string | null;
+  tipoOs: string | null;
+  status: string | null;
+  mes: number;
+  ano: number;
+}
+
+export interface OrcGanhoParaContagem {
+  empresa: string | null;
+  mes: number;
+  ano: number;
+}
+
+/**
+ * Número de compras por cliente (chave normalizeEmpresaKey) no histórico local.
+ *
+ * Uma "compra" é uma OS válida (mesma regra das estrelas de cliente novo/reativado:
+ * isOsNormalDb — fora retrabalho, amostra, cortesia e cancelada). Orçamento ganho só
+ * vira compra nos meses em que historico_os NÃO tem nenhuma linha: o sync grava as duas
+ * tabelas no mesmo mês, e toda compra de lá aparece como OS e como orçamento ganho —
+ * somar as duas fontes contava a mesma compra duas vezes. Nos meses sem OS sincronizada
+ * (buraco de nov/dez/2025 e eventual atraso do sync) o orçamento ganho é o único
+ * registro da compra, então entra.
+ */
+export function contarComprasPorCliente(
+  os: OsParaContagem[],
+  orcamentosGanhos: OrcGanhoParaContagem[],
+): Map<string, number> {
+  const mesesComOs = new Set<number>();
+  const compras = new Map<string, number>();
+  const somar = (empresa: string | null) => {
+    const chave = normalizeEmpresaKey(empresa ?? "");
+    if (!chave) return;
+    compras.set(chave, (compras.get(chave) ?? 0) + 1);
+  };
+
+  for (const r of os) {
+    mesesComOs.add(r.ano * 12 + r.mes);
+    if (!isOsNormalDb(r)) continue;
+    somar(r.empresa);
+  }
+  for (const o of orcamentosGanhos) {
+    if (mesesComOs.has(o.ano * 12 + o.mes)) continue;
+    somar(o.empresa);
+  }
+  return compras;
+}
+
 type DbClient = { select: Function };
 
 /**
@@ -128,17 +195,21 @@ export async function construirMapaConversaoClientes(db: any): Promise<MapaConve
     total: historicoOrcamentos.total,
     dataCadastro: historicoOrcamentos.dataCadastro,
     orcNumero: historicoOrcamentos.orcNumero,
+    mes: historicoOrcamentos.mes,
+    ano: historicoOrcamentos.ano,
   }).from(historicoOrcamentos);
 
   const porCliente = new Map<string, { total: number; fechados: number; somaValor: number; qtdComValor: number; ultimaCompra: Date | null; orcNumeros: Set<string> }>();
+  const orcamentosGanhos: OrcGanhoParaContagem[] = [];
   let totalGeral = 0;
   let fechadosGeral = 0;
 
-  for (const r of linhas as Array<{ empresa: string | null; status: string | null; total: string | null; dataCadastro: string | null; orcNumero: string | null }>) {
+  for (const r of linhas as Array<{ empresa: string | null; status: string | null; total: string | null; dataCadastro: string | null; orcNumero: string | null; mes: number; ano: number }>) {
     const empresaKey = normalizeEmpresaKey(r.empresa ?? "");
     if (!empresaKey) continue;
     const fechou = STATUS_GANHO.has((r.status ?? "").trim().toLowerCase());
     const valor = r.total != null ? parseFloat(r.total) : NaN;
+    if (fechou) orcamentosGanhos.push({ empresa: r.empresa, mes: r.mes, ano: r.ano });
 
     let acc = porCliente.get(empresaKey);
     if (!acc) {
@@ -161,22 +232,28 @@ export async function construirMapaConversaoClientes(db: any): Promise<MapaConve
     if (fechou) fechadosGeral++;
   }
 
-  // Número de compras em TODO o histórico disponível — soma duas fontes que,
-  // medido em 13/09/2026, não se sobrepõem no tempo (sem risco de contar a
-  // mesma compra duas vezes):
-  //   - historico_os: 02/2024 a 10/2025 (parou de sincronizar depois disso)
-  //   - historico_orcamentos (STATUS_GANHO, já contado acima em acc.fechados): 01/2026 em diante
-  // Existe um buraco real de nov/dez de 2025 que nenhuma tabela local cobre —
-  // 3 tentativas de rodar POST /api/scheduled/sincronizarHistorico?mes=11&ano=2025
-  // deram timeout (60s) em produção. Compras feitas SÓ nesses 2 meses (e nunca
-  // antes nem depois) não entram na contagem — caso raro, mas real.
-  const osRows = await db.select({ empresa: historicoOs.empresa, dataAprovacao: historicoOs.dataAprovacao }).from(historicoOs);
-  const qtdComprasPorCliente = new Map<string, number>();
+  // Número de compras em TODO o histórico disponível: OS válidas + orçamentos ganhos dos
+  // meses sem OS sincronizada (ver contarComprasPorCliente). Antes somava todas as linhas
+  // de historico_os com todos os orçamentos ganhos, partindo da premissa de que as duas
+  // tabelas não se sobrepunham no tempo — premissa que deixou de valer quando o sync de
+  // historico_os voltou a rodar (o sync grava as duas no mesmo mês), e a mesma compra
+  // passou a contar duas vezes; retrabalho, amostra, cortesia e cancelada também entravam.
+  // Buraco histórico: nov/dez/2025 ficaram sem OS (3 tentativas de sincronizar deram
+  // timeout em produção); ali vale o orçamento ganho.
+  const osRows = await db.select({
+    empresa: historicoOs.empresa,
+    dataAprovacao: historicoOs.dataAprovacao,
+    tipoOs: historicoOs.tipoOs,
+    status: historicoOs.status,
+    mes: historicoOs.mes,
+    ano: historicoOs.ano,
+  }).from(historicoOs);
+  const qtdComprasPorCliente = contarComprasPorCliente(osRows as OsParaContagem[], orcamentosGanhos);
   const ultimaCompraOsPorCliente = new Map<string, Date>();
-  for (const r of osRows as Array<{ empresa: string | null; dataAprovacao: string | null }>) {
+  for (const r of osRows as Array<{ empresa: string | null; dataAprovacao: string | null; tipoOs: string | null; status: string | null }>) {
+    if (!isOsNormalDb(r)) continue;
     const empresaKey = normalizeEmpresaKey(r.empresa ?? "");
     if (!empresaKey) continue;
-    qtdComprasPorCliente.set(empresaKey, (qtdComprasPorCliente.get(empresaKey) ?? 0) + 1);
     const data = parseDataFlexivel(r.dataAprovacao);
     if (data) {
       const atual = ultimaCompraOsPorCliente.get(empresaKey);
@@ -195,7 +272,7 @@ export async function construirMapaConversaoClientes(db: any): Promise<MapaConve
       orcamentosFechados: acc.fechados,
       taxaIndividual: acc.total >= MIN_AMOSTRA_TAXA_INDIVIDUAL ? (acc.fechados / acc.total) * 100 : null,
       ticketMedio: acc.qtdComValor > 0 ? acc.somaValor / acc.qtdComValor : null,
-      qtdCompras: (qtdComprasPorCliente.get(empresaKey) ?? 0) + acc.fechados,
+      qtdCompras: qtdComprasPorCliente.get(empresaKey) ?? 0,
       ultimaCompra,
       orcNumeros: acc.orcNumeros,
     });
