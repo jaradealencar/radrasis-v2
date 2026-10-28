@@ -58,51 +58,51 @@ export default function HistoricoDialog({ campanha, onClose }: Props) {
             </EmptyHeader>
           </Empty>
         ) : (
-          <div className="rounded-md border overflow-x-auto">
-            <Table>
+          <div className="rounded-md border">
+            <Table className="min-w-[1185px] table-fixed">
               <TableHeader>
                 <TableRow>
-                  <TableHead>Envio</TableHead>
-                  <TableHead className="text-right">Enviados</TableHead>
-                  <TableHead className="text-right">Quarentena</TableHead>
-                  <TableHead className="text-right">Inválidos</TableHead>
-                  <TableHead>Próximo previsto</TableHead>
-                  <TableHead>Registrado por</TableHead>
-                  <TableHead>Observações</TableHead>
-                  <TableHead className="text-right">Ações</TableHead>
+                  <TableHead className="w-[170px]">Envio</TableHead>
+                  <TableHead className="w-[82px] text-right">Enviados</TableHead>
+                  <TableHead className="w-[92px] text-right">Quarentena</TableHead>
+                  <TableHead className="w-[78px] text-right">Inválidos</TableHead>
+                  <TableHead className="w-[122px]">Próximo previsto</TableHead>
+                  <TableHead className="w-[145px]">Registrado por</TableHead>
+                  <TableHead className="w-[270px]">Observações</TableHead>
+                  <TableHead className="w-[226px] text-right">Ações</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {data.disparos.map(d => (
                   <TableRow key={d.id}>
-                    <TableCell className="whitespace-nowrap">
+                    <TableCell className="w-[170px] min-w-[170px] whitespace-nowrap">
                       <div className="font-medium">{formatarDataBr(d.enviadoEm)}</div>
                       <div className="text-[11px] text-muted-foreground">registrado {fmtDateTime(d.createdAt)}</div>
                     </TableCell>
-                    <TableCell className="text-right font-medium text-emerald-700">{fmtNum(d.contatosEnviados)}</TableCell>
-                    <TableCell className="text-right text-amber-700">{fmtNum(d.contatosIgnorados)}</TableCell>
-                    <TableCell className="text-right text-muted-foreground">{fmtNum(d.contatosInvalidos)}</TableCell>
-                    <TableCell className="whitespace-nowrap">{d.proximaData ? formatarDataBr(d.proximaData) : "—"}</TableCell>
-                    <TableCell className="whitespace-nowrap">
+                    <TableCell className="w-[82px] min-w-[82px] text-right font-medium text-emerald-700">{fmtNum(d.contatosEnviados)}</TableCell>
+                    <TableCell className="w-[92px] min-w-[92px] text-right text-amber-700">{fmtNum(d.contatosIgnorados)}</TableCell>
+                    <TableCell className="w-[78px] min-w-[78px] text-right text-muted-foreground">{fmtNum(d.contatosInvalidos)}</TableCell>
+                    <TableCell className="w-[122px] min-w-[122px] whitespace-nowrap">{d.proximaData ? formatarDataBr(d.proximaData) : "—"}</TableCell>
+                    <TableCell className="w-[145px] min-w-[145px] whitespace-normal break-words">
                       {d.registradoPor ?? "—"} {d.origem === "api" && <Badge variant="outline" className="ml-1">API</Badge>}
                     </TableCell>
-                    <TableCell className="max-w-[220px] min-w-[140px]">
+                    <TableCell className="w-[270px] min-w-[270px] max-w-[270px] whitespace-normal align-top">
                       {d.arquivoUrl && (
-                        <a href={d.arquivoUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-xs text-blue-600 hover:underline">
+                        <a href={d.arquivoUrl} target="_blank" rel="noreferrer" className="inline-flex max-w-full items-center gap-1 break-all text-xs text-blue-600 hover:underline">
                           <ExternalLink size={12} /> {d.arquivoNome ?? "arquivo"}
                         </a>
                       )}
-                      {d.observacoes && <p className="text-xs text-muted-foreground break-words">{d.observacoes}</p>}
+                      {d.observacoes && <p className="break-words text-xs text-muted-foreground [overflow-wrap:anywhere]">{d.observacoes}</p>}
                       {!d.arquivoUrl && !d.observacoes && "—"}
                     </TableCell>
-                    <TableCell className="text-right whitespace-nowrap">
-                      <div className="flex items-center justify-end gap-1.5">
-                        <Button size="sm" variant="outline" className="gap-1 text-xs" onClick={() => setEnvios(d)}>
+                    <TableCell className="w-[226px] min-w-[226px] whitespace-normal align-top text-right">
+                      <div className="flex flex-wrap items-center justify-end gap-1.5">
+                        <Button size="sm" variant="outline" className="shrink-0 gap-1 whitespace-nowrap text-xs" onClick={() => setEnvios(d)}>
                           <ListChecks size={12} /> Ver envios
                         </Button>
                         {d.origem === "api" && (
                           <Button
-                            size="sm" variant="outline" className="gap-1 text-xs" disabled={desfazer.isPending}
+                            size="sm" variant="outline" className="shrink-0 gap-1 whitespace-nowrap text-xs" disabled={desfazer.isPending}
                             title="Use quando as mensagens não chegaram: o registro some e os contatos voltam para a lista de prontos."
                             onClick={() => {
                               if (window.confirm(`Desfazer este disparo de ${fmtNum(d.contatosEnviados)} contato(s)? Eles voltam para a lista de prontos. Isso NÃO cancela mensagens que já tenham sido entregues.`)) {
