@@ -417,7 +417,9 @@ puro, incl. teto de 24 meses em Inativos, Novos/Reativados do mês e Redução d
 `campanhasWhatsapp.listar` carrega primeiro os dados leves das campanhas e seus últimos envios. Os números e o
 semáforo de pós-venda são calculados em `campanhasWhatsapp.contagemPosVenda`, numa consulta separada; assim, a
 tabela aparece enquanto o histórico de O.S. é processado. Falha nesse cálculo informa indisponibilidade dos
-contadores sem esconder a lista.
+contadores sem esconder a lista. A contagem de audiências recorrentes (`contagemAudiencias`) só começa depois da
+lista e da apuração de pós-venda, quando houver campanhas desse tipo; as duas leituras amplas do histórico não
+competem entre si na abertura.
 
 ## Telefones pelo cadastro de clientes do MubiSys (04/10/2026)
 

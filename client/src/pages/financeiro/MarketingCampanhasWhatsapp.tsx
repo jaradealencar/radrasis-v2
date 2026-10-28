@@ -50,6 +50,7 @@ export default function MarketingCampanhasWhatsapp() {
     staleTime: 30_000,
     refetchOnWindowFocus: false,
   });
+  const temRecorrenteAtiva = campanhasBase.some(c => c.tipo === "recorrente" && c.status === "ativa");
   // Fallback pra própria chave: só aconteceria se a categoria tivesse sido excluída fisicamente por fora
   // (a tela nunca permite excluir uma em uso) — nunca deixa a coluna em branco.
   const labelCategoria = (chave: string) => categorias?.find(c => c.chave === chave)?.label ?? chave;
@@ -63,7 +64,13 @@ export default function MarketingCampanhasWhatsapp() {
   const [duplicar, setDuplicar] = useState<CampanhaLinha | null>(null);
   const [verContatos, setVerContatos] = useState<CampanhaLinha | null>(null);
   // Contatos das campanhas recorrentes: cálculo mais pesado, por isso numa consulta à parte.
-  const contagens = trpc.campanhasWhatsapp.contagemAudiencias.useQuery(undefined, { staleTime: 5 * 60_000, refetchOnWindowFocus: false });
+  // Evita ler O.S., orçamentos e cache de clientes ao mesmo tempo que a apuração de pós-venda.
+  const posVendaTerminou = !temGatilhoAtivo || (contagemPosVenda.isFetched && !contagemPosVenda.isFetching);
+  const contagens = trpc.campanhasWhatsapp.contagemAudiencias.useQuery(undefined, {
+    enabled: !!data && temRecorrenteAtiva && posVendaTerminou,
+    staleTime: 5 * 60_000,
+    refetchOnWindowFocus: false,
+  });
   const [excluir, setExcluir] = useState<CampanhaLinha | null>(null);
 
   const campanhas = campanhasBase.map(c => {
@@ -210,8 +217,10 @@ export default function MarketingCampanhasWhatsapp() {
                             </div>
                           </div>
                         ) : c.tipo === "recorrente" && c.status === "ativa" ? (
-                          contagens.isLoading ? (
+                          !contagens.data && !contagens.isError ? (
                             <Spinner className="size-3.5 text-muted-foreground" />
+                          ) : contagens.isError && !contagens.data ? (
+                            <span className="text-[11px] text-amber-700">indisponível</span>
                           ) : contagens.data?.[c.id] ? (
                             <div className="space-y-0.5">
                               <div title="Contatos que já podem receber agora (fontes + período, sem quarentena, cadência ou bloqueados)">
