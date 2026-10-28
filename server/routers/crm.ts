@@ -15,7 +15,7 @@ import {
 import type { TrpcContext } from "../_core/context";
 import {
   construirMapaConversaoClientes, normalizeEmpresaKey,
-  construirModeloBayesiano, calcularProbabilidadeBayesiana,
+  construirModeloBayesiano, calcularProbabilidadeBayesiana, calcularTaxaConversaoCliente,
 } from "../services/probabilidadeCompra";
 import { UF_PARA_REGIAO, normalizarUf } from "../utils/regioesBrasil";
 import { diasUteisEntre } from "../../shared/dias-uteis";
@@ -463,19 +463,17 @@ export const crmRouter = router({
         const orcsHist = conversaoCliente?.orcNumeros ?? new Set<string>();
         const orcsAbertos = (chaveCliente ? orcsAbertosPorCliente.get(chaveCliente) : undefined) ?? new Set<string>();
         const todosOrcsDoCliente = new Set<string>([...orcsHist, ...orcsAbertos]);
-        if (p.sequencial) todosOrcsDoCliente.add(String(p.sequencial));
-        if (p.id) todosOrcsDoCliente.add(String(p.id));
+        // Mesmo orçamento: o histórico (e os abertos) identificam pelo sequencial; o id interno
+        // do MubiSys só vale quando não há sequencial — somar os dois contava a proposta em dobro.
+        const numeroDestaProposta = p.sequencial ? String(p.sequencial) : (p.id ? String(p.id) : "");
+        if (numeroDestaProposta) todosOrcsDoCliente.add(numeroDestaProposta);
         const totalCotacoes = Math.max(1, todosOrcsDoCliente.size);
 
-        const cotacoesBase = Math.max(conversaoCliente?.totalOrcamentos ?? 0, totalCotacoes);
-        const fechados = (conversaoCliente?.orcamentosFechados && conversaoCliente.orcamentosFechados > 0)
-          ? conversaoCliente.orcamentosFechados
-          : Math.min(qtdComprasCliente, cotacoesBase);
-        const taxaConversao = cotacoesBase > 0 && qtdComprasCliente > 0
-          ? Math.min(100, Math.round((fechados / cotacoesBase) * 100))
-          : null;
+        // Conversão = orçamentos fechados ÷ orçamentos, os dois do histórico de orçamentos.
+        const orcamentosFechados = Math.min(conversaoCliente?.orcamentosFechados ?? 0, totalCotacoes);
+        const taxaConversao = calcularTaxaConversaoCliente(totalCotacoes, orcamentosFechados, conversaoCliente?.totalOrcamentos ?? 0);
 
-        return { ...p, telefone, nomeCliente, nomeContato: p.nomeContato ?? "", clienteNovo, probabilidadeCompra, probabilidadeExplicacao, qtdComprasCliente, totalCompras: qtdComprasCliente, diasSemComprar, totalCotacoes, taxaConversao, estadoCliente, regiaoCliente };
+        return { ...p, telefone, nomeCliente, nomeContato: p.nomeContato ?? "", clienteNovo, probabilidadeCompra, probabilidadeExplicacao, qtdComprasCliente, totalCompras: qtdComprasCliente, diasSemComprar, totalCotacoes, orcamentosFechados, taxaConversao, estadoCliente, regiaoCliente };
       });
       return {
         propostas: propostasComTelefone.sort((a, b) => a.qtdContatos - b.qtdContatos || b.diasAberto - a.diasAberto),

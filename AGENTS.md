@@ -327,7 +327,10 @@ server/
   sync/                sincronização com o ERP: scheduled-sync-os.ts,
                        scheduled-sync-os-handler.ts; o sync de O.S. também atualiza as
                        baixas do estoque de perfis e registra pendências de BOM/medidas
-  utils/               helpers puros: date-utils.ts, transportadoras-completude.ts
+  utils/               helpers puros: date-utils.ts, transportadoras-completude.ts, os-valida.ts
+                       (`isOsNormalDb`: regra única de "compra válida"; o número de compras do CRM e
+                       das Propostas de Alto Valor conta só essas OS, e orçamento ganho só entra nos meses
+                       sem OS sincronizada — `contarComprasPorCliente` em services/probabilidadeCompra.ts)
   scripts/             scripts de seed do server (seed.mjs, seed-operacoes.mjs)
   __tests__/           testes do server (*.test.ts)
   _core/               infra do server: auth.ts (Better Auth), context.ts/trpc.ts
