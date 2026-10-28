@@ -28,6 +28,7 @@
 
 import { getPool } from '../db/db-connection';
 import { listarOSMubiSys, listarOrcamentosMubiSys, type MubiSysOS, type MubiSysOrcamento } from '../integrations/mubisys-client';
+import { invalidarCacheCampanhasPainel } from '../services/campanhasPainelCache';
 
 export interface SincronizarHistoricoResultado {
   mes: number;
@@ -277,6 +278,7 @@ export async function sincronizarHistoricoDoMubiSys(mes: number, ano: number): P
 
     const osProcessadas = await upsertEmLotes('historico_os', HISTORICO_OS_COLS, linhasOs, 'osNumero');
     const orcamentosProcessados = await upsertEmLotes('historico_orcamentos', HISTORICO_ORC_COLS, linhasOrc, 'orcNumero');
+    if (osProcessadas > 0 || orcamentosProcessados > 0) invalidarCacheCampanhasPainel();
 
     console.log(`✅ [SYNC-HISTORICO] ${pad(mes)}/${ano}: ${osProcessadas} OS, ${orcamentosProcessados} orçamentos`);
 

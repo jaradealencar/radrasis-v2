@@ -19,6 +19,7 @@ import { historicoOrcamentos } from "../../drizzle/schema";
 import { listarOSMubiSys, listarOrcamentosMubiSys, buscarClientePorId } from "../integrations/mubisys-client";
 import { fatiarEmJanelas, DIAS_POR_JANELA } from "./scheduled-sync-historico";
 import { normalizarTelefone, semNumeroDeTelefone } from "../../shared/campanhas-whatsapp";
+import { invalidarCacheCampanhasPainel } from "../services/campanhasPainelCache";
 
 const pad = (n: number) => String(n).padStart(2, "0");
 const JANELA_DIAS = 7;
@@ -112,6 +113,7 @@ export async function gravarTelefones(mapa: Map<string, string>): Promise<number
 export async function completarTelefonesJanela(j: JanelaBackfill): Promise<{ encontrados: number; atualizadas: number }> {
   const mapa = await buscarTelefonesDaJanela(j);
   const atualizadas = await gravarTelefones(mapa);
+  if (atualizadas > 0) invalidarCacheCampanhasPainel();
   return { encontrados: mapa.size, atualizadas };
 }
 
@@ -204,6 +206,7 @@ export async function gravarClienteIdOrcamentosJanela(j: JanelaBackfill): Promis
       WHERE h."orcNumero" = v.orc AND h."clienteId" IS NULL`,
     [numeros, numeros.map(n => mapa.get(n)!)],
   );
+  if ((r.rowCount ?? 0) > 0) invalidarCacheCampanhasPainel();
   return { listados: itens.length, atualizadas: r.rowCount ?? 0 };
 }
 
@@ -314,6 +317,7 @@ export async function completarTelefonesClientesOrcamentos(
     .from(historicoOrcamentos)
     .where(and(isNotNull(historicoOrcamentos.clienteId), isNull(historicoOrcamentos.telefone)));
   const comTelefone = [...resolvidos.values()].filter(t => t !== "").length;
+  if (atualizadas > 0) invalidarCacheCampanhasPainel();
   return {
     consultados: idsPendentes.length, comTelefone, semTelefone: resolvidos.size - comTelefone,
     falhas, semClienteVinculado, atualizadas, falhasIds,

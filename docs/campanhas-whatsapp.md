@@ -419,7 +419,10 @@ semáforo de pós-venda são calculados em `campanhasWhatsapp.contagemPosVenda`,
 tabela aparece enquanto o histórico de O.S. é processado. Falha nesse cálculo informa indisponibilidade dos
 contadores sem esconder a lista. A contagem de audiências recorrentes (`contagemAudiencias`) só começa depois da
 lista e da apuração de pós-venda, quando houver campanhas desse tipo; as duas leituras amplas do histórico não
-competem entre si na abertura.
+competem entre si na abertura. Os dois resumos usam cache em memória por até 60 segundos e compartilham uma mesma
+leitura simultânea; alterações feitas por mutations ou pela sincronização/backfill local invalidam esse cache.
+Como o cache é por processo e temporário, outros processos podem mantê-lo até o TTL. Ele só alimenta os contadores
+do painel: a geração da lista final e o disparo continuam lendo os dados atuais.
 
 ## Telefones pelo cadastro de clientes do MubiSys (04/10/2026)
 

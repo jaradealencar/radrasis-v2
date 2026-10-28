@@ -53,12 +53,19 @@ import { isOsNormalDb } from "./performanceComercial";
 import {
   carregarTelefonesClientes, completarTelefonesPeloCadastro, sincronizarClientesLote, statusCacheClientes,
 } from "../sync/clientes-mubisys";
+import { comCacheCampanhasPainel, invalidarCacheCampanhasPainel } from "../services/campanhasPainelCache";
 
 type Db = NonNullable<Awaited<ReturnType<typeof getDb>>>;
 
 /** Mesmo público da área de Crescimento (Inteligência de Clientes): a aba fica ao lado do ROI Marketing e a lista
  * guarda telefones de clientes, então o gate de role vale também no servidor, não só na tela. */
-const campanhasProcedure = protectedProcedure.use(requireRole("admin", "master", "gestor"));
+const campanhasProcedure = protectedProcedure
+  .use(requireRole("admin", "master", "gestor"))
+  .use(async ({ next, type }) => {
+    const resultado = await next();
+    if (resultado.ok && type === "mutation") invalidarCacheCampanhasPainel();
+    return resultado;
+  });
 
 export const MAX_CONTATOS_POR_DISPARO = 20_000;
 const MAX_LISTA_TELA = 500;
@@ -389,6 +396,7 @@ export async function registrarDisparoNoBanco(p: ParametrosDisparo): Promise<Res
     ],
   );
 
+  invalidarCacheCampanhasPainel();
   return { registrado: true, disparoId: r.rows[0].id as number, proximaData, ...base };
 }
 
@@ -532,37 +540,39 @@ export const campanhasWhatsappRouter = router({
   }),
 
   /** Contadores de pós-venda do painel, separados da lista para ela aparecer antes da leitura do histórico de O.S. */
-  contagemPosVenda: campanhasProcedure.query(async () => {
-    const db = await obterDb();
-    const hoje = hojeCampoGrande();
-    const campanhas = (await db.select().from(campanhasWhatsapp))
-      .filter(c => c.status === "ativa" && c.tipo === "gatilho_venda");
-    const posVenda = await carregarPosVenda(db, campanhas, hoje);
+  contagemPosVenda: campanhasProcedure.query(() =>
+    comCacheCampanhasPainel("pos-venda", async () => {
+      const db = await obterDb();
+      const hoje = hojeCampoGrande();
+      const campanhas = (await db.select().from(campanhasWhatsapp))
+        .filter(c => c.status === "ativa" && c.tipo === "gatilho_venda");
+      const posVenda = await carregarPosVenda(db, campanhas, hoje);
 
-    const linhas = campanhas.map(c => {
-      const vendas = posVenda.get(c.id);
-      const resumo = vendas ? resumirVendas(vendas) : undefined;
-      const status = montarStatusCampanha(
-        { tipo: c.tipo, status: c.status, frequenciaDias: c.frequenciaDias, criadaEm: hojeCampoGrande(c.createdAt) },
-        null, hoje, resumo,
-      );
+      const linhas = campanhas.map(c => {
+        const vendas = posVenda.get(c.id);
+        const resumo = vendas ? resumirVendas(vendas) : undefined;
+        const status = montarStatusCampanha(
+          { tipo: c.tipo, status: c.status, frequenciaDias: c.frequenciaDias, criadaEm: hojeCampoGrande(c.createdAt) },
+          null, hoje, resumo,
+        );
+        return {
+          id: c.id,
+          semaforo: status.semaforo,
+          proximoEnvio: status.proximoEnvio,
+          primeiroDisparoPendente: status.primeiroDisparoPendente,
+          // Clientes únicos (não OS): o pós-venda manda uma mensagem por cliente.
+          clientesPendentes: resumo?.pendentes ?? 0,
+          clientesAguardando: resumo?.aguardando ?? 0,
+          clientesSemTelefone: vendas ? agruparPorCliente(vendas.pendentes).filter(cliente => !cliente.telefone).length : 0,
+        };
+      });
+
       return {
-        id: c.id,
-        semaforo: status.semaforo,
-        proximoEnvio: status.proximoEnvio,
-        primeiroDisparoPendente: status.primeiroDisparoPendente,
-        // Clientes únicos (não OS): o pós-venda manda uma mensagem por cliente.
-        clientesPendentes: resumo?.pendentes ?? 0,
-        clientesAguardando: resumo?.aguardando ?? 0,
-        clientesSemTelefone: vendas ? agruparPorCliente(vendas.pendentes).filter(cliente => !cliente.telefone).length : 0,
+        campanhas: linhas,
+        resumo: resumirCampanhas(linhas.map(l => ({ ...l, status: "ativa" as const })), hoje),
       };
-    });
-
-    return {
-      campanhas: linhas,
-      resumo: resumirCampanhas(linhas.map(l => ({ ...l, status: "ativa" as const })), hoje),
-    };
-  }),
+    }),
+  ),
 
   criar: campanhasProcedure
     .input(campanhaBaseSchema)
@@ -1501,26 +1511,28 @@ export const campanhasWhatsappRouter = router({
    * contatos" (período, quarentena, "não quer receber", cadência), com o histórico lido uma única vez. Roda à
    * parte da lista do painel para não atrasá-la. Campanha sem fonte ou com erro devolve `null`.
    */
-  contagemAudiencias: campanhasProcedure.query(async () => {
-    const db = await obterDb();
-    const campanhas = (await db.select().from(campanhasWhatsapp))
-      .filter(c => c.status === "ativa" && c.tipo === "recorrente");
-    const ctx = campanhas.length ? await carregarContextoErp() : null;
-    const resultado: Record<number, { paraContatar: number; emEspera: number } | null> = {};
-    for (const c of campanhas) {
-      try {
-        const r = await montarListaCampanha(db, c, {}, ctx);
-        resultado[c.id] = {
-          paraContatar: r.aprovados.length,
-          // Quarentena de outra campanha + cadência desta: voltam sozinhos quando o prazo passa.
-          emEspera: r.ignoradosQuarentenaGlobal.length + r.ignoradosCadenciaCampanha.length,
-        };
-      } catch {
-        resultado[c.id] = null;
+  contagemAudiencias: campanhasProcedure.query(() =>
+    comCacheCampanhasPainel("audiencias", async () => {
+      const db = await obterDb();
+      const campanhas = (await db.select().from(campanhasWhatsapp))
+        .filter(c => c.status === "ativa" && c.tipo === "recorrente");
+      const ctx = campanhas.length ? await carregarContextoErp() : null;
+      const resultado: Record<number, { paraContatar: number; emEspera: number } | null> = {};
+      for (const c of campanhas) {
+        try {
+          const r = await montarListaCampanha(db, c, {}, ctx);
+          resultado[c.id] = {
+            paraContatar: r.aprovados.length,
+            // Quarentena de outra campanha + cadência desta: voltam sozinhos quando o prazo passa.
+            emEspera: r.ignoradosQuarentenaGlobal.length + r.ignoradosCadenciaCampanha.length,
+          };
+        } catch {
+          resultado[c.id] = null;
+        }
       }
-    }
-    return resultado;
-  }),
+      return resultado;
+    }),
+  ),
 
   /**
    * "Atualizar do MubiSys": busca na API do ERP as OS e orçamentos do mês corrente e do anterior e grava no
