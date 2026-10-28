@@ -16,6 +16,8 @@ interface KpiCardProps {
   variant?: "accent" | "border";
   className?: string;
   onClick?: () => void;
+  /** Conteúdo complementar abaixo do subtítulo, como uma decomposição do indicador. */
+  details?: ReactNode;
   /** Conteúdo explicando fórmula/fonte/período/se é real ou estimado — quando
    * presente, mostra um ícone (i) ao lado do label que revela o tooltip. */
   tooltip?: ReactNode;
@@ -54,6 +56,7 @@ export default function KpiCard({
   variant = "accent",
   className,
   onClick,
+  details,
   tooltip,
 }: KpiCardProps) {
   const clickable = onClick
@@ -105,6 +108,7 @@ export default function KpiCard({
             {value}
           </p>
           {sub && <p className="text-xs mt-1 text-slate-400">{sub}</p>}
+          {details && <div className="mt-2">{details}</div>}
         </div>
         <div className="p-2.5 rounded-lg" style={{ background: `${color}15` }}>
           {renderIcon(icon, color)}

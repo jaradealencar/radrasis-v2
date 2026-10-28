@@ -24,7 +24,37 @@ function fmtTempoRelativo(ms: number): string {
   return `há ${Math.floor(min / 60)}h`;
 }
 
-type Grupo = { cotacoes: number; valorOrcado: number; vendas: number; faturamento: number };
+type Grupo = {
+  cotacoes: number;
+  valorOrcado: number;
+  vendas: number;
+  faturamento: number;
+  porVendedor?: Record<string, { cotacoes: number; vendas: number }>;
+};
+
+function DetalhePorVendedor({ grupo, metrica }: {
+  grupo: Grupo;
+  metrica: "cotacoes" | "vendas";
+}) {
+  const vendedores = Object.entries(grupo.porVendedor ?? {})
+    .filter(([, contagem]) => contagem[metrica] > 0)
+    .sort(([nomeA, contagemA], [nomeB, contagemB]) =>
+      contagemB[metrica] - contagemA[metrica] || nomeA.localeCompare(nomeB),
+    );
+
+  return (
+    <div className="max-h-24 overflow-y-auto border-t border-slate-100 pt-2 space-y-1" aria-label={`${metrica === "cotacoes" ? "Cotações" : "Vendas"} por vendedor`}>
+      {vendedores.length === 0 ? (
+        <p className="text-[10px] text-slate-400">Sem registros por vendedor</p>
+      ) : vendedores.map(([vendedor, contagem]) => (
+        <div key={vendedor} className="flex items-center justify-between gap-2 text-[10px] leading-4">
+          <span className="truncate text-slate-500" title={vendedor}>{vendedor}</span>
+          <span className="shrink-0 font-semibold text-slate-600">{fmtNum(contagem[metrica])}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
 
 function LinhaGrupo({ titulo, descricao, icon: Icon, cor, g, loading }: {
   titulo: string;
@@ -53,6 +83,7 @@ function LinhaGrupo({ titulo, descricao, icon: Icon, cor, g, loading }: {
             label="Cotações"
             value={fmtNum(g.cotacoes)}
             sub={`${fmtBrl(g.valorOrcado)} orçados`}
+            details={<DetalhePorVendedor grupo={g} metrica="cotacoes" />}
             icon={ShoppingCart}
             color="#3b82f6"
           />
@@ -60,6 +91,7 @@ function LinhaGrupo({ titulo, descricao, icon: Icon, cor, g, loading }: {
             label="Vendas"
             value={fmtNum(g.vendas)}
             sub="OS aprovadas no dia"
+            details={<DetalhePorVendedor grupo={g} metrica="vendas" />}
             icon={CheckCircle2}
             color="#8b5cf6"
           />
