@@ -95,6 +95,7 @@ export default function PropostasAltoValor({ mes, ano }: { mes: number; ano: num
   const [motivo, setMotivo] = useState("");
   const [diaDe, setDiaDe] = useState("");
   const [diaAte, setDiaAte] = useState("");
+  const [somenteClientesInativos, setSomenteClientesInativos] = useState(false);
 
   const utils = trpc.useUtils();
   const { user } = useAuth();
@@ -227,7 +228,6 @@ export default function PropostasAltoValor({ mes, ano }: { mes: number; ano: num
   }
 
   const propostas = data?.propostas ?? [];
-  const totalContatadas = propostas.filter(p => p.contatado).length;
   const totalNovos = propostas.filter(p => p.clienteStatus === "novo").length;
   const totalReativados = propostas.filter(p => p.clienteStatus === "reativado").length;
 
@@ -275,6 +275,10 @@ export default function PropostasAltoValor({ mes, ano }: { mes: number; ano: num
       }))
     );
   }, [propostas, diaDe, diaAte]);
+
+  const propostasInativasNoPeriodo = propostasFiltradas.filter(p => p.clienteStatus === "reativado");
+  const propostasExibidas = somenteClientesInativos ? propostasInativasNoPeriodo : propostasFiltradas;
+  const totalContatadasExibidas = propostasExibidas.filter(p => p.contatado).length;
 
   // Telefone e link do MubiSys só vêm do cache de orçamentos do MubiSys, que pode ainda estar
   // esquentando quando a consulta roda ao montar a página. Se faltou algum, reconsulta ao abrir.
@@ -404,9 +408,37 @@ export default function PropostasAltoValor({ mes, ano }: { mes: number; ano: num
                 </Button>
               )}
               <span className="ml-auto">
-                {propostasFiltradas.length} de {propostas.length} proposta{propostas.length > 1 ? "s" : ""}
-                {totalContatadas > 0 && <> · <span className="text-green-600 font-medium">{totalContatadas} contatada{totalContatadas > 1 ? "s" : ""}</span></>}
+                {propostasExibidas.length} de {propostas.length} proposta{propostas.length > 1 ? "s" : ""}
+                {totalContatadasExibidas > 0 && <> · <span className="text-green-600 font-medium">{totalContatadasExibidas} contatada{totalContatadasExibidas > 1 ? "s" : ""}</span></>}
               </span>
+            </div>
+          )}
+
+          {!isLoading && propostas.length > 0 && (
+            <div className="flex flex-wrap items-center gap-2 text-xs" role="group" aria-label="Filtrar propostas por situação do cliente">
+              <span className="font-medium text-slate-500">Ver:</span>
+              <Button
+                type="button"
+                size="sm"
+                variant={somenteClientesInativos ? "outline" : "default"}
+                className="h-7 px-2 text-xs"
+                aria-pressed={!somenteClientesInativos}
+                onClick={() => setSomenteClientesInativos(false)}
+              >
+                Todas ({propostasFiltradas.length})
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant={somenteClientesInativos ? "default" : "outline"}
+                className="h-7 px-2 text-xs"
+                aria-pressed={somenteClientesInativos}
+                title="Classificação calculada com base no início do mês selecionado"
+                onClick={() => setSomenteClientesInativos(true)}
+              >
+                Clientes inativos · 6+ meses ({propostasInativasNoPeriodo.length})
+              </Button>
+              <span className="text-slate-400">Inatividade calculada para o mês selecionado.</span>
             </div>
           )}
 
@@ -427,8 +459,12 @@ export default function PropostasAltoValor({ mes, ano }: { mes: number; ano: num
             <div className="py-8 text-center text-sm text-slate-400">Carregando propostas...</div>
           ) : propostas.length === 0 ? (
             <div className="py-8 text-center text-sm text-slate-400">Nenhuma proposta em aberto acima do valor de corte neste mês.</div>
-          ) : propostasFiltradas.length === 0 ? (
-            <div className="py-8 text-center text-sm text-slate-400">Nenhuma proposta cadastrada nesse intervalo de dias.</div>
+          ) : propostasExibidas.length === 0 ? (
+            <div className="py-8 text-center text-sm text-slate-400">
+              {somenteClientesInativos
+                ? "Nenhuma proposta de cliente inativo (6+ meses sem comprar) neste mês e intervalo selecionados."
+                : "Nenhuma proposta cadastrada nesse intervalo de dias."}
+            </div>
           ) : (
             <Table>
               <TableHeader>
@@ -444,7 +480,7 @@ export default function PropostasAltoValor({ mes, ano }: { mes: number; ano: num
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {propostasFiltradas.map(p => (
+                {propostasExibidas.map(p => (
                   <TableRow
                     key={p.orcNumero}
                     className={`${
