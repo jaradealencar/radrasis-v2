@@ -116,6 +116,7 @@ export default function CompletarTelefones({ onProgresso }: { onProgresso?: () =
       await Promise.all([
         utils.campanhasWhatsapp.gerarListaDaCampanha.invalidate(),
         utils.campanhasWhatsapp.contagemAudiencias.invalidate(),
+        utils.campanhasWhatsapp.contagemPosVenda.invalidate(),
         utils.campanhasWhatsapp.orcamentosClienteIdPlano.invalidate(),
       ]);
     }

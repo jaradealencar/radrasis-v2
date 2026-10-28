@@ -39,6 +39,7 @@ export default function AtualizarClientesAuto() {
           utils.campanhasWhatsapp.clientesCacheStatus.invalidate(),
           utils.campanhasWhatsapp.gerarListaDaCampanha.invalidate(),
           utils.campanhasWhatsapp.contagemAudiencias.invalidate(),
+          utils.campanhasWhatsapp.contagemPosVenda.invalidate(),
           utils.campanhasWhatsapp.listar.invalidate(),
         ]);
       } catch (e) {

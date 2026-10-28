@@ -203,12 +203,23 @@ describe("router (tRPC)", () => {
   it("listar traz a campanha recorrente com o último envio e a frequência aplicada", async () => {
     const { campanhas, resumo } = await admin().listar();
     const c = campanhas.find(x => x.id === recorrenteId)!;
+    const gatilho = campanhas.find(x => x.id === gatilhoId)!;
     expect(c.ultimoEnvio).toBe(dia(-5));
     expect(c.proximoEnvio).toBe(dia(10)); // último envio + 15
     expect(c.semaforo).toBe("verde");
     expect(c.primeiroDisparoPendente).toBe(false);
+    expect(gatilho.clientesPendentes).toBeNull(); // contadores do histórico carregam separadamente
     expect(resumo.ativas).toBeGreaterThanOrEqual(2);
   });
+
+  it("contagemPosVenda calcula os dados do gatilho em separado da lista", async () => {
+    const resultado = await admin().contagemPosVenda();
+    const gatilho = resultado.campanhas.find(c => c.id === gatilhoId)!;
+    expect(gatilho.clientesPendentes).toBeGreaterThanOrEqual(0);
+    expect(gatilho.clientesAguardando).toBeGreaterThanOrEqual(0);
+    expect(["vermelho", "amarelo", "verde"]).toContain(gatilho.semaforo);
+    expect(resultado.resumo.ativas).toBe(resultado.campanhas.length);
+  }, 40_000);
 
   it("editar a frequência muda o próximo envio e o semáforo na hora", async () => {
     await admin().atualizar({ id: recorrenteId, frequenciaDias: 5 });
@@ -235,6 +246,7 @@ describe("router (tRPC)", () => {
 
   it("role fora de admin/master/gestor é barrada no servidor", async () => {
     await expect(campanhasWhatsappRouter.createCaller(ctxVendas).listar()).rejects.toMatchObject({ code: "FORBIDDEN" });
+    await expect(campanhasWhatsappRouter.createCaller(ctxVendas).contagemPosVenda()).rejects.toMatchObject({ code: "FORBIDDEN" });
     await expect(campanhasWhatsappRouter.createCaller({ ...ctxVendas, user: null }).listar()).rejects.toMatchObject({ code: "UNAUTHORIZED" });
   });
 });

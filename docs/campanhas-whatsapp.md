@@ -412,6 +412,13 @@ Planner/agendamentos + `relatorioPeriodo`), `server/__tests__/fontes-erp-campanh
 puro, incl. teto de 24 meses em Inativos, Novos/Reativados do mês e Redução de volume) e
 `client/src/lib/listaContatos.test.ts` (leitura de CSV/XLSX).
 
+## Carregamento do painel
+
+`campanhasWhatsapp.listar` carrega primeiro os dados leves das campanhas e seus últimos envios. Os números e o
+semáforo de pós-venda são calculados em `campanhasWhatsapp.contagemPosVenda`, numa consulta separada; assim, a
+tabela aparece enquanto o histórico de O.S. é processado. Falha nesse cálculo informa indisponibilidade dos
+contadores sem esconder a lista.
+
 ## Telefones pelo cadastro de clientes do MubiSys (04/10/2026)
 
 `historico_os.telefone` só existe desde 21/09/2026 e `historico_orcamentos` nunca teve número, o que deixava

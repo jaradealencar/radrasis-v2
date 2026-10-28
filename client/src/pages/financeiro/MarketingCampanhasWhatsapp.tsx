@@ -43,6 +43,13 @@ function BotaoIcone({ rotulo, onClick, children }: { rotulo: string; onClick: ()
 export default function MarketingCampanhasWhatsapp() {
   const { data, isLoading, isError, error, refetch } = trpc.campanhasWhatsapp.listar.useQuery();
   const { data: categorias } = trpc.campanhasWhatsapp.listarCategorias.useQuery();
+  const campanhasBase = data?.campanhas ?? [];
+  const temGatilhoAtivo = campanhasBase.some(c => c.tipo === "gatilho_venda" && c.status === "ativa");
+  const contagemPosVenda = trpc.campanhasWhatsapp.contagemPosVenda.useQuery(undefined, {
+    enabled: !!data && temGatilhoAtivo,
+    staleTime: 30_000,
+    refetchOnWindowFocus: false,
+  });
   // Fallback pra própria chave: só aconteceria se a categoria tivesse sido excluída fisicamente por fora
   // (a tela nunca permite excluir uma em uso) — nunca deixa a coluna em branco.
   const labelCategoria = (chave: string) => categorias?.find(c => c.chave === chave)?.label ?? chave;
@@ -59,6 +66,22 @@ export default function MarketingCampanhasWhatsapp() {
   const contagens = trpc.campanhasWhatsapp.contagemAudiencias.useQuery(undefined, { staleTime: 5 * 60_000, refetchOnWindowFocus: false });
   const [excluir, setExcluir] = useState<CampanhaLinha | null>(null);
 
+  const campanhas = campanhasBase.map(c => {
+    const posVenda = contagemPosVenda.data?.campanhas.find(resultado => resultado.id === c.id);
+    return posVenda ? { ...c, ...posVenda } : c;
+  }).sort((a, b) => {
+    const rank = { vermelho: 0, amarelo: 1, verde: 2 } as const;
+    return (a.semaforo ? rank[a.semaforo] : 3) - (b.semaforo ? rank[b.semaforo] : 3)
+      || (a.proximoEnvio ?? "9999").localeCompare(b.proximoEnvio ?? "9999")
+      || a.nome.localeCompare(b.nome);
+  });
+  const resumo = data ? {
+    ...data.resumo,
+    pendentesHoje: data.resumo.pendentesHoje + (contagemPosVenda.data?.resumo.pendentesHoje ?? 0),
+    daSemana: data.resumo.daSemana + (contagemPosVenda.data?.resumo.daSemana ?? 0),
+  } : null;
+  const aguardandoPosVenda = temGatilhoAtivo && !contagemPosVenda.data && !contagemPosVenda.isError;
+
   if (isLoading) {
     return <div className="flex justify-center py-20"><Spinner className="size-7 text-muted-foreground" /></div>;
   }
@@ -72,7 +95,7 @@ export default function MarketingCampanhasWhatsapp() {
     );
   }
 
-  const { hoje, campanhas, resumo } = data;
+  const hoje = data.hoje;
 
   return (
     <div className="space-y-4">
@@ -90,6 +113,13 @@ export default function MarketingCampanhasWhatsapp() {
 
       <AtualizarClientesAuto />
 
+      {contagemPosVenda.isError && temGatilhoAtivo && !contagemPosVenda.data && (
+        <div role="alert" className="flex items-center justify-between gap-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+          <span>Não foi possível calcular os contadores de pós-venda. A lista de campanhas continua disponível.</span>
+          <Button size="sm" variant="outline" onClick={() => contagemPosVenda.refetch()}>Tentar novamente</Button>
+        </div>
+      )}
+
       <Tabs defaultValue="painel">
         <TabsList>
           <TabsTrigger value="painel" className="gap-1.5"><LayoutList size={14} /> Painel</TabsTrigger>
@@ -100,13 +130,17 @@ export default function MarketingCampanhasWhatsapp() {
 
         <TabsContent value="painel" className="space-y-4 pt-3">
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-            <KpiCard variant="border" label="Campanhas ativas" value={resumo.ativas} icon={Megaphone} color="#1e6fd9" />
+            <KpiCard variant="border" label="Campanhas ativas" value={resumo!.ativas} icon={Megaphone} color="#1e6fd9" />
             <KpiCard
-              variant="border" label="Pendentes para hoje" value={resumo.pendentesHoje} icon={Siren} color="#dc2626"
+              variant="border" label="Pendentes para hoje"
+              value={aguardandoPosVenda ? <Spinner className="size-5" /> : contagemPosVenda.isError && !contagemPosVenda.data ? "—" : resumo!.pendentesHoje}
+              icon={Siren} color="#dc2626"
               sub="Disparar hoje ou atrasadas"
             />
             <KpiCard
-              variant="border" label="Campanhas da semana" value={resumo.daSemana} icon={CalendarClock} color="#d97706"
+              variant="border" label="Campanhas da semana"
+              value={aguardandoPosVenda ? <Spinner className="size-5" /> : contagemPosVenda.isError && !contagemPosVenda.data ? "—" : resumo!.daSemana}
+              icon={CalendarClock} color="#d97706"
               sub="Vencem nos próximos 7 dias"
             />
           </div>
@@ -160,7 +194,11 @@ export default function MarketingCampanhasWhatsapp() {
                         <div><span className="text-[11px] text-muted-foreground">Próximo: </span>{c.proximoEnvio ? formatarDataBr(c.proximoEnvio) : "—"}</div>
                       </TableCell>
                       <TableCell className="align-top whitespace-nowrap text-sm">
-                        {c.tipo === "gatilho_venda" && c.status === "ativa" ? (
+                        {c.tipo === "gatilho_venda" && c.status === "ativa" && aguardandoPosVenda ? (
+                          <Spinner className="size-3.5 text-muted-foreground" />
+                        ) : c.tipo === "gatilho_venda" && c.status === "ativa" && contagemPosVenda.isError && !contagemPosVenda.data ? (
+                          <span className="text-[11px] text-amber-700">indisponível</span>
+                        ) : c.tipo === "gatilho_venda" && c.status === "ativa" ? (
                           <div className="space-y-0.5">
                             <div title="Clientes que já podem receber a mensagem">
                               <span className="font-semibold">{fmtNum(c.clientesPendentes ?? 0)}</span>{" "}
@@ -195,7 +233,15 @@ export default function MarketingCampanhasWhatsapp() {
                         )}
                       </TableCell>
                       <TableCell className="align-top min-w-[10rem]">
-                        <div className="whitespace-nowrap"><StatusCampanhaBadge campanha={c} hoje={hoje} /></div>
+                        <div className="whitespace-nowrap">
+                          {c.tipo === "gatilho_venda" && c.status === "ativa" && aguardandoPosVenda ? (
+                            <Spinner className="size-3.5 text-muted-foreground" />
+                          ) : c.tipo === "gatilho_venda" && c.status === "ativa" && contagemPosVenda.isError && !contagemPosVenda.data ? (
+                            <span className="text-[11px] text-amber-700">Status indisponível</span>
+                          ) : (
+                            <StatusCampanhaBadge campanha={c} hoje={hoje} />
+                          )}
+                        </div>
                       </TableCell>
                       <TableCell className="sticky right-0 bg-white align-top shadow-[-8px_0_8px_-8px_rgba(0,0,0,0.12)]">
                         <div className="flex items-center justify-end gap-1">

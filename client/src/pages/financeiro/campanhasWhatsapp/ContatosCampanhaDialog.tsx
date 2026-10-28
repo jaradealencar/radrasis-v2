@@ -74,6 +74,7 @@ export default function ContatosCampanhaDialog({ campanha, onClose }: Props) {
     onSuccess: r => {
       if (!r.atualizado) { toast.info(r.motivo ?? "Dados já atualizados."); return; }
       utils.campanhasWhatsapp.gerarListaDaCampanha.invalidate();
+      utils.campanhasWhatsapp.contagemPosVenda.invalidate();
       toast.success(`MubiSys consultado: ${fmtNum(r.osProcessadas)} OS e ${fmtNum(r.orcamentosProcessados)} orçamentos atualizados.`);
     },
     onError: e => toast.error(e.message),
@@ -83,6 +84,7 @@ export default function ContatosCampanhaDialog({ campanha, onClose }: Props) {
     onSuccess: () => {
       setSalvo(periodo);
       utils.campanhasWhatsapp.listar.invalidate();
+      utils.campanhasWhatsapp.contagemPosVenda.invalidate();
       toast.success("Período fixado na campanha.");
     },
     onError: e => toast.error(e.message),
@@ -96,6 +98,7 @@ export default function ContatosCampanhaDialog({ campanha, onClose }: Props) {
       utils.campanhasWhatsapp.listar.invalidate();
       utils.campanhasWhatsapp.gerarListaDaCampanha.invalidate();
       utils.campanhasWhatsapp.contagemAudiencias.invalidate();
+      utils.campanhasWhatsapp.contagemPosVenda.invalidate();
       utils.campanhasWhatsapp.historico.invalidate();
       if (resultado.erroRegistro) toast.error(
         `${fmtNum(resultado.enfileirados)} mensagens saíram, mas o disparo NÃO foi registrado: ${resultado.erroRegistro}`,

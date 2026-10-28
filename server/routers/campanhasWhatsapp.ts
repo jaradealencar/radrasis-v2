@@ -501,18 +501,16 @@ export const campanhasWhatsappRouter = router({
   listar: campanhasProcedure.query(async () => {
     const db = await obterDb();
     const hoje = hojeCampoGrande();
-    const campanhas = await db.select().from(campanhasWhatsapp).orderBy(desc(campanhasWhatsapp.createdAt));
-    const [ultimos, posVenda] = await Promise.all([
+    const [campanhas, ultimos] = await Promise.all([
+      db.select().from(campanhasWhatsapp).orderBy(desc(campanhasWhatsapp.createdAt)),
       ultimosEnvios(db),
-      carregarPosVenda(db, campanhas.filter(c => c.status === "ativa"), hoje),
     ]);
 
     const rank = { vermelho: 0, amarelo: 1, verde: 2 } as const;
     const linhas = campanhas.map(c => {
-      const vendas = posVenda.get(c.id);
       const status = montarStatusCampanha(
         { tipo: c.tipo, status: c.status, frequenciaDias: c.frequenciaDias, criadaEm: hojeCampoGrande(c.createdAt) },
-        ultimos.get(c.id) ?? null, hoje, vendas ? resumirVendas(vendas) : undefined,
+        ultimos.get(c.id) ?? null, hoje,
       );
       return {
         ...c,
@@ -520,10 +518,10 @@ export const campanhasWhatsappRouter = router({
         periodoInicio: c.periodoInicio ? iso(c.periodoInicio) : null,
         periodoFim: c.periodoFim ? iso(c.periodoFim) : null,
         ...status,
-        // Clientes únicos (não OS): o pós-venda manda uma mensagem por cliente.
-        clientesPendentes: vendas ? resumirVendas(vendas).pendentes : null,
-        clientesAguardando: vendas ? resumirVendas(vendas).aguardando : null,
-        clientesSemTelefone: vendas ? agruparPorCliente(vendas.pendentes).filter(c => !c.telefone).length : null,
+        // Os contadores de pós-venda são carregados por `contagemPosVenda`, sem atrasar a lista principal.
+        clientesPendentes: null as number | null,
+        clientesAguardando: null as number | null,
+        clientesSemTelefone: null as number | null,
       };
     }).sort((a, b) =>
       (a.semaforo ? rank[a.semaforo] : 3) - (b.semaforo ? rank[b.semaforo] : 3)
@@ -531,6 +529,39 @@ export const campanhasWhatsappRouter = router({
       || a.nome.localeCompare(b.nome));
 
     return { hoje, campanhas: linhas, resumo: resumirCampanhas(linhas, hoje) };
+  }),
+
+  /** Contadores de pós-venda do painel, separados da lista para ela aparecer antes da leitura do histórico de O.S. */
+  contagemPosVenda: campanhasProcedure.query(async () => {
+    const db = await obterDb();
+    const hoje = hojeCampoGrande();
+    const campanhas = (await db.select().from(campanhasWhatsapp))
+      .filter(c => c.status === "ativa" && c.tipo === "gatilho_venda");
+    const posVenda = await carregarPosVenda(db, campanhas, hoje);
+
+    const linhas = campanhas.map(c => {
+      const vendas = posVenda.get(c.id);
+      const resumo = vendas ? resumirVendas(vendas) : undefined;
+      const status = montarStatusCampanha(
+        { tipo: c.tipo, status: c.status, frequenciaDias: c.frequenciaDias, criadaEm: hojeCampoGrande(c.createdAt) },
+        null, hoje, resumo,
+      );
+      return {
+        id: c.id,
+        semaforo: status.semaforo,
+        proximoEnvio: status.proximoEnvio,
+        primeiroDisparoPendente: status.primeiroDisparoPendente,
+        // Clientes únicos (não OS): o pós-venda manda uma mensagem por cliente.
+        clientesPendentes: resumo?.pendentes ?? 0,
+        clientesAguardando: resumo?.aguardando ?? 0,
+        clientesSemTelefone: vendas ? agruparPorCliente(vendas.pendentes).filter(cliente => !cliente.telefone).length : 0,
+      };
+    });
+
+    return {
+      campanhas: linhas,
+      resumo: resumirCampanhas(linhas.map(l => ({ ...l, status: "ativa" as const })), hoje),
+    };
   }),
 
   criar: campanhasProcedure
