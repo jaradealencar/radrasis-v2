@@ -16,6 +16,7 @@ import {
   normalizarMateriaisSolda,
   normalizarTiposSolda,
   TAMANHOS_PRODUTIVIDADE,
+  TAMANHOS_PRODUTIVIDADE_LEGADOS,
   TIPOS_SOLDA,
 } from "../../shared/produtividade-solda";
 import {
@@ -41,10 +42,10 @@ const sugerirInput = z.object({
   tiposFixacao: z.array(z.enum(TIPOS_SOLDA)).max(3).default([]),
   materialManual: z.enum(MATERIAIS_SOLDA).nullable().optional(),
   faixas: z.array(z.object({
-    faixa: z.enum(TAMANHOS_PRODUTIVIDADE),
+    faixa: z.enum([...TAMANHOS_PRODUTIVIDADE, ...TAMANHOS_PRODUTIVIDADE_LEGADOS]),
     perimetroM: z.number().finite().min(0).max(100_000),
     elementos: z.number().int().min(0).max(100_000),
-  }).strict()).min(1).max(2),
+  }).strict()).min(1).max(3),
 }).strict().superRefine((input, context) => {
   const erroFixacao = erroTiposSolda(input.tiposFixacao);
   if (erroFixacao) context.addIssue({ code: "custom", path: ["tiposFixacao"], message: erroFixacao });
@@ -54,7 +55,7 @@ const sugerirInput = z.object({
 
 const correcaoInput = z.object({
   cotacaoRef: z.string().trim().max(80).nullable().optional(),
-  faixa: z.enum(TAMANHOS_PRODUTIVIDADE),
+  faixa: z.enum([...TAMANHOS_PRODUTIVIDADE, ...TAMANHOS_PRODUTIVIDADE_LEGADOS]),
   contexto: z.object({
     chaveKit: chaveKitSchema.nullable().optional(),
     titulo: z.string().max(512).default(""),
@@ -78,7 +79,7 @@ const regraCampos = z.object({
   tipoProduto: z.string().trim().max(80).nullable().default(null),
   fixacaoTipos: z.array(z.enum(TIPOS_SOLDA)).max(3).nullable().default(null),
   palavrasTitulo: z.array(z.string().trim().min(1).max(60)).max(10).default([]),
-  faixa: z.enum(TAMANHOS_PRODUTIVIDADE).nullable().default(null),
+  faixa: z.enum([...TAMANHOS_PRODUTIVIDADE, ...TAMANHOS_PRODUTIVIDADE_LEGADOS]).nullable().default(null),
   materiaPrimaId: z.number().int().positive(),
 }).strict();
 

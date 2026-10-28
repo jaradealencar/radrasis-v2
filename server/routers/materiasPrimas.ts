@@ -9,7 +9,7 @@ import { formatoPerfilUsaAltura, formatoPerfilUsaEspessura, PERFIL_FORMATOS, sec
 import { listaPantoneValida, normalizarListaPantone } from "@shared/pantone-referencia";
 import { BOBINA_COMPRIMENTO_MAXIMO_MM, BOBINA_CUSTO_BASES, BOBINA_LARGURA_MINIMA_MM } from "@shared/bobina";
 import { ehProcessoCorte, normalizarRotacao, PROCESSOS_CORTE, ROTACOES_PERMITIDAS } from "@shared/politica-corte";
-import { AROS_FRONTLIGHT, CATEGORIAS_PRODUTIVIDADE, ehCategoriaProdutividade, ehMateriaProdutividade, erroEstiloProdutividade, erroMateriaisSolda, erroTamanhosProdutividade, erroTiposSolda, ESTILO_PRODUTIVIDADE_VAZIO, FORMATOS_PRODUTIVIDADE, FUNDOS_PRODUTIVIDADE, MATERIAIS_SOLDA, normalizarEstiloProdutividade, normalizarMateriaisSolda, normalizarTamanhosProdutividade, normalizarTiposSolda, TAMANHOS_PRODUTIVIDADE, TIPOS_SOLDA, type EstiloProdutividade } from "@shared/produtividade-solda";
+import { AROS_FRONTLIGHT, CATEGORIAS_PRODUTIVIDADE, ehCategoriaProdutividade, ehMateriaProdutividade, erroEstiloProdutividade, erroMateriaisSolda, erroTamanhosProdutividade, erroTiposSolda, ESTILO_PRODUTIVIDADE_VAZIO, FORMATOS_PRODUTIVIDADE, FUNDOS_PRODUTIVIDADE, MATERIAIS_SOLDA, normalizarEstiloProdutividade, normalizarMateriaisSolda, normalizarTamanhosProdutividade, normalizarTiposSolda, TAMANHOS_PRODUTIVIDADE, TAMANHOS_PRODUTIVIDADE_LEGADOS, TIPOS_SOLDA, type EstiloProdutividade } from "@shared/produtividade-solda";
 import { listarMateriasPrimasEspelhadas, prepararCatalogoEspelhado } from "../services/mubisysEspelho";
 import { statusCadastroDeLinhas } from "../services/cpqCadastroMateria";
 import { getDb } from "../db/db";
@@ -207,7 +207,7 @@ export const materiasPrimasRouter = router({
     .input(z.object({
       mubisysMateriaPrimaId: z.number().int().positive(),
       produtividadeTiposSolda: z.array(z.enum(TIPOS_SOLDA)),
-      produtividadeTamanhos: z.array(z.enum(TAMANHOS_PRODUTIVIDADE)),
+      produtividadeTamanhos: z.array(z.enum([...TAMANHOS_PRODUTIVIDADE, ...TAMANHOS_PRODUTIVIDADE_LEGADOS])),
       produtividadeMateriais: z.array(z.enum(MATERIAIS_SOLDA)),
       ...estiloProdutividadeInput,
     }).strict())
@@ -327,7 +327,7 @@ export const materiasPrimasRouter = router({
       margemBordaMm: z.number().finite().min(0).max(50).nullable().default(null),
       // Só matérias-primas "Produtividade …" (exceto "Produtividade Geral …"): até 3 tipos de solda, o tamanho e os materiais. Ignorados nas demais.
       produtividadeTiposSolda: z.array(z.enum(TIPOS_SOLDA)).default([]),
-      produtividadeTamanhos: z.array(z.enum(TAMANHOS_PRODUTIVIDADE)).default([]),
+      produtividadeTamanhos: z.array(z.enum([...TAMANHOS_PRODUTIVIDADE, ...TAMANHOS_PRODUTIVIDADE_LEGADOS])).default([]),
       produtividadeMateriais: z.array(z.enum(MATERIAIS_SOLDA)).default([]),
       ...estiloProdutividadeInput,
       aparenciaModo: z.enum(["nao_informada", "cor", "textura"]).default("nao_informada"),

@@ -992,14 +992,15 @@ function computeGeomReal(){
 }
 
 /* ---------- ALTURA DOS ELEMENTOS (ficha técnica) ---------- */
-// Pedido de 05/10/2026: contar quantos elementos têm 11 cm ou menos e quantos têm mais, pela altura vertical (base das linhas
+// Separar os elementos em menor que 8 cm, entre 8 e 11 cm e maior que 11 cm pela altura vertical (base das linhas
 // "Produtividade Solda" por tamanho). Elemento = contorno externo (letra, símbolo ou pedaço solto, como o ponto do "i").
-const ALTURA_ELEMENTO_LIMITE_MM = 110;
-// A escala tem tolerância de ~±1%: peça a até 5 mm do limite pede conferência.
+const ALTURA_ELEMENTO_LIMITE_INFERIOR_MM = 80;
+const ALTURA_ELEMENTO_LIMITE_SUPERIOR_MM = 110;
+// A escala tem tolerância de ~±1%: peça a até 5 mm de qualquer limite pede conferência.
 const ALTURA_ELEMENTO_FAIXA_PROXIMA_MM = 5;
 
 /** Classifica cada contorno externo pela altura da caixa envolvente na escala física. Compara em milímetros inteiros (o que a tela
- *  mostra: 110,4 mm continua "até 11 cm"). Cada vazado vai para a menor peça que o contém, para o desenho e para o perímetro:
+ *  mostra: 110,4 mm pertence à faixa entre 8 e 11 cm). Cada vazado vai para a menor peça que o contém, para o desenho e para o perímetro:
  *  o perímetro de um elemento é o do contorno externo mais o dos seus vazados, que é por onde a solda corre.
  *  O resultado fica em cache pela geometria e pela escala, porque a composição o consulta a cada linha de solda. */
 let _memoAlturas = {geom:null, fator:0, resultado:null};
@@ -1009,11 +1010,14 @@ function classificarAlturasElementos(geom, scaleFactor){
   const mmPorPx = scaleFactor*1000;
   const itens = geom.pieces.map(p=>{
     const alturaMm = Math.round(p.bbox.height*mmPorPx);
+    const limiteProximoMm = [ALTURA_ELEMENTO_LIMITE_INFERIOR_MM, ALTURA_ELEMENTO_LIMITE_SUPERIOR_MM]
+      .find(limite => Math.abs(alturaMm-limite)<=ALTURA_ELEMENTO_FAIXA_PROXIMA_MM);
     return {
       n:p.n, d:p.d, bbox:p.bbox, area:p.area, vazados:[], perimetroPx:p.len||0,
       alturaMm, larguraMm:Math.round(p.bbox.width*mmPorPx),
-      grupo: alturaMm<=ALTURA_ELEMENTO_LIMITE_MM ? 'ate' : 'acima',
-      proximoDoLimite: Math.abs(alturaMm-ALTURA_ELEMENTO_LIMITE_MM)<=ALTURA_ELEMENTO_FAIXA_PROXIMA_MM,
+      grupo: alturaMm<ALTURA_ELEMENTO_LIMITE_INFERIOR_MM ? 'abaixo_8cm' : alturaMm<=ALTURA_ELEMENTO_LIMITE_SUPERIOR_MM ? 'entre_8_11cm' : 'acima_11cm',
+      limiteProximoMm: limiteProximoMm||null,
+      proximoDoLimite: !!limiteProximoMm,
     };
   });
   (geom.contours||[]).filter(c=>c.tipo==='vazado').forEach(vazado=>{
@@ -1022,12 +1026,14 @@ function classificarAlturasElementos(geom, scaleFactor){
     if(dono){ dono.vazados.push(vazado.d); dono.perimetroPx += vazado.len||0; }
   });
   itens.forEach(i=>{ i.perimetroM = i.perimetroPx*scaleFactor; });
-  const ate = itens.filter(i=>i.grupo==='ate'), acima = itens.filter(i=>i.grupo==='acima');
+  const abaixo8 = itens.filter(i=>i.grupo==='abaixo_8cm');
+  const entre8e11 = itens.filter(i=>i.grupo==='entre_8_11cm');
+  const acima11 = itens.filter(i=>i.grupo==='acima_11cm');
   const soma = lista => lista.reduce((total,i)=>total+i.perimetroM,0);
   const resultado = {
-    itens, ate, acima,
+    itens, abaixo8, entre8e11, acima11,
     proximos: itens.filter(i=>i.proximoDoLimite),
-    perimetroAteM: soma(ate), perimetroAcimaM: soma(acima),
+    perimetroAbaixo8M: soma(abaixo8), perimetroEntre8e11M: soma(entre8e11), perimetroAcima11M: soma(acima11),
   };
   _memoAlturas = {geom, fator:scaleFactor, resultado};
   return resultado;
@@ -1036,7 +1042,10 @@ function classificarAlturasElementos(geom, scaleFactor){
 /** Perímetro total (externo + vazados), em metros, dos elementos de cada faixa de altura. */
 function perimetrosPorAltura(g=computeGeomReal()){
   const c=classificarAlturasElementos(REAL.geomRaw, g.scaleFactor);
-  return c ? {ateM:c.perimetroAteM, acimaM:c.perimetroAcimaM, ateElementos:c.ate.length, acimaElementos:c.acima.length} : {ateM:0, acimaM:0, ateElementos:0, acimaElementos:0};
+  return c ? {
+    abaixo8M:c.perimetroAbaixo8M, entre8e11M:c.perimetroEntre8e11M, acima11M:c.perimetroAcima11M,
+    abaixo8Elementos:c.abaixo8.length, entre8e11Elementos:c.entre8e11.length, acima11Elementos:c.acima11.length,
+  } : {abaixo8M:0, entre8e11M:0, acima11M:0, abaixo8Elementos:0, entre8e11Elementos:0, acima11Elementos:0};
 }
 
 /* ---------- IMPORTAÇÃO DE VETOR JÁ PRONTO (SVG enviado direto, sem rastreamento) ---------- */
@@ -2590,8 +2599,10 @@ const FORMULA_TYPES = {
   areaPintada: {label:'Pintura: área líquida só das peças marcadas para pintar (m²)', calc:(g,mult,linha)=> areaPintadaM2(g,linha)*mult},
   // Produtividade de solda (linhas automáticas da Ficha técnica): perímetro total dos elementos de cada faixa de altura, em metros.
   // No snapshot da cotação viram "fixo" com a quantidade já calculada (ver formulaParaServidor).
-  soldaPerimAte11: {label:'Solda: perímetro dos elementos de até 11 cm (m)', calc:(g,mult)=> perimetrosPorAltura(g).ateM*mult},
-  soldaPerimAcima11: {label:'Solda: perímetro dos elementos acima de 11 cm (m)', calc:(g,mult)=> perimetrosPorAltura(g).acimaM*mult},
+  soldaPerimAbaixo8: {label:'Solda: perímetro dos elementos menores que 8 cm (m)', calc:(g,mult)=> perimetrosPorAltura(g).abaixo8M*mult},
+  soldaPerimEntre8e11: {label:'Solda: perímetro dos elementos entre 8-11cm (m)', calc:(g,mult)=> perimetrosPorAltura(g).entre8e11M*mult},
+  soldaPerimAcima11: {label:'Solda: perímetro dos elementos acima de 11 cm (m)', calc:(g,mult)=> perimetrosPorAltura(g).acima11M*mult},
+  soldaPerimAte11: {label:'Solda: perímetro legado dos elementos de até 11 cm (m)', calc:(g,mult)=> (perimetrosPorAltura(g).abaixo8M+perimetrosPorAltura(g).entre8e11M)*mult},
   // Gabarito de kraft (shared/gabarito.ts): comprimento = largura do letreiro aberto; a altura atravessa a
   // bobina de 1,2 m e, passando dela, o papel repete em faixas. Resultado em m² de papel cobrado.
   gabaritoKraft: {label:'Gabarito kraft: faixas da bobina × largura do letreiro (m²)', calc:(g,mult)=>{
@@ -2641,7 +2652,7 @@ const CATEGORIAS_PRODUTO = {
 // /api/letra-caixa/materias-cadastro. Os IDs ficam em kit.produtividadesRelacionadas.
 const CATEGORIA_COM_PRODUTIVIDADES='Letreiros';
 const ROTULO_TIPO_SOLDA={barra_roscada:'Barra roscada',patinha_led:'Patinha para LED',chapinha_dupla_face:'Chapinha dupla-face',orelhinha:'Orelhinha',sem_fixacao:'Sem fixação'};
-const ROTULO_TAMANHO_PRODUTIVIDADE={ate_11cm:'≤ 11 cm',acima_11cm:'> 11 cm'};
+const ROTULO_TAMANHO_PRODUTIVIDADE={abaixo_8cm:'Menor que 8 cm',entre_8_11cm:'Entre 8-11cm',acima_11cm:'Maior que 11 cm',ate_11cm:'Até 11 cm (regra legada)'};
 const ROTULO_MATERIAL_SOLDA={inox:'Inox',galvanizado:'Galvanizado',latao:'Latão',acrilico:'Acrílico',aluminio:'Alumínio'};
 /** Nome com "produtividade", exceto as "Produtividade Geral …" (ex.: "Produtividade Geral - Hora"). */
 function ehMateriaProdutividade(nome){ const n=normalizeSearch(nome).trim(); return n.includes('produtividade')&&!n.startsWith('produtividade geral'); }
@@ -4251,7 +4262,8 @@ const SOLDA_CATEGORIA='Letreiros';
 const SOLDA_MAX_FIXACOES=3;
 const SOLDA_TIPOS_FIXACAO=[['barra_roscada','Barra roscada'],['patinha_led','Patinha para LED'],['chapinha_dupla_face','Chapinha dupla-face'],['orelhinha','Orelhinha'],['sem_fixacao','Sem fixação']];
 const SOLDA_MATERIAIS=[['galvanizado','Galvanizado'],['inox','Inox'],['latao','Latão'],['aluminio','Alumínio'],['acrilico','Acrílico']];
-const SOLDA_FAIXAS={ate_11cm:{rotulo:'≤ 11 cm',formula:'soldaPerimAte11'},acima_11cm:{rotulo:'> 11 cm',formula:'soldaPerimAcima11'}};
+const SOLDA_FAIXAS={abaixo_8cm:{rotulo:'Menor que 8 cm',formula:'soldaPerimAbaixo8'},entre_8_11cm:{rotulo:'Entre 8-11cm',formula:'soldaPerimEntre8e11'},acima_11cm:{rotulo:'Maior que 11 cm',formula:'soldaPerimAcima11'},ate_11cm:{rotulo:'Até 11 cm (regra legada)',formula:'soldaPerimAte11'}};
+function soldaClasseFaixa(faixa){ return faixa==='acima_11cm'?'b-warn':faixa==='entre_8_11cm'||faixa==='ate_11cm'?'b-neutral':'b-accent'; }
 const SOLDA_CONFIANCA={alta:['Confiança alta','b-ok'],media:['Confiança média','b-accent'],baixa:['Confiança baixa — confira','b-warn'],nenhuma:['Sem produtividade','b-bad']};
 const SOLDA_ORIGEM_TEXTO={regra:'regra treinada',heuristica:'pontuação automática',manual:'escolha do vendedor'};
 
@@ -4305,7 +4317,11 @@ function soldaPedido(){
     nomesComposicao:(REAL.kit||[]).filter(l=>!l.origemSoldaAuto).map(l=>String(materialKitAtivo(l).nome||'').slice(0,256)).slice(0,300),
     tiposFixacao:[...(REAL.tiposFixacao||[])],
     ...(REAL.solda.materialManual?{materialManual:REAL.solda.materialManual}:{}),
-    faixas:[{faixa:'ate_11cm',perimetroM:arred(p.ateM),elementos:p.ateElementos},{faixa:'acima_11cm',perimetroM:arred(p.acimaM),elementos:p.acimaElementos}],
+    faixas:[
+      {faixa:'abaixo_8cm',perimetroM:arred(p.abaixo8M),elementos:p.abaixo8Elementos},
+      {faixa:'entre_8_11cm',perimetroM:arred(p.entre8e11M),elementos:p.entre8e11Elementos},
+      {faixa:'acima_11cm',perimetroM:arred(p.acima11M),elementos:p.acima11Elementos},
+    ],
   };
 }
 
@@ -4353,10 +4369,10 @@ function sincronizarSoldaNoKit(){
     REAL.kit.push({matId:o.id,nome:o.nome,unidade:o.unidade,custo:o.valor,atualizado:o.atualizado,status:o.status,papel:`Mão de obra · solda ${SOLDA_FAIXAS[f.faixa].rotulo}`,formulaType:SOLDA_FAIXAS[f.faixa].formula,mult:1,variantes:[],origemSoldaAuto:true,soldaFaixa:f.faixa,soldaConfianca:f.confianca,soldaOrigem:f.origem});
   }
 }
-/** As duas fórmulas de solda viram "fixo" no snapshot, com a quantidade (perímetro) já calculada: o servidor e a importação em
+/** As fórmulas de solda viram "fixo" no snapshot, com a quantidade (perímetro) já calculada: o servidor e a importação em
  *  Propostas continuam validando `quantidade = multiplicador` sem conhecer a fórmula nova. */
 function formulaParaServidor(linha, quantidade){
-  if(linha.formulaType==='soldaPerimAte11'||linha.formulaType==='soldaPerimAcima11') return {formulaType:'fixo',multiplicador:Math.max(0,Number.isFinite(quantidade)?quantidade:0)};
+  if(['soldaPerimAbaixo8','soldaPerimEntre8e11','soldaPerimAcima11','soldaPerimAte11'].includes(linha.formulaType)) return {formulaType:'fixo',multiplicador:Math.max(0,Number.isFinite(quantidade)?quantidade:0)};
   // Pintura: com peças marcadas, a área pintada vai como "fixo" (o resumo `pinturaPecas` do snapshot explica de onde vem); sem marcação ou
   // sem conseguir medir, a quantidade é a área líquida do letreiro inteiro e o servidor a confere como a fórmula "area".
   if(linha.formulaType==='areaPintada'){
@@ -4455,7 +4471,7 @@ function painelSoldaProdutividade(){
       const select=opcoes.length?`<select data-act="real-solda-escolha" data-faixa="${f.faixa}" style="width:100%;max-width:420px;font-size:11.5px;">${opcoes.map(x=>`<option value="${x.id}" ${o&&x.id===o.id?'selected':''}>${f.escolhida&&x.id===f.escolhida.id?'★ ':''}${escaparHtml(x.nome)} · ${money(x.valor)}</option>`).join('')}</select>`:'<span class="badge b-bad">nenhuma produtividade serve</span>';
       const nota=trocou?`<input type="text" maxlength="500" placeholder="Por que trocou? (ajuda a treinar o sistema)" value="${escaparHtml(s.notas[f.faixa]||'')}" data-act="real-solda-nota" data-faixa="${f.faixa}" style="display:block;width:100%;max-width:420px;margin-top:6px;font-size:11.5px;">`:'';
       return `<tr>
-        <td><span class="badge ${f.faixa==='ate_11cm'?'b-accent':'b-warn'}">${faixa.rotulo}</span></td>
+        <td><span class="badge ${soldaClasseFaixa(f.faixa)}">${faixa.rotulo}</span></td>
         <td class="num">${f.elementos}</td>
         <td class="num">${fmt(f.perimetroM,2)} m</td>
         <td>${select}${nota}<div style="margin-top:5px;"><span class="badge ${classeConfianca}">${textoConfianca}</span> <span style="font-size:11px;color:var(--text-faint);">${o?escaparHtml(SOLDA_ORIGEM_TEXTO[origem]||''):''}</span></div>${motivos}${(f.avisos||[]).filter(a=>!a.startsWith('Nenhuma')).map(a=>`<div class="role-note">${ICONS.info} ${escaparHtml(a)}</div>`).join('')}</td>
@@ -4474,42 +4490,42 @@ function painelSoldaProdutividade(){
   </div>`;
 }
 
-/** Contagem por faixa de altura, na escala atual da ficha técnica: `{ate, acima}` ou `null` sem geometria/escala. */
+/** Contagem por faixa de altura, na escala atual da ficha técnica; `null` sem geometria/escala. */
 function contagemElementosPorAltura(g=computeGeomReal()){
   const c=classificarAlturasElementos(REAL.geomRaw, g.scaleFactor);
-  return c ? {ate:c.ate.length, acima:c.acima.length} : null;
+  return c ? {abaixo8:c.abaixo8.length, entre8e11:c.entre8e11.length, acima11:c.acima11.length} : null;
 }
 
-/** Quadro "Altura dos elementos": contadores ≤ 11 cm / > 11 cm, desenho numerado e tabela por elemento. */
+/** Quadro "Altura dos elementos": contadores por faixa, desenho numerado e tabela por elemento. */
 function painelAlturaElementos(g){
   const c=classificarAlturasElementos(REAL.geomRaw, g.scaleFactor);
   if(!c) return '';
   const box=REAL.geomRaw.bboxPx, unidade=Math.max(box.w,box.h,1), pad=unidade*0.03;
-  const cor=i=>i.grupo==='ate'?'var(--accent)':'var(--warn)';
+  const cor=i=>i.grupo==='abaixo_8cm'?'var(--accent)':i.grupo==='entre_8_11cm'?'var(--accent-ink)':'var(--warn)';
   const desenho=c.itens.map(i=>`<path d="${escaparHtml([i.d,...i.vazados].join(' '))}" fill-rule="evenodd" style="fill:${cor(i)};opacity:.85"/>`).join('');
   const rotulos=c.itens.map(i=>{
     const r=Math.min(Math.max(Math.min(i.bbox.width,i.bbox.height)*0.3,unidade*0.012),unidade*0.03);
     const cx=i.bbox.x+i.bbox.width/2, cy=i.bbox.y+i.bbox.height/2;
     return `<circle cx="${cx}" cy="${cy}" r="${r}" fill="#fff" stroke="#0f172a" stroke-width="${r*0.12}"/><text x="${cx}" y="${cy+r*0.4}" text-anchor="middle" font-family="Arial,sans-serif" font-weight="700" font-size="${r*1.15}" fill="#0f172a">${i.n}</text>`;
   }).join('');
-  const ordenados=[...c.ate,...c.acima];
+  const ordenados=[...c.abaixo8,...c.entre8e11,...c.acima11];
   const linhas=ordenados.map(i=>`<tr>
     <td class="num">${i.n}</td>
     <td class="num">${fmt(i.alturaMm/10,1)} cm</td>
     <td class="num">${fmt(i.larguraMm/10,1)} cm</td>
     <td class="num">${fmt(i.perimetroM,2)} m</td>
-    <td><span class="badge ${i.grupo==='ate'?'b-accent':'b-warn'}">${i.grupo==='ate'?'≤ 11 cm':'> 11 cm'}</span>${i.proximoDoLimite?' <span class="badge b-neutral" title="A escala tem tolerância de cerca de ±1%: confira esta peça.">perto do limite</span>':''}</td>
+    <td><span class="badge ${i.grupo==='abaixo_8cm'?'b-accent':i.grupo==='entre_8_11cm'?'b-neutral':'b-warn'}">${ROTULO_TAMANHO_PRODUTIVIDADE[i.grupo]}</span>${i.proximoDoLimite?` <span class="badge b-neutral" title="A escala tem tolerância de cerca de ±1%: confira esta peça junto ao limite de ${i.limiteProximoMm/10} cm.">perto de ${i.limiteProximoMm/10} cm</span>`:''}</td>
   </tr>`).join('');
-  const limiteCm=ALTURA_ELEMENTO_LIMITE_MM/10;
   return `
     <div class="card" style="background:var(--surface-2);box-shadow:none;margin-top:14px;">
-      <p style="font-size:12.5px;font-weight:700;margin-bottom:4px;">Altura dos elementos (corte em ${limiteCm} cm)</p>
+      <p style="font-size:12.5px;font-weight:700;margin-bottom:4px;">Altura dos elementos (cortes em 8 e 11 cm)</p>
       <p style="font-size:11.5px;color:var(--text-faint);margin-bottom:10px;">Cada contorno externo é um elemento (letra, símbolo ou pedaço solto, como o ponto do “i”). A altura é a da caixa vertical da peça, na escala informada acima; letras coladas pelo vetorizador contam como um só elemento.</p>
       <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:12px;">
-        <div style="flex:1;min-width:150px;background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:12px 14px;"><span class="badge b-accent">≤ ${limiteCm} cm</span><div style="font-size:26px;font-weight:700;margin-top:6px;" data-teste="elementos-ate">${c.ate.length}</div><div style="font-size:11.5px;color:var(--text-faint);">elemento(s) com ${limiteCm} cm ou menos · perímetro ${fmt(c.perimetroAteM,2)} m</div></div>
-        <div style="flex:1;min-width:150px;background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:12px 14px;"><span class="badge b-warn">&gt; ${limiteCm} cm</span><div style="font-size:26px;font-weight:700;margin-top:6px;" data-teste="elementos-acima">${c.acima.length}</div><div style="font-size:11.5px;color:var(--text-faint);">elemento(s) com mais de ${limiteCm} cm · perímetro ${fmt(c.perimetroAcimaM,2)} m</div></div>
+        <div style="flex:1;min-width:150px;background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:12px 14px;"><span class="badge b-accent">Menor que 8 cm</span><div style="font-size:26px;font-weight:700;margin-top:6px;" data-teste="elementos-abaixo8">${c.abaixo8.length}</div><div style="font-size:11.5px;color:var(--text-faint);">elemento(s) · perímetro ${fmt(c.perimetroAbaixo8M,2)} m</div></div>
+        <div style="flex:1;min-width:150px;background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:12px 14px;"><span class="badge b-neutral">Entre 8-11cm</span><div style="font-size:26px;font-weight:700;margin-top:6px;" data-teste="elementos-entre8e11">${c.entre8e11.length}</div><div style="font-size:11.5px;color:var(--text-faint);">elemento(s) · perímetro ${fmt(c.perimetroEntre8e11M,2)} m</div></div>
+        <div style="flex:1;min-width:150px;background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:12px 14px;"><span class="badge b-warn">Maior que 11 cm</span><div style="font-size:26px;font-weight:700;margin-top:6px;" data-teste="elementos-acima11">${c.acima11.length}</div><div style="font-size:11.5px;color:var(--text-faint);">elemento(s) · perímetro ${fmt(c.perimetroAcima11M,2)} m</div></div>
       </div>
-      ${c.proximos.length?`<div class="role-note" style="margin-bottom:10px;">${ICONS.info} ${c.proximos.length} elemento(s) a até ${ALTURA_ELEMENTO_FAIXA_PROXIMA_MM} mm do limite (${c.proximos.map(i=>i.n).join(', ')}): a escala tem tolerância de cerca de ±1%, então confira a medida de cada um.</div>`:''}
+      ${c.proximos.length?`<div class="role-note" style="margin-bottom:10px;">${ICONS.info} ${c.proximos.length} elemento(s) a até ${ALTURA_ELEMENTO_FAIXA_PROXIMA_MM} mm de um corte (${c.proximos.map(i=>`${i.n} (${i.limiteProximoMm/10} cm)`).join(', ')}): a escala tem tolerância de cerca de ±1%, então confira cada medida.</div>`:''}
       <div class="grid2">
         <div class="compare" style="background:#fff;"><svg viewBox="${box.x-pad} ${box.y-pad} ${box.w+2*pad} ${box.h+2*pad}" style="display:block;width:100%;height:auto;" role="img" aria-label="Elementos numerados, coloridos por faixa de altura">${desenho}${rotulos}</svg></div>
         <div class="tablewrap" style="max-height:340px;overflow-y:auto;">
@@ -7369,7 +7385,7 @@ function criarNovaVersao(){
 const soldaAdmin={
   carregando:false, carregou:false, erro:'', mensagem:'', regras:[], correcoes:[], secao:'correcoes',
   form:null, criando:null, salvando:false,
-  sim:{titulo:'',subcategoria:'',tipoProduto:'',materialManual:'',tiposFixacao:['barra_roscada'],perimetroAte:'',elementosAte:'',perimetroAcima:'',elementosAcima:'',resultado:null,erro:'',carregando:false},
+  sim:{titulo:'',subcategoria:'',tipoProduto:'',materialManual:'',tiposFixacao:['barra_roscada'],perimetroAbaixo8:'',elementosAbaixo8:'',perimetroEntre8e11:'',elementosEntre8e11:'',perimetroAcima11:'',elementosAcima11:'',resultado:null,erro:'',carregando:false},
 };
 async function soldaApi(metodo, caminho, corpo){
   const response=await fetch('/api/letra-caixa/solda'+caminho,{method:metodo,credentials:'same-origin',cache:'no-store',headers:corpo===undefined?{}:{'Content-Type':'application/json'},body:corpo===undefined?undefined:JSON.stringify(corpo)});
@@ -7395,7 +7411,7 @@ function soldaNomeProdutividade(id){ const m=catalog.materias.find(x=>Number(x.i
 function soldaRotuloMaterial(k){ return (SOLDA_MATERIAIS.find(([v])=>v===k)||[k,k])[1]; }
 function soldaCondicoesHtml(r){
   const b=[];
-  if(r.faixa) b.push(`<span class="badge ${r.faixa==='ate_11cm'?'b-accent':'b-warn'}">${SOLDA_FAIXAS[r.faixa].rotulo}</span>`);
+  if(r.faixa) b.push(`<span class="badge ${soldaClasseFaixa(r.faixa)}">${SOLDA_FAIXAS[r.faixa].rotulo}</span>`);
   if(r.material) b.push(`<span class="badge b-ok">${escaparHtml(soldaRotuloMaterial(r.material))}</span>`);
   if(r.tipoProduto) b.push(`<span class="badge b-neutral">tipo: ${escaparHtml(r.tipoProduto)}</span>`);
   if(r.fixacaoTipos&&r.fixacaoTipos.length) b.push(`<span class="badge b-neutral">fixação: ${escaparHtml(rotuloFixacaoSolda(r.fixacaoTipos))}</span>`);
@@ -7413,7 +7429,7 @@ function htmlSoldaCorrecoes(){
     const criando=soldaAdmin.criando&&soldaAdmin.criando.id===c.id?soldaAdmin.criando:null;
     return `<div class="card" style="box-shadow:none;background:var(--surface);margin-bottom:10px;" data-teste="correcao-${c.id}">
       <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:6px;">
-        <span class="badge ${c.faixa==='ate_11cm'?'b-accent':'b-warn'}">${SOLDA_FAIXAS[c.faixa]?SOLDA_FAIXAS[c.faixa].rotulo:escaparHtml(c.faixa)}</span>
+        <span class="badge ${soldaClasseFaixa(c.faixa)}">${SOLDA_FAIXAS[c.faixa]?SOLDA_FAIXAS[c.faixa].rotulo:escaparHtml(c.faixa)}</span>
         ${ctx.material?`<span class="badge b-ok">${escaparHtml(soldaRotuloMaterial(ctx.material))}</span>`:'<span class="badge b-warn">material não identificado</span>'}
         ${(ctx.tiposFixacao||[]).length?`<span class="badge b-neutral">fixação: ${escaparHtml(rotuloFixacaoSolda(ctx.tiposFixacao))}</span>`:''}
         <span style="font-size:11px;color:var(--text-faint);">${escaparHtml(c.usuarioNome||'—')} · ${new Date(c.createdAt).toLocaleString('pt-BR')}</span>
@@ -7449,7 +7465,7 @@ function htmlSoldaFormRegra(){
       <label class="field">Nome<input type="text" maxlength="160" value="${escaparHtml(f.nome)}" data-act="solda-adm-form-campo" data-campo="nome"></label>
       <label class="field">Prioridade (maior vence)<input type="number" min="-1000" max="1000" value="${escaparHtml(f.prioridade)}" data-act="solda-adm-form-campo" data-campo="prioridade"></label>
       <label class="field">Material<select data-act="solda-adm-form-campo" data-campo="material"><option value="">Qualquer</option>${SOLDA_MATERIAIS.map(([k,rot])=>`<option value="${k}" ${f.material===k?'selected':''}>${rot}</option>`).join('')}</select></label>
-      <label class="field">Faixa de altura<select data-act="solda-adm-form-campo" data-campo="faixa"><option value="">Qualquer</option><option value="ate_11cm" ${f.faixa==='ate_11cm'?'selected':''}>≤ 11 cm</option><option value="acima_11cm" ${f.faixa==='acima_11cm'?'selected':''}>&gt; 11 cm</option></select></label>
+      <label class="field">Faixa de altura<select data-act="solda-adm-form-campo" data-campo="faixa"><option value="">Qualquer</option><option value="abaixo_8cm" ${f.faixa==='abaixo_8cm'?'selected':''}>Menor que 8 cm</option><option value="entre_8_11cm" ${f.faixa==='entre_8_11cm'?'selected':''}>Entre 8-11cm</option><option value="acima_11cm" ${f.faixa==='acima_11cm'?'selected':''}>Maior que 11 cm</option>${f.faixa==='ate_11cm'?'<option value="ate_11cm" selected>Até 11 cm (regra legada)</option>':''}</select></label>
       <label class="field">Tipo do produto (como no cadastro; opcional)<input type="text" maxlength="80" value="${escaparHtml(f.tipoProduto)}" placeholder="Ex.: Frontlight" data-act="solda-adm-form-campo" data-campo="tipoProduto"></label>
       <label class="field">Palavras no título do produto (vírgula; opcional)<input type="text" value="${escaparHtml(f.palavras)}" placeholder="Ex.: cursivo" data-act="solda-adm-form-campo" data-campo="palavras"></label>
     </div>
@@ -7483,7 +7499,7 @@ function htmlSoldaSimulador(){
       const [txt,cls]=SOLDA_CONFIANCA[f.confianca]||SOLDA_CONFIANCA.nenhuma;
       const motivos=o=>(o.motivos||[]).map(m=>`<li>${escaparHtml(m.texto)}${m.pontos?` <span class="mono">(${m.pontos>0?'+':''}${m.pontos})</span>`:''}</li>`).join('');
       return `<div class="card" style="box-shadow:none;background:var(--surface);margin-top:8px;">
-        <span class="badge ${f.faixa==='ate_11cm'?'b-accent':'b-warn'}">${SOLDA_FAIXAS[f.faixa].rotulo}</span> <span class="badge ${cls}">${txt}</span> <span style="font-size:11px;color:var(--text-faint);">${escaparHtml(SOLDA_ORIGEM_TEXTO[f.origem]||'nenhuma')}${f.regraId?` #${f.regraId}`:''}</span>
+        <span class="badge ${soldaClasseFaixa(f.faixa)}">${SOLDA_FAIXAS[f.faixa].rotulo}</span> <span class="badge ${cls}">${txt}</span> <span style="font-size:11px;color:var(--text-faint);">${escaparHtml(SOLDA_ORIGEM_TEXTO[f.origem]||'nenhuma')}${f.regraId?` #${f.regraId}`:''}</span>
         ${f.escolhida?`<div style="margin-top:6px;font-size:12.5px;"><b>${escaparHtml(f.escolhida.nome)}</b> · ${money(f.escolhida.valor)}</div><ul style="margin:4px 0 0 16px;font-size:11px;color:var(--text-dim);">${motivos(f.escolhida)}</ul>`:'<div style="margin-top:6px;font-size:12.5px;color:var(--bad);">Nenhuma produtividade serve.</div>'}
         ${(f.avisos||[]).map(a=>`<div class="role-note">${ICONS.info} ${escaparHtml(a)}</div>`).join('')}
         ${(f.alternativas||[]).length?`<details style="margin-top:6px;"><summary style="cursor:pointer;font-size:11.5px;color:var(--accent-ink);">Alternativas (${f.alternativas.length})</summary>${f.alternativas.map(a=>`<div style="font-size:11.5px;margin-top:4px;"><b>${escaparHtml(a.nome)}</b> <span class="mono">${a.pontos} pts</span></div>`).join('')}</details>`:''}
@@ -7494,8 +7510,9 @@ function htmlSoldaSimulador(){
       <label class="field">Material (vazio = detectar)<select data-act="solda-adm-sim-campo" data-campo="materialManual"><option value="">Detectar pelo título/subcategoria</option>${SOLDA_MATERIAIS.map(([k,rot])=>`<option value="${k}" ${s.materialManual===k?'selected':''}>${rot}</option>`).join('')}</select></label>
       <label class="field">Subcategoria do kit (opcional)<input type="text" maxlength="100" value="${escaparHtml(s.subcategoria)}" placeholder="Ex.: Galvanizado" data-act="solda-adm-sim-campo" data-campo="subcategoria"></label>
       <label class="field">Tipo do produto (opcional)<input type="text" maxlength="100" value="${escaparHtml(s.tipoProduto)}" placeholder="Ex.: Frontlight" data-act="solda-adm-sim-campo" data-campo="tipoProduto"></label>
-      <label class="field">Perímetro ≤ 11 cm (m) · elementos<span style="display:flex;gap:6px;"><input type="text" inputmode="decimal" value="${escaparHtml(s.perimetroAte)}" placeholder="m" data-act="solda-adm-sim-campo" data-campo="perimetroAte"><input type="text" inputmode="numeric" value="${escaparHtml(s.elementosAte)}" placeholder="un" data-act="solda-adm-sim-campo" data-campo="elementosAte" style="width:80px;"></span></label>
-      <label class="field">Perímetro &gt; 11 cm (m) · elementos<span style="display:flex;gap:6px;"><input type="text" inputmode="decimal" value="${escaparHtml(s.perimetroAcima)}" placeholder="m" data-act="solda-adm-sim-campo" data-campo="perimetroAcima"><input type="text" inputmode="numeric" value="${escaparHtml(s.elementosAcima)}" placeholder="un" data-act="solda-adm-sim-campo" data-campo="elementosAcima" style="width:80px;"></span></label>
+      <label class="field">Perímetro menor que 8 cm (m) · elementos<span style="display:flex;gap:6px;"><input type="text" inputmode="decimal" value="${escaparHtml(s.perimetroAbaixo8)}" placeholder="m" data-act="solda-adm-sim-campo" data-campo="perimetroAbaixo8"><input type="text" inputmode="numeric" value="${escaparHtml(s.elementosAbaixo8)}" placeholder="un" data-act="solda-adm-sim-campo" data-campo="elementosAbaixo8" style="width:80px;"></span></label>
+      <label class="field">Perímetro entre 8-11cm (m) · elementos<span style="display:flex;gap:6px;"><input type="text" inputmode="decimal" value="${escaparHtml(s.perimetroEntre8e11)}" placeholder="m" data-act="solda-adm-sim-campo" data-campo="perimetroEntre8e11"><input type="text" inputmode="numeric" value="${escaparHtml(s.elementosEntre8e11)}" placeholder="un" data-act="solda-adm-sim-campo" data-campo="elementosEntre8e11" style="width:80px;"></span></label>
+      <label class="field">Perímetro maior que 11 cm (m) · elementos<span style="display:flex;gap:6px;"><input type="text" inputmode="decimal" value="${escaparHtml(s.perimetroAcima11)}" placeholder="m" data-act="solda-adm-sim-campo" data-campo="perimetroAcima11"><input type="text" inputmode="numeric" value="${escaparHtml(s.elementosAcima11)}" placeholder="un" data-act="solda-adm-sim-campo" data-campo="elementosAcima11" style="width:80px;"></span></label>
     </div>
     <div style="margin:8px 0;"><div style="font-size:11.5px;color:var(--text-faint);margin-bottom:4px;">Fixação</div><div style="display:flex;gap:14px;flex-wrap:wrap;">${soldaCheckFixacao(s.tiposFixacao,'solda-adm-sim-fixacao')}</div></div>
     <button class="btn btn-primary btn-sm" data-act="solda-adm-sim-rodar" ${s.carregando?'disabled':''}>${s.carregando?'Simulando…':'Simular'}</button>
@@ -7587,7 +7604,11 @@ function bindSoldaAdminEvents(){
   todos('[data-act="solda-adm-sim-fixacao"]').forEach(el=>el.addEventListener('change',()=>{ soldaAdmin.sim.tiposFixacao=alternarFixacaoSolda(soldaAdmin.sim.tiposFixacao,el.dataset.val); render(); }));
   todos('[data-act="solda-adm-sim-rodar"]').forEach(el=>el.addEventListener('click',async()=>{
     const s=soldaAdmin.sim, num=t=>numeroBR(t);
-    const faixas=[{faixa:'ate_11cm',perimetroM:num(s.perimetroAte),elementos:Math.max(0,Math.trunc(num(s.elementosAte)))},{faixa:'acima_11cm',perimetroM:num(s.perimetroAcima),elementos:Math.max(0,Math.trunc(num(s.elementosAcima)))}];
+    const faixas=[
+      {faixa:'abaixo_8cm',perimetroM:num(s.perimetroAbaixo8),elementos:Math.max(0,Math.trunc(num(s.elementosAbaixo8)))},
+      {faixa:'entre_8_11cm',perimetroM:num(s.perimetroEntre8e11),elementos:Math.max(0,Math.trunc(num(s.elementosEntre8e11)))},
+      {faixa:'acima_11cm',perimetroM:num(s.perimetroAcima11),elementos:Math.max(0,Math.trunc(num(s.elementosAcima11)))},
+    ];
     s.erro=''; s.resultado=null;
     if(!faixas.some(f=>f.perimetroM>0||f.elementos>0)){ s.erro='Informe o perímetro ou o número de elementos de ao menos uma faixa.'; render(); return; }
     s.carregando=true; render();

@@ -2,26 +2,29 @@
  * Escolha automática das "Produtividade Solda …" do MubiSys para um orçamento do CPQ.
  *
  * O vendedor informa só o tipo de fixação; o material vem do kit/título/composição e o perímetro de cada faixa de altura
- * (≤ 11 cm e > 11 cm) vem da Ficha técnica. Aqui o sistema pontua as produtividades candidatas, explica cada ponto e diz o
+ * (menor que 8 cm, entre 8 e 11 cm e maior que 11 cm) vem da Ficha técnica. Aqui o sistema pontua as produtividades candidatas, explica cada ponto e diz o
  * quanto confia na escolha. Regras treinadas pelo gestor (cpq_solda_regras) vencem a heurística.
  *
  * Tudo aqui é puro (sem banco nem rede) para ser testado e simulado; quem carrega candidatas e regras é a rota.
  */
 import {
   MATERIAIS_SOLDA,
+  normalizarTamanhosProdutividade,
   type MaterialSolda,
   type TamanhoProdutividade,
+  type TamanhoProdutividadeAtual,
   type TipoSolda,
 } from "../../shared/produtividade-solda";
 
 export type FaixaSolda = TamanhoProdutividade;
+type FaixaSoldaAtual = TamanhoProdutividadeAtual;
 export type ConfiancaSolda = "alta" | "media" | "baixa" | "nenhuma";
 
 export interface CandidataSolda {
   id: number;
   nome: string;
   tiposSolda: readonly TipoSolda[];
-  /** Tamanhos marcados no cadastro (uma produtividade pode valer para os dois); vazio = não marcado. */
+  /** Tamanhos marcados no cadastro (uma produtividade pode valer para mais de uma faixa); vazio = não marcado. */
   tamanhos: readonly TamanhoProdutividade[];
   materiais: readonly MaterialSolda[];
 }
@@ -61,6 +64,7 @@ export interface OpcaoSolda {
 }
 
 export interface FaixaEntrada {
+  /** `ate_11cm` aceita clientes CPQ antigos durante a transição; clientes atuais enviam as três faixas. */
   faixa: FaixaSolda;
   perimetroM: number;
   elementos: number;
@@ -102,6 +106,7 @@ const TERMOS_MATERIAL: Record<MaterialSolda, readonly string[]> = {
   latao: ["latao"],
   acrilico: ["acrilico"],
   aluminio: ["aluminio"],
+  acm: ["acm"],
 };
 
 /** Materiais citados no texto, na ordem em que aparecem. */
@@ -132,10 +137,11 @@ const ROTULO_MATERIAL: Record<MaterialSolda, string> = {
   latao: "Latão",
   acrilico: "Acrílico",
   aluminio: "Alumínio",
+  acm: "ACM",
 };
 
 /**
- * Material do letreiro. Ordem de confiança: subcategoria cadastrada no kit (Galvanizado, Inox, Latão, Alumínio), tipo do produto
+ * Material do letreiro. Ordem de confiança: subcategoria cadastrada no kit (Galvanizado, Inox, Latão, Alumínio, ACM), tipo do produto
  * (ex.: Acrílico montado), título e, por último, o que a composição mais cita. Divergências entre as fontes são só informadas:
  * um letreiro de inox pode ter fundo galvanizado na composição.
  */
@@ -196,9 +202,14 @@ function estilosNoTexto(texto: string | null | undefined): Set<string> {
   return achados;
 }
 
-/** O nome da produtividade diz que é para letras pequenas (≤ 11 cm)? */
-function nomeIndicaPequena(nomeNormalizado: string): boolean {
-  return (/\b11 ?cm\b/.test(nomeNormalizado) && /\b(menor|ate|igual)\b/.test(nomeNormalizado)) || /\b8 11 ?cm\b/.test(nomeNormalizado);
+/** Faixas explícitas no nome; o rótulo antigo até 11 cm cobre as duas novas faixas abaixo de 11 cm. */
+function faixasIndicadasNoNome(nomeNormalizado: string): readonly FaixaSoldaAtual[] | null {
+  if (/\bmenor que 8 ?cm\b/.test(nomeNormalizado)) return ["abaixo_8cm"];
+  if (/\b(entre )?8 11 ?cm\b/.test(nomeNormalizado)) return ["entre_8_11cm"];
+  if (/\b11 ?cm\b/.test(nomeNormalizado) && /\b(menor|ate|igual)\b/.test(nomeNormalizado))
+    return ["abaixo_8cm", "entre_8_11cm"];
+  if (/\b11 ?cm\b/.test(nomeNormalizado) && /\b(maior|acima)\b/.test(nomeNormalizado)) return ["acima_11cm"];
+  return null;
 }
 
 function mesmoConjunto(a: readonly string[], b: readonly string[]): boolean {
@@ -217,18 +228,28 @@ function pontuar(candidata: CandidataSolda, contexto: ContextoSolda, faixa: Faix
   const somar = (pontos: number, texto: string) => motivos.push({ texto, pontos });
   const nome = normalizarTexto(candidata.nome);
 
-  // Tamanho: a marcação do cadastro manda (pode valer para os dois tamanhos, o que pontua menos que a marca exata); sem ela, só o nome indica.
-  if (candidata.tamanhos.length) {
-    if (!candidata.tamanhos.includes(faixa)) excluida = true;
-    else if (candidata.tamanhos.length > 1) somar(20, "Cadastrada para os dois tamanhos (≤ 11 cm e > 11 cm).");
-    else somar(30, `Tamanho marcado como ${faixa === "ate_11cm" ? "≤ 11 cm" : "> 11 cm"}.`);
-  } else if (nomeIndicaPequena(nome)) {
-    if (faixa === "ate_11cm") somar(15, "O nome indica letras de até 11 cm.");
-    else excluida = true;
-  } else if (faixa === "ate_11cm") {
-    somar(-15, "O nome não indica letras pequenas e o tamanho não foi marcado no cadastro.");
+  // Tamanho: a marcação do cadastro manda; sem ela, só um intervalo explícito no nome indica a faixa.
+  const tamanhos = normalizarTamanhosProdutividade(candidata.tamanhos);
+  if (tamanhos.length) {
+    const serveNaFaixa = faixa === "ate_11cm"
+      ? tamanhos.includes("abaixo_8cm") || tamanhos.includes("entre_8_11cm")
+      : tamanhos.includes(faixa);
+    if (!serveNaFaixa) excluida = true;
+    else if (faixa === "ate_11cm" || tamanhos.length > 1) somar(20, "Cadastrada para mais de uma faixa de tamanho.");
+    else somar(30, `Tamanho marcado como ${faixa === "abaixo_8cm" ? "menor que 8 cm" : faixa === "entre_8_11cm" ? "entre 8-11cm" : "maior que 11 cm"}.`);
   } else {
-    somar(10, "Sem marca de letra pequena no nome: vale para letras maiores.");
+    const faixasNome = faixasIndicadasNoNome(nome);
+    if (faixasNome) {
+      const nomeIncluiFaixa = faixa === "ate_11cm"
+        ? faixasNome.some(tamanho => tamanho === "abaixo_8cm" || tamanho === "entre_8_11cm")
+        : faixasNome.includes(faixa);
+      if (nomeIncluiFaixa) somar(15, `O nome indica letras ${faixa === "ate_11cm" ? "de até 11 cm" : faixa === "abaixo_8cm" ? "menores que 8 cm" : faixa === "entre_8_11cm" ? "entre 8-11cm" : "maiores que 11 cm"}.`);
+      else excluida = true;
+    } else if (faixa === "abaixo_8cm" || faixa === "entre_8_11cm") {
+      somar(-15, "O nome não indica esta faixa menor e o tamanho não foi marcado no cadastro.");
+    } else {
+      somar(10, "Sem indicação de faixa menor no nome: vale para letras maiores.");
+    }
   }
 
   // Fixação: conjunto exato marcado no cadastro; sem marcação, só a chapinha aparece no nome.
@@ -274,7 +295,9 @@ function pontuar(candidata: CandidataSolda, contexto: ContextoSolda, faixa: Faix
 
 function regraAplica(regra: RegraSolda, contexto: ContextoSolda, faixa: FaixaSolda): boolean {
   if (!regra.ativa) return false;
-  if (regra.faixa && regra.faixa !== faixa) return false;
+  if (regra.faixa === "ate_11cm") {
+    if (faixa === "acima_11cm") return false;
+  } else if (regra.faixa && regra.faixa !== faixa) return false;
   if (regra.material && regra.material !== contexto.material) return false;
   if (regra.tipoProduto && normalizarTexto(regra.tipoProduto) !== normalizarTexto(contexto.tipoProduto)) return false;
   if (regra.fixacaoTipos && !mesmoConjunto(regra.fixacaoTipos, contexto.tiposFixacao)) return false;
@@ -283,7 +306,8 @@ function regraAplica(regra: RegraSolda, contexto: ContextoSolda, faixa: FaixaSol
 }
 
 function especificidade(regra: RegraSolda): number {
-  return (regra.faixa ? 1 : 0) + (regra.material ? 1 : 0) + (regra.tipoProduto ? 1 : 0) + (regra.fixacaoTipos ? 1 : 0) + regra.palavrasTitulo.length;
+  const pesoFaixa = regra.faixa === "ate_11cm" ? 0 : regra.faixa ? 1 : 0;
+  return pesoFaixa + (regra.material ? 1 : 0) + (regra.tipoProduto ? 1 : 0) + (regra.fixacaoTipos ? 1 : 0) + regra.palavrasTitulo.length;
 }
 
 function ordenarRegras(regras: readonly RegraSolda[]): RegraSolda[] {
