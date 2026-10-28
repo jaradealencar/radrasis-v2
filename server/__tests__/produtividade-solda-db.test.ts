@@ -54,7 +54,7 @@ describe("subclassificação das matérias-primas de produtividade (router + ban
 
   it("grava até 3 tipos de solda, o tamanho e os materiais, e devolve na listagem", async () => {
     await gestor().salvar({ ...base(ID_SOLDA), produtividadeTiposSolda: ["orelhinha", "barra_roscada", "patinha_led"], produtividadeTamanhos: ["acima_11cm", "ate_11cm"], produtividadeMateriais: ["latao", "inox"] });
-    expect(await linha(ID_SOLDA)).toMatchObject({ produtividadeTiposSolda: ["barra_roscada", "patinha_led", "orelhinha"], produtividadeTamanhos: ["ate_11cm", "acima_11cm"], produtividadeMateriais: ["inox", "latao"] });
+    expect(await linha(ID_SOLDA)).toMatchObject({ produtividadeTiposSolda: ["barra_roscada", "patinha_led", "orelhinha"], produtividadeTamanhos: ["abaixo_8cm", "entre_8_11cm", "acima_11cm"], produtividadeMateriais: ["inox", "latao"] });
   });
 
   it("salvar de novo troca a classificação (e limpar zera)", async () => {
@@ -101,11 +101,11 @@ describe("estilo do letreiro (categoria, aro, formato e fundo) no router + banco
   it("o editor da Tabela de Preços (produtividadeClassificacaoSalvar) grava o estilo junto das outras marcações", async () => {
     await gestor().produtividadeClassificacaoSalvar({
       mubisysMateriaPrimaId: ID_SOLDA,
-      produtividadeTiposSolda: ["orelhinha"], produtividadeTamanhos: ["ate_11cm"], produtividadeMateriais: ["inox"],
+      produtividadeTiposSolda: ["orelhinha"], produtividadeTamanhos: ["abaixo_8cm", "entre_8_11cm"], produtividadeMateriais: ["inox"],
       produtividadeCategorias: ["frontlight"], produtividadeAros: ["recuado"], produtividadeFormatos: ["cursiva"], produtividadeFundos: ["com_fundo"],
     });
     expect(await linha(ID_SOLDA)).toMatchObject({
-      produtividadeTiposSolda: ["orelhinha"], produtividadeTamanhos: ["ate_11cm"], produtividadeMateriais: ["inox"],
+      produtividadeTiposSolda: ["orelhinha"], produtividadeTamanhos: ["abaixo_8cm", "entre_8_11cm"], produtividadeMateriais: ["inox"],
       produtividadeCategorias: ["frontlight"], produtividadeAros: ["recuado"], produtividadeFormatos: ["cursiva"], produtividadeFundos: ["com_fundo"],
     });
   });

@@ -1,5 +1,5 @@
 import { hexesDoPantone } from "@shared/pantone-referencia";
-import { alternarAroFrontlight, alternarCategoriaProdutividade, alternarFormatoProdutividade, alternarFundoProdutividade, alternarMaterialSolda, alternarTamanhoProdutividade, ehCategoriaProdutividade, alternarTipoSolda, AROS_FRONTLIGHT, CATEGORIAS_PRODUTIVIDADE, ESTILO_PRODUTIVIDADE_VAZIO, FORMATOS_PRODUTIVIDADE, FUNDOS_PRODUTIVIDADE, MATERIAIS_SOLDA, MAX_TIPOS_SOLDA, ROTULO_ARO_FRONTLIGHT, ROTULO_CATEGORIA_PRODUTIVIDADE, ROTULO_FORMATO_PRODUTIVIDADE, ROTULO_FUNDO_PRODUTIVIDADE, ROTULO_MATERIAL_SOLDA, ROTULO_TAMANHO_PRODUTIVIDADE, ROTULO_TIPO_SOLDA, rotulosEstiloProdutividade, TAMANHOS_PRODUTIVIDADE, TIPOS_SOLDA, temEstiloProdutividade, type EstiloProdutividade, type MaterialSolda, type TamanhoProdutividade, type TipoSolda } from "@shared/produtividade-solda";
+import { alternarAroFrontlight, alternarCategoriaProdutividade, alternarFormatoProdutividade, alternarFundoProdutividade, alternarMaterialSolda, alternarTamanhoProdutividade, ehCategoriaProdutividade, alternarTipoSolda, AROS_FRONTLIGHT, CATEGORIAS_PRODUTIVIDADE, ESTILO_PRODUTIVIDADE_VAZIO, FORMATOS_PRODUTIVIDADE, FUNDOS_PRODUTIVIDADE, MATERIAIS_SOLDA, MAX_TIPOS_SOLDA, ROTULO_ARO_FRONTLIGHT, ROTULO_CATEGORIA_PRODUTIVIDADE, ROTULO_FORMATO_PRODUTIVIDADE, ROTULO_FUNDO_PRODUTIVIDADE, ROTULO_MATERIAL_SOLDA, ROTULO_TAMANHO_PRODUTIVIDADE, ROTULO_TIPO_SOLDA, rotulosEstiloProdutividade, TAMANHOS_PRODUTIVIDADE, TIPOS_SOLDA, temEstiloProdutividade, type EstiloProdutividade, type MaterialSolda, type TamanhoProdutividadeAtual, type TipoSolda } from "@shared/produtividade-solda";
 import { PADRAO_PROCESSO_CORTE, PROCESSOS_CORTE, ROTACOES_PERMITIDAS, ROTULO_PROCESSO_CORTE, ROTULO_ROTACAO, type ProcessoCorte, type RotacaoPermitida } from "@shared/politica-corte";
 import { espessuraParaMm, FORMATOS_PERFIL, formatoPerfilUsaAltura, formatoPerfilUsaEspessura, gCm3ParaKgM3, kgM3ParaGCm3, type FormatoPerfil, type UnidadeEspessura } from "@shared/peso";
 import { useEffect, useState, type FormEvent } from "react";
@@ -241,7 +241,7 @@ const estiloDoCadastro = (item: Pick<MateriaPrimaCadastroItem, "produtividadeCat
 });
 
 /** Tipos de solda, tamanho e materiais da matéria-prima de produtividade; o que ainda falta aparece em âmbar. O estilo é opcional: só aparece se marcado. */
-function ResumoProdutividade({ tipos, tamanhos, materiais, estilo }: { tipos: TipoSolda[]; tamanhos: TamanhoProdutividade[]; materiais: MaterialSolda[]; estilo: EstiloProdutividade }) {
+function ResumoProdutividade({ tipos, tamanhos, materiais, estilo }: { tipos: TipoSolda[]; tamanhos: TamanhoProdutividadeAtual[]; materiais: MaterialSolda[]; estilo: EstiloProdutividade }) {
   const falta = "text-xs text-amber-700 dark:text-amber-300";
   return (
     <div className="flex flex-wrap items-center gap-1">
@@ -331,7 +331,7 @@ function DialogEditarMateriaPrima({
   const [espacamentoCorte, setEspacamentoCorte] = useState("");
   const [margemCorte, setMargemCorte] = useState("");
   const [tiposSolda, setTiposSolda] = useState<TipoSolda[]>([]);
-  const [tamanhosProdutividade, setTamanhosProdutividade] = useState<TamanhoProdutividade[]>([]);
+  const [tamanhosProdutividade, setTamanhosProdutividade] = useState<TamanhoProdutividadeAtual[]>([]);
   const [materiaisSolda, setMateriaisSolda] = useState<MaterialSolda[]>([]);
   const [estiloProdutividade, setEstiloProdutividade] = useState<EstiloProdutividade>(ESTILO_PRODUTIVIDADE_VAZIO);
   const [origemBusca, setOrigemBusca] = useState("");
@@ -673,7 +673,7 @@ function DialogEditarMateriaPrima({
                 return <Button key={fundo} type="button" size="sm" variant={marcado ? "secondary" : "ghost"} aria-pressed={marcado} onClick={() => setEstiloProdutividade(atual => ({ ...atual, fundos: alternarFundoProdutividade(atual.fundos, fundo) }))}>{ROTULO_FUNDO_PRODUTIVIDADE[fundo]}</Button>;
               })}
             </div>
-            <p className="text-xs text-muted-foreground">Material e tamanho: marque quantos valerem, sem limite (os dois tamanhos juntos significam que a produtividade serve para ambos; "Galvanizado ou Inox" = os dois materiais). Tipo de solda: até {MAX_TIPOS_SOLDA} ({tiposSolda.length} marcado(s)); "Sem fixação" não combina com os outros e marcá-lo desmarca os demais. Categoria, formato e fundo também aceitam mais de uma marcação (clique de novo para desmarcar); o aro só existe dentro do Frontlight.</p>
+            <p className="text-xs text-muted-foreground">Material e tamanho: marque quantos valerem, sem limite (mais de uma faixa significa que a produtividade serve para todas as selecionadas; "Galvanizado ou Inox" = os dois materiais). Tipo de solda: até {MAX_TIPOS_SOLDA} ({tiposSolda.length} marcado(s)); "Sem fixação" não combina com os outros e marcá-lo desmarca os demais. Categoria, formato e fundo também aceitam mais de uma marcação (clique de novo para desmarcar); o aro só existe dentro do Frontlight.</p>
           </div>}
 
           {categoria?.usaDadosChapa && <div className="space-y-4 rounded-lg border p-4">

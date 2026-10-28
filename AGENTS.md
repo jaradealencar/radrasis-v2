@@ -515,11 +515,11 @@ precisar investigar uma decisão antiga, é aí que está, mas o código ativo
   especificações. **Produtividade (pedido de 05/10/2026):** matérias-primas cujo nome contém "produtividade"
   (exceto "Produtividade Geral …", ex.: #4373 Hora; 42 no catálogo de 05/10/2026) ganham no diálogo de edição uma
   subclassificação interna, independente da categoria: até 3 tipos de solda (barra roscada, patinha para LED,
-  chapinha dupla-face, orelhinha, sem fixação — esta não combina com as outras), o tamanho (≤ 11 cm e/ou > 11 cm) e os
+  chapinha dupla-face, orelhinha, sem fixação — esta não combina com as outras), o tamanho (menor que 8 cm, entre 8 e 11 cm e/ou maior que 11 cm) e os
   materiais a que a solda se aplica (inox, galvanizado, latão, acrílico, alumínio; multisseleção sem limite).
   **Cada um dos três grupos aceita mais de uma marcação** (tipo de solda até 3; material e tamanho sem limite): uma produtividade
-  que serve aos dois tamanhos recebe os dois, e o motor de solda a considera válida para as duas faixas (pontua menos que a
-  marca exata de uma faixa).
+  que serve a mais de uma faixa recebe todas as marcações correspondentes; o motor considera cada faixa marcada (pontua menos que a
+  marca exata de uma faixa). Valores legados `ate_11cm` são interpretados como menor que 8 cm e entre 8 e 11 cm, até revisão manual.
   Ficam em `materia_prima_cadastros.produtividade_tipos_solda` (`text[]`), `produtividade_tamanhos` (`text[]`, migration `0092`; substitui `produtividade_tamanho` da migration `0089`, cujos valores a 0092 copiou) e
   `produtividade_materiais` (`text[]`, migration `0090`). A coluna antiga `produtividade_tamanho` continua no banco e no
   `schema.ts` só como **legado** (nada a lê nem grava); remova-a numa migration futura, depois que nenhum deploy anterior a use;
@@ -826,22 +826,22 @@ precisar investigar uma decisão antiga, é aí que está, mas o código ativo
   pois o protótipo não faz união booleana de formas sobrepostas.
   **Altura dos elementos na Ficha técnica (pedido de 05/10/2026):** o passo 5 do CPQ
   (`painelAlturaElementos`, `classificarAlturasElementos` no HTML) conta quantos
-  elementos têm até 11 cm e quantos têm mais de 11 cm de altura vertical, com
+  elementos têm menos de 8 cm, entre 8 e 11 cm e mais de 11 cm de altura vertical, com
   desenho numerado e tabela por elemento. Elemento = contorno externo de
   `REAL.geomRaw.pieces` (o ponto do "i" e acentos contam à parte; letras coladas
   pelo vetorizador contam como um só); altura = caixa envolvente da peça na
-  escala física, comparada em mm inteiros (110,4 mm ainda é "até 11 cm"); peça a
-  até 5 mm do limite recebe aviso, por causa da tolerância de ±1% da escala. O
+  escala física, comparada em mm inteiros (80 mm e 110 mm pertencem à faixa entre 8 e 11 cm); peça a
+  até 5 mm de qualquer corte recebe aviso, por causa da tolerância de ±1% da escala. O
   objetivo é alimentar as linhas "Produtividade Solda" por tamanho
   (`shared/produtividade-solda.ts`): `contagemElementosPorAltura()` devolve
-  `{ate, acima}` para isso, mas **a ligação com a composição/orçamento ainda não
+  `{abaixo8, entre8e11, acima11}` para isso, mas **a ligação com a composição/orçamento ainda não
   existe** — a contagem só é exibida e não entra no snapshot da cotação.
   **Produtividade de solda automática (pedido de 06/10/2026):** o vendedor escolhe só o tipo de
   fixação (etapa 1); o sistema escolhe as "Produtividade Solda …" na Ficha técnica e as acrescenta ao orçamento,
-  quantificadas pelo **perímetro total (externo + vazados, em metros) de cada faixa de altura** (≤ 11 cm e > 11 cm).
+  quantificadas pelo **perímetro total (externo + vazados, em metros) de cada faixa de altura** (menor que 8 cm, entre 8 e 11 cm, maior que 11 cm).
   O produto não cadastra produtividade na composição. O motor é puro, em `server/services/cpqSoldaProdutividade.ts`:
   `detectarMaterialLetreiro` (subcategoria do kit > tipo do produto > título > composição; divergência só informa) e
-  `sugerirProdutividades` (tamanho como filtro — marca exata da faixa +30, marcada para os dois tamanhos +20, outra faixa exclui —, fixação por **igualdade de conjunto**, material e estilo — cursivo, aro
+  `sugerirProdutividades` (tamanho como filtro — marca exata da faixa +30, marcada para mais de uma faixa +20, outra faixa exclui —, fixação por **igualdade de conjunto**, material e estilo — cursivo, aro
   recuado, frontlight, F/F… — pelo título/tipo contra o nome, devolvendo motivos e confiança alta/média/baixa; **regras
   treinadas vencem a heurística**). As candidatas são as produtividades relacionadas ao produto
   (`estudio_kits.dadosJson.produtividadesRelacionadas`) ou, se não houver nenhuma, todo o cadastro. Rotas em
@@ -856,7 +856,7 @@ precisar investigar uma decisão antiga, é aí que está, mas o código ativo
   (`perimetrosPorAltura`). `garantirSugestaoSolda` consulta `/solda/sugerir` quando o pedido muda (mesmo padrão do peso: a
   chave é o próprio pedido) e `painelSoldaProdutividade` aparece na Ficha técnica e na Composição, com material (detectado ou
   escolhido), troca de produtividade por faixa, motivos, confiança e custo. As linhas entram em `REAL.kit`
-  (`origemSoldaAuto`) com as fórmulas `soldaPerimAte11`/`soldaPerimAcima11` quando a Ficha técnica é confirmada, e **no
+  (`origemSoldaAuto`) com as fórmulas `soldaPerimAbaixo8`/`soldaPerimEntre8e11`/`soldaPerimAcima11` quando a Ficha técnica é confirmada, e **no
   snapshot viram `fixo` com a quantidade já calculada** (`formulaParaServidor`), então `estudio-cotacoes.ts` e a importação
   em Propostas não conhecem a fórmula nova; o resumo da escolha vai em `soldaProdutividade` e a fixação em `tiposFixacao`
   (ambos `.optional()` **sem default**, para não mudar a assinatura de cotações antigas). Remover a linha automática a
