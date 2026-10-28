@@ -70,7 +70,7 @@ import {
   type FormatoProdutividade,
   type FundoProdutividade,
   type MaterialSolda,
-  type TamanhoProdutividade,
+  type TamanhoProdutividadeAtual,
   type TipoSolda,
 } from "@shared/produtividade-solda";
 import { useAuth } from "@/hooks/useAuth";
@@ -2291,12 +2291,11 @@ const TIPOS_SOLDA_FILTRO: { value: TipoSolda | "todos"; label: string }[] = [
 ];
 
 const TAMANHOS_SOLDA_FILTRO: {
-  value: TamanhoProdutividade | "todos";
+  value: TamanhoProdutividadeAtual | "todos";
   label: string;
 }[] = [
   { value: "todos", label: "Todos os tamanhos" },
-  { value: "ate_11cm", label: ROTULO_TAMANHO_PRODUTIVIDADE.ate_11cm },
-  { value: "acima_11cm", label: ROTULO_TAMANHO_PRODUTIVIDADE.acima_11cm },
+  ...TAMANHOS_PRODUTIVIDADE.map(value => ({ value, label: ROTULO_TAMANHO_PRODUTIVIDADE[value] })),
 ];
 
 /** Estilo (categoria, aro, formato e fundo) de uma matéria-prima de produtividade vinda da listagem. */
@@ -2355,7 +2354,7 @@ function ProdutividadesSolda() {
     useState<MateriaPrimaProdutividade | null>(null);
   const [materiaisEditados, setMateriaisEditados] = useState<MaterialSolda[]>([]);
   const [tiposEditados, setTiposEditados] = useState<TipoSolda[]>([]);
-  const [tamanhosEditados, setTamanhosEditados] = useState<TamanhoProdutividade[]>([]);
+  const [tamanhosEditados, setTamanhosEditados] = useState<TamanhoProdutividadeAtual[]>([]);
   const [estiloEditado, setEstiloEditado] = useState<EstiloProdutividade>(ESTILO_PRODUTIVIDADE_VAZIO);
   const { user } = useAuth();
   const podeEditarClassificação =
@@ -2375,7 +2374,7 @@ function ProdutividadesSolda() {
   >("todos");
   const [tipoAtivo, setTipoAtivo] = useState<TipoSolda | "todos">("todos");
   const [tamanhoAtivo, setTamanhoAtivo] = useState<
-    TamanhoProdutividade | "todos"
+    TamanhoProdutividadeAtual | "todos"
   >("todos");
   const [categoriaAtiva, setCategoriaAtiva] = useState<CategoriaProdutividade | "todos">("todos");
   const [aroAtivo, setAroAtivo] = useState<AroFrontlight | "todos">("todos");
@@ -2875,7 +2874,7 @@ function ProdutividadesSolda() {
           {materialEditando && (
             <div className="space-y-5">
               <div className="rounded-md border border-blue-200 bg-blue-50 px-3 py-2 text-sm text-blue-900">
-                <strong>Sele&ccedil;&atilde;o m&uacute;ltipla:</strong> a mesma produtividade pode receber mais de uma op&ccedil;&atilde;o em cada grupo: v&aacute;rios materiais, at&eacute; 3 tipos de solda e os dois tamanhos. &ldquo;Sem fixa&ccedil;&atilde;o&rdquo; &eacute; exclusiva dentro do grupo de tipo de solda.
+                <strong>Sele&ccedil;&atilde;o m&uacute;ltipla:</strong> a mesma produtividade pode receber mais de uma op&ccedil;&atilde;o em cada grupo: v&aacute;rios materiais, at&eacute; 3 tipos de solda e mais de uma faixa de tamanho. &ldquo;Sem fixa&ccedil;&atilde;o&rdquo; &eacute; exclusiva dentro do grupo de tipo de solda.
               </div>
               <div>
                 <p className="font-medium">{materialEditando.nome}</p>

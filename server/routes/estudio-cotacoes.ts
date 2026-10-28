@@ -6,7 +6,7 @@ import { z } from "zod";
 import { estudioCotacaoSnapshots, estudioMapeamentoCoresCotacao, priceTableMeta, priceTableSections, propostas } from "../../drizzle/schema";
 import { render3dSnapshotSchema, renderRoleSchema } from "../../shared/cpq-render3d";
 import { consumoGabaritoKraftM2 } from "../../shared/gabarito";
-import { MATERIAIS_SOLDA, TAMANHOS_PRODUTIVIDADE, TIPOS_SOLDA } from "../../shared/produtividade-solda";
+import { MATERIAIS_SOLDA, TAMANHOS_PRODUTIVIDADE, TAMANHOS_PRODUTIVIDADE_LEGADOS, TIPOS_SOLDA } from "../../shared/produtividade-solda";
 import { erroPinturaPecas, MAX_CORES_PINTURA, MAX_NOME_TINTA, MAX_PECAS_PINTURA } from "../../shared/pintura-pecas";
 import { auth } from "../_core/auth";
 import { getDb } from "../db/db";
@@ -159,7 +159,7 @@ const snapshotSchema = z.object({
       origem: z.enum(["subcategoria", "tipo", "titulo", "composicao", "manual"]).nullable(),
     }).strict().nullable(),
     faixas: z.array(z.object({
-      faixa: z.enum(TAMANHOS_PRODUTIVIDADE),
+      faixa: z.enum([...TAMANHOS_PRODUTIVIDADE, ...TAMANHOS_PRODUTIVIDADE_LEGADOS]),
       elementos: z.number().int().nonnegative().max(100_000),
       perimetroM: z.number().finite().nonnegative().max(100_000),
       produtividadeId: z.number().int().positive().nullable(),
@@ -167,7 +167,7 @@ const snapshotSchema = z.object({
       origem: z.enum(["regra", "heuristica", "manual", "nenhuma"]),
       confianca: z.enum(["alta", "media", "baixa", "nenhuma"]),
       regraId: z.number().int().positive().nullable(),
-    }).strict()).max(2),
+    }).strict()).max(3),
   }).strict().optional(),
   pinturaPecas: pinturaPecasSchema.optional(),
   imagemReferenciaUrl: z.string().url().max(2048).nullable().optional().default(null),
