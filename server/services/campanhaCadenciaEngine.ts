@@ -1,7 +1,8 @@
 import { randomUUID } from "node:crypto";
 import { and, desc, eq, inArray, isNull, sql } from "drizzle-orm";
 import { getDb } from "../db/db";
-import { getPool } from "../db/db-connection";
+import { getPool, queryDatabase } from "../db/db-connection";
+import type { PoolClient } from "pg";
 import {
   campanhasWhatsapp,
   campanhasWhatsappCadenciaEnvios,
@@ -422,7 +423,7 @@ export async function sincronizarAudienciasCadencia(): Promise<{ inscricoesCriad
 }
 
 async function completarLease(token: string, proximoEnvio: Date | null): Promise<void> {
-  await getPool().query(
+  await queryDatabase(
     `UPDATE campanhas_whatsapp_motor_estado SET lease_token = NULL, lease_ate = NULL,
      proximo_envio_em = $2, updated_at = now() WHERE id = 1 AND lease_token = $1`,
     [token, proximoEnvio]
@@ -446,7 +447,7 @@ async function moverEnviosVencidosParaJanelaUtil(): Promise<void> {
   const agora = new Date();
   const proximaJanela = proximoHorarioUtil(agora, 0);
   if (proximaJanela.getTime() <= agora.getTime()) return;
-  await getPool().query(
+  await queryDatabase(
     `UPDATE campanhas_whatsapp_inscricoes
      SET proximo_envio_em = $1, updated_at = now()
      WHERE status = 'aguardando' AND proximo_envio_em <= now()`,
@@ -456,7 +457,7 @@ async function moverEnviosVencidosParaJanelaUtil(): Promise<void> {
 
 async function reivindicarProximaInscricao(): Promise<InscricaoDisparo | null> {
   const pool = getPool();
-  const client = await pool.connect();
+  const client = await pool.connect() as unknown as PoolClient;
   const token = randomUUID();
   try {
     await client.query("BEGIN");
@@ -665,7 +666,7 @@ export async function processarUmaEtapaCadencia(): Promise<{
   await moverEnviosVencidosParaJanelaUtil();
   const row = await reivindicarProximaInscricao();
   if (!row) {
-    const pendencia = await getPool().query<{ quantidade: number; proximo_em: Date | null }>(
+    const pendencia = await queryDatabase<{ quantidade: number; proximo_em: Date | null }>(
       `SELECT count(*)::int AS quantidade,
               min(GREATEST(COALESCE(i.proximo_envio_em, now()),
                            COALESCE(m.proximo_envio_em, now()),
