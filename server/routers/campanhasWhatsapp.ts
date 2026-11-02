@@ -124,6 +124,7 @@ import {
   type ContextoErp,
 } from "../services/fontesErpCampanhas";
 import { isOsNormalDb } from "./performanceComercial";
+import { campanhasWhatsappRelatoriosRouter } from "./campanhasWhatsappRelatorios";
 import {
   carregarTelefonesClientes,
   completarTelefonesPeloCadastro,
@@ -3053,7 +3054,7 @@ Script 2: [Título]
       });
     }),
 
-  /** Atribuição de Receita & ROI Real: cruza contatos disparados com O.S. aprovadas/faturadas no MubiSys (historico_os). */
+  /** Receita associada e ROI estimado: cruza contatos disparados com O.S. aprovadas/faturadas no MubiSys. */
   atribuicaoReceita: campanhasProcedure
     .input(
       z.object({
@@ -3066,20 +3067,38 @@ Script 2: [Título]
       await buscarCampanha(db, input.campanhaId);
 
       // 1. Contatos que receberam disparo desta campanha + data do envio
-      const contatosHist = await db
-        .select({
-          telefone: campanhasWhatsappContatosHistorico.telefone,
-          ultimoEnvioEm: campanhasWhatsappContatosHistorico.ultimoEnvioEm,
-        })
-        .from(campanhasWhatsappContatosHistorico)
-        .where(
-          eq(campanhasWhatsappContatosHistorico.campanhaId, input.campanhaId)
-        );
+      const [contatosHist, disparosOrigem] = await Promise.all([
+        db
+          .select({
+            telefone: campanhasWhatsappContatosHistorico.telefone,
+            ultimoEnvioEm: campanhasWhatsappContatosHistorico.ultimoEnvioEm,
+            disparoId: campanhasWhatsappContatosHistorico.disparoId,
+          })
+          .from(campanhasWhatsappContatosHistorico)
+          .where(
+            eq(campanhasWhatsappContatosHistorico.campanhaId, input.campanhaId)
+          ),
+        db
+          .select({
+            id: campanhasWhatsappDisparos.id,
+            origem: campanhasWhatsappDisparos.origem,
+          })
+          .from(campanhasWhatsappDisparos)
+          .where(eq(campanhasWhatsappDisparos.campanhaId, input.campanhaId)),
+      ]);
 
-      const mapaDisparos = new Map<string, string>(); // tel normalizado -> data envio ISO
+      const origemPorDisparo = new Map(disparosOrigem.map(d => [d.id, d.origem]));
+      const mapaDisparos = new Map<
+        string,
+        { data: string; viaApi: boolean }
+      >();
       for (const c of contatosHist) {
         const telNorm = normalizarTelefone(c.telefone);
-        if (telNorm) mapaDisparos.set(telNorm, c.ultimoEnvioEm);
+        if (telNorm)
+          mapaDisparos.set(telNorm, {
+            data: c.ultimoEnvioEm,
+            viaApi: !!c.disparoId && origemPorDisparo.get(c.disparoId) === "api",
+          });
       }
 
       // Se nenhum contato no histórico, retorna métricas zeradas
@@ -3092,6 +3111,7 @@ Script 2: [Título]
           clientesConvertidos: 0,
           taxaConversaoDisparosPct: 0,
           custoTotalEstimado: 0,
+          contatosApiComCustoEstimado: 0,
           roiEstimadoPct: null,
           multiplicadorRetorno: null,
           receitaPorCluster: [],
@@ -3131,7 +3151,7 @@ Script 2: [Título]
         const telNorm = normalizarTelefone(os.telefone);
         if (!telNorm || !mapaDisparos.has(telNorm)) continue;
 
-        const dataDisparo = mapaDisparos.get(telNorm)!;
+        const dataDisparo = mapaDisparos.get(telNorm)!.data;
         const dtAprov = parseDataFlexivel(os.dataAprovacao);
         const dtFat = parseDataFlexivel(os.dataFaturamento);
         const dataCompra = dtAprov
@@ -3179,9 +3199,12 @@ Script 2: [Título]
           ? Math.round((clientesConvertidos / mapaDisparos.size) * 1000) / 10
           : 0;
 
-      // Custo estimado: R$ 0,35 por contato enviado via WhatsApp Business API / Ceci
+      // Estimativa somente para contatos cujo último disparo conhecido foi enviado via API.
+      const contatosApiComCustoEstimado = [...mapaDisparos.values()].filter(
+        envio => envio.viaApi
+      ).length;
       const custoTotalEstimado =
-        Math.round(mapaDisparos.size * 0.35 * 100) / 100;
+        Math.round(contatosApiComCustoEstimado * 0.35 * 100) / 100;
       const roiEstimadoPct =
         custoTotalEstimado > 0
           ? Math.round(
@@ -3230,6 +3253,7 @@ Script 2: [Título]
         clientesConvertidos,
         taxaConversaoDisparosPct,
         custoTotalEstimado,
+        contatosApiComCustoEstimado,
         roiEstimadoPct,
         multiplicadorRetorno,
         receitaPorCluster,
@@ -3279,4 +3303,5 @@ Script 2: [Título]
 
       return linhas.map(l => ({ telefone: l.telefone, nome: l.nome ?? "" }));
     }),
+  relatorios: campanhasWhatsappRelatoriosRouter,
 });

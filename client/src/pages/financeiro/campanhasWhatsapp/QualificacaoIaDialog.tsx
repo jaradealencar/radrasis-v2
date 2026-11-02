@@ -93,7 +93,7 @@ const TODOS = "__todos__";
 /**
  * Dashboard de qualificação de leads por IA (Gemini):
  * 1. Resumo Executivo de Alto Nível (Gemini Flash)
- * 2. Atribuição de Receita & ROI Comercial (MubiSys ERP)
+ * 2. Receita associada e retorno estimado (MubiSys ERP)
  * 3. KPIs de engajamento real e Curva de Latência de Resposta (Lead Velocity)
  * 4. Distribuição de clusters semânticos e diagnóstico de objeções
  * 5. Tabela de leads com parâmetros de projeto, filtro de leads quentes e criação direta de audiência de retargeting.
@@ -405,17 +405,17 @@ export default function QualificacaoIaDialog({ campanha, onClose }: Props) {
               ) : null}
             </div>
 
-            {/* ─── BLOCO 1: ATRIBUIÇÃO DE RECEITA & ROI REAL (MUBISYS ERP) ──────── */}
+            {/* ─── BLOCO 1: RECEITA ASSOCIADA E RETORNO ESTIMADO (MUBISYS ERP) ─── */}
             <div className="rounded-xl border p-4 space-y-3.5 bg-white shadow-sm">
               <div className="flex items-center justify-between gap-3 flex-wrap">
                 <div>
                   <h3 className="text-sm font-semibold text-slate-800 flex items-center gap-2">
                     <DollarSign size={16} className="text-emerald-600" />{" "}
-                    Atribuição de Receita & ROI Real (MubiSys)
+                    Receita associada e retorno estimado (MubiSys)
                   </h3>
                   <p className="text-[11px] text-muted-foreground">
-                    O.S. faturadas ou aprovadas de contatos que receberam
-                    disparo desta campanha
+                    O.S. aprovadas/faturadas associadas por telefone após o
+                    disparo; isso não comprova causalidade
                   </p>
                 </div>
 
@@ -449,7 +449,7 @@ export default function QualificacaoIaDialog({ campanha, onClose }: Props) {
                   <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
                     <div className="rounded-lg border bg-emerald-50/40 border-emerald-200/80 p-3">
                       <div className="text-[11px] font-medium text-emerald-800">
-                        Receita Faturada Atribuída
+                        Receita de O.S. associadas
                       </div>
                       <div className="text-lg font-bold text-emerald-700 mt-0.5">
                         {fmtBrl(atribuicao.data?.receitaTotal ?? 0)}
@@ -487,7 +487,7 @@ export default function QualificacaoIaDialog({ campanha, onClose }: Props) {
 
                     <div className="rounded-lg border bg-indigo-50/40 border-indigo-200/80 p-3">
                       <div className="text-[11px] font-medium text-indigo-800">
-                        Retorno do Investimento (ROI)
+                        Retorno estimado sobre custo de envio
                       </div>
                       <div className="text-lg font-bold text-indigo-700 mt-0.5">
                         {atribuicao.data?.multiplicadorRetorno !== null &&
@@ -496,7 +496,11 @@ export default function QualificacaoIaDialog({ campanha, onClose }: Props) {
                           : "—"}
                       </div>
                       <div className="text-[10px] text-indigo-900/70 mt-0.5">
-                        Custo de envio:{" "}
+                        R$ 0,35 ×{" "}
+                        {fmtNum(
+                          atribuicao.data?.contatosApiComCustoEstimado ?? 0
+                        )}{" "}
+                        contatos API:{" "}
                         {fmtBrl(atribuicao.data?.custoTotalEstimado ?? 0)}
                       </div>
                     </div>

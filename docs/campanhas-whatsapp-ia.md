@@ -129,10 +129,11 @@ Acessado por "⋮ → Qualificação por IA (Gemini)" na tabela de campanhas. Co
   avalia a tração geral da campanha, atribui temperatura da audiência (`MUITO_AQUECIDA`, `INTERESSE_MODERADO`,
   `FRIA_RESISTENTE`, `DESALINHADA`), diagnostica pontos fortes da oferta, principais travas/objeções com citações
   reais de clientes e entrega recomendações práticas para o próximo disparo.
-- `campanhasWhatsapp.atribuicaoReceita` — Atribuição comercial de O.S. faturadas/aprovadas no ERP MubiSys
-  (`historico_os`) decorrentes dos disparos da campanha em janelas configuráveis (7, 15, 30 ou 60 dias). Calcula
-  Receita Total Atribuída, O.S. Fechadas, Ticket Médio, Custo Estimado dos Disparos e ROI Real / Multiplicador de
-  Retorno (ex: 18.5x o custo), além de quebrar a receita gerada por cluster de IA.
+- `campanhasWhatsapp.atribuicaoReceita` — Associação temporal de O.S. aprovadas/faturadas no ERP MubiSys
+  (`historico_os`) com contatos da campanha em janelas configuráveis (7, 15, 30 ou 60 dias). Calcula receita e
+  ticket associados e um retorno estimado sobre R$ 0,35 por contato cujo último disparo conhecido foi via API.
+  Isso não prova causalidade nem inclui custos reais por campanha; o cruzamento e a receita por campanha podem
+  se sobrepor quando um telefone recebeu mais de uma campanha.
 - `campanhasWhatsapp.kpisEngajamento` — Total disparado, resposta humana, resposta bot, cliques em
   botão/CTA, índice de profundidade (% de respondentes com 3+ trocas). "Taxa de abertura real" do prompt
   original **não foi implementada**: a WTS.Chat/Ceci não expõe confirmação de leitura (read receipt) separada

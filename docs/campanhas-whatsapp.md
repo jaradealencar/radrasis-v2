@@ -270,6 +270,22 @@ campanha com disparos/contatos do período + os agendamentos que caem no períod
 de marcar disparado/não disparado do calendário (`AgendamentoItem`, em `comuns.tsx`, reaproveitado nos dois
 lugares) — e um botão "Agendar" por linha.
 
+**Jornada e auditoria (`campanhasWhatsapp.relatorios.relatorioJornada`)**: o mesmo recorte agora mostra respostas
+humanas e de bot, cliques em CTA, leads qualificados por IA, oportunidades estimadas, cotações e O.S. encontradas,
+receita associada e ticket médio por campanha. A janela pós-envio pode ser 7, 15, 30 ou 60 dias. A coorte parte
+do último envio registrado por telefone em cada campanha. Cotações e O.S. são ligadas somente pelo telefone
+normalizado; o total de receita global deduplica O.S. pelo número do ERP, enquanto a receita por campanha pode
+se sobrepor quando o contato recebeu mais de uma campanha. "Oportunidade estimada" usa a regra visível ICP ≥ 80
+e interesse ≥ 4; não é uma etapa manual persistida no CRM. A exportação XLSX contém a tabela filtrada e as
+verificações da auditoria.
+
+O **Robo Auditor** desta tela é determinístico: sinaliza campanha ativa sem template/fonte, agendamento vencido,
+resposta sem campanha, buffer inbound vencido, contatos/O.S. sobrepostos e registros ERP sem telefone. Também
+apresenta a contagem de opt-outs e da quarentena compartilhada com CRM e Retenção. Ele não confirma configuração
+do webhook externo, entrega/leitura no aparelho ou causalidade entre campanha e venda; integrações externas
+precisam consultar a verificação de quarentena antes de enviar. O painel deixa esses limites visíveis e não calcula
+ROI porque o custo real por campanha não está disponível.
+
 ## Ver contatos (consulta + download, sem registrar disparo)
 
 Pedido do usuário 28/09/2026: um botão no card/linha da campanha para ver e baixar a audiência resolvida pelas

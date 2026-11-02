@@ -489,7 +489,7 @@ export default function MarketingCampanhasWhatsapp() {
         </TabsContent>
 
         <TabsContent value="relatorios" className="pt-3">
-          <RelatorioPeriodo />
+          <RelatorioPeriodo campanhas={campanhas} />
         </TabsContent>
 
         <TabsContent value="nao-receber" className="pt-3">
