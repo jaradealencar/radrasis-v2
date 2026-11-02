@@ -238,7 +238,7 @@ describe("sanearRespostaGemini", () => {
   });
 });
 
-describe("extrairMensagensDoPayload (webhook Meta/WhatsApp Cloud API)", () => {
+describe("extrairMensagensDoPayload (webhooks Helena/Ceci e Meta)", () => {
   it("extrai mensagem de texto simples com nome do contato", () => {
     const payload = whatsappInboundWebhookSchema.parse({
       entry: [
@@ -328,9 +328,104 @@ describe("extrairMensagensDoPayload (webhook Meta/WhatsApp Cloud API)", () => {
     expect(extrairMensagensDoPayload(payload)).toEqual([]);
   });
 
-  it("payload totalmente vazio (entry ausente) também é aceito", () => {
-    const payload = whatsappInboundWebhookSchema.parse({});
-    expect(extrairMensagensDoPayload(payload)).toEqual([]);
+  it("extrai MESSAGE_RECEIVED no envelope da Helena com campos do DTO público", () => {
+    const payload = whatsappInboundWebhookSchema.parse({
+      eventType: "MESSAGE_RECEIVED",
+      date: "2026-10-20T12:30:00.000Z",
+      content: {
+        id: "message-123",
+        type: "TEXT",
+        direction: "TO_HUB",
+        from: "5567999990000",
+        to: "5511942666377",
+        timestamp: "2026-10-20T12:29:58.000Z",
+        text: "Quero um orçamento",
+        details: { contact: { name: "Ana Silva" } },
+      },
+    });
+
+    expect(extrairMensagensDoPayload(payload)).toEqual([
+      expect.objectContaining({
+        telefone: "5567999990000",
+        nome: "Ana Silva",
+        tipoMensagem: "text",
+        texto: "Quero um orçamento",
+        mensagemIdExterno: "message-123",
+        recebidoEm: new Date("2026-10-20T12:29:58.000Z"),
+      }),
+    ]);
+  });
+
+  it("ignora eventos de saída e mensagens FROM_HUB", () => {
+    const mensagem = {
+      id: "message-outbound",
+      type: "TEXT",
+      direction: "FROM_HUB",
+      from: "5511942666377",
+      text: "Mensagem enviada pelo canal",
+    };
+
+    const eventoEnviado = whatsappInboundWebhookSchema.parse({
+      eventType: "MESSAGE_SENT",
+      date: "2026-10-20T12:30:00.000Z",
+      content: mensagem,
+    });
+    const eventoRecebidoComDirecaoDeSaida = whatsappInboundWebhookSchema.parse({
+      eventType: "MESSAGE_RECEIVED",
+      date: "2026-10-20T12:30:00.000Z",
+      content: mensagem,
+    });
+
+    expect(extrairMensagensDoPayload(eventoEnviado)).toEqual([]);
+    expect(extrairMensagensDoPayload(eventoRecebidoComDirecaoDeSaida)).toEqual(
+      []
+    );
+  });
+
+  it("usa MESSAGE_RECEIVED para reconhecer inbound quando direction não vier", () => {
+    const payload = whatsappInboundWebhookSchema.parse({
+      eventType: "MESSAGE_RECEIVED",
+      date: "2026-10-20T12:30:00.000Z",
+      content: {
+        id: "message-without-direction",
+        type: "TEXT",
+        from: "5567999990000",
+        text: "Olá",
+      },
+    });
+
+    expect(extrairMensagensDoPayload(payload)).toEqual([
+      expect.objectContaining({
+        telefone: "5567999990000",
+        tipoMensagem: "text",
+        texto: "Olá",
+      }),
+    ]);
+  });
+
+  it("aceita evento Meta vazio/status, mas rejeita corpo sem envelope conhecido", () => {
+    const metaVazio = whatsappInboundWebhookSchema.parse({ entry: [] });
+    const metaStatus = whatsappInboundWebhookSchema.parse({
+      entry: [{ changes: [{ value: {} }] }],
+    });
+
+    expect(extrairMensagensDoPayload(metaVazio)).toEqual([]);
+    expect(extrairMensagensDoPayload(metaStatus)).toEqual([]);
+    expect(whatsappInboundWebhookSchema.safeParse({}).success).toBe(false);
+    expect(
+      whatsappInboundWebhookSchema.safeParse({ payload: { message: "oi" } })
+        .success
+    ).toBe(false);
+  });
+
+  it("rejeita MESSAGE_RECEIVED sem os campos mínimos de identificação do remetente", () => {
+    const resultado = whatsappInboundWebhookSchema.safeParse({
+      eventType: "MESSAGE_RECEIVED",
+      date: "2026-10-20T12:30:00.000Z",
+      content: { id: "message-123", type: "TEXT", direction: "TO_HUB" },
+    });
+
+    expect(resultado.success).toBe(false);
   });
 });
 

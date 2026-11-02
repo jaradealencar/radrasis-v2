@@ -34,13 +34,11 @@ campanhas_whatsapp_leads_qualificados  (cluster, ICP score, perfil, objeção, h
 Painel "Qualificação por IA" (QualificacaoIaDialog.tsx) — KPIs, clusters, objeções, heatmap, tabela + export
 ```
 
-**Nada aponta para o webhook de verdade ainda.** Hoje a resposta do cliente continua chegando só na caixa
-de entrada da Ceci.Chat (ver `docs/campanhas-whatsapp.md`, seção "Disparo via WTS.Chat / Ceci.Chat": "Quando
-o cliente responde ao WhatsApp, o atendimento abre normalmente... na Ceci.Chat"). Para este pipeline receber
-tráfego real, a Ceci precisa ser configurada (no painel deles, fora deste repo) para replicar o webhook de
-mensagem recebida para `/api/v1/campaigns/whatsapp-inbound`. Até lá, o endpoint existe, foi testado com
-payloads sintéticos no formato oficial da Meta, mas não processa mensagem real nenhuma. Passo manual do
-usuário, não documentado aqui por não ser deste repo.
+**Envelope do webhook confirmado; schema integral de MESSAGE_RECEIVED ainda não publicado.** A referência pública da HelenaCRM, com exemplos atuais apontando para `api.wts.chat`, documenta POST no envelope `eventType`, `date` e `content`, incluindo o evento `MESSAGE_RECEIVED`. O DTO público de mensagens documenta `id`, `timestamp`, `type`, `direction`, `text` e `details.contact.name`; a atualização de 14/08/2025 confirma `companyId`, `to` e `from` nos eventos de mensagem. Como a documentação de webhook não mostra um exemplo completo do `content` de MESSAGE_RECEIVED, o parser usa esses campos documentados como fixture sintética, ignora MESSAGE_SENT e descarta `direction = FROM_HUB` quando presente. O formato Meta continua aceito.
+
+Referências oficiais consultadas: [Webhooks Helena](https://helena.readme.io/reference/webhooks-1.md), [DTO de mensagem](https://helena.readme.io/reference/get_v1-message-id.md), [criação de assinatura](https://helena.readme.io/reference/post_v1-webhook-subscription.md) e [atualização do payload MESSAGE_RECEIVED](https://docs.helena.app/duvidas-e-novidades/novidades-de-produto/agosto-2025/14-08-2025-prod).
+
+**Bloqueios antes da ativação.** A assinatura documentada aceita `name`, `url`, `enabled` e `events`, sem campo documentado para cabeçalho customizado ou assinatura HMAC. A rota Radrasys continua exigindo `CAMPANHAS_API_KEY` em `Authorization: Bearer` ou `x-api-key`. O parser e seus fixtures locais não comprovam o payload integral nem a autenticação usada nas entregas; antes de ativar, obter da Helena um exemplo sanitizado de `MESSAGE_RECEIVED` e confirmar um mecanismo de autenticação suportado. Nenhuma assinatura foi criada e nenhum tráfego real foi recebido nesta etapa.
 
 **Por que não Redis.** O deploy é Vercel serverless (ver AGENTS.md: o rate-limiting da aplicação já foi
 desligado em produção porque o `MemoryStore` do `express-rate-limit` não sobrevive entre instâncias — mesmo
@@ -186,7 +184,8 @@ custo "só qualifica quem ainda não tem lead nesta campanha" sem corrida.
 ## Testes
 
 `server/__tests__/campanhas-whatsapp-ia.test.ts` — lógica pura (`detectarBot`, `classificarFaixaIcp`,
-`formatarFaixaHeatmap`, `criarFallbackPadrao`, `montarPayloadPrompt`) e o parser do payload Meta
-(`extrairMensagensDoPayload`, incluindo texto simples, `button_reply`/`list_reply` e payloads vazios/sem
-mensagens). Não há teste de banco real para `campanhasWhatsappInboundBuffer.ts` ainda (análogo a
+`formatarFaixaHeatmap`, `criarFallbackPadrao`, `montarPayloadPrompt`) e o parser dos payloads Helena e Meta
+(`extrairMensagensDoPayload`, incluindo texto, respostas interativas Meta, mensagem Helena, eventos de saída,
+payload desconhecido e eventos válidos sem mensagens). Não há teste de banco real para
+`campanhasWhatsappInboundBuffer.ts` ainda (análogo a
 `campanhas-whatsapp-db.test.ts`) — próximo passo se o módulo avançar para uso real.

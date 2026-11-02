@@ -11,13 +11,14 @@
  * replicar o webhook de mensagem recebida para esta URL. Até isso ser configurado, o endpoint existe e pode
  * ser testado manualmente, mas não recebe tráfego real. Ver docs/campanhas-whatsapp-ia.md.
  *
- * Contrato de entrada: payload oficial da Meta/WhatsApp Business Cloud API
- * (https://developers.facebook.com/docs/whatsapp/cloud-api/webhooks/payload-examples), que é o formato mais
- * provável de qualquer provedor (Ceci/WTS.Chat incluído) replicar — `entry[].changes[].value.messages[]`.
- * Se o payload real da Ceci vier em outro formato, ajustar só `extrairMensagensDoPayload` abaixo.
+ * Contratos de payload aceitos:
+ * - Helena/Ceci: envelope eventType/date/content; processa MESSAGE_RECEIVED e descarta direction=FROM_HUB.
+ * - Meta/WhatsApp Cloud API: entry[].changes[].value.messages[].
+ * A adaptação do payload não confirma que o webhook externo esteja configurado ou autenticado.
  *
- * Autenticação: mesma chave dos outros webhooks REST deste módulo (`CAMPANHAS_API_KEY`), reexportada de
- * campanhas-whatsapp-api.ts para não duplicar a checagem em tempo constante.
+ * Autenticação: a rota continua exigindo CAMPANHAS_API_KEY via Authorization Bearer ou x-api-key.
+ * A referência pública da Helena documenta URL/eventos na assinatura, sem comprovar suporte a headers
+ * customizados ou assinatura de entrega; confirmar esse ponto antes de ligar o tráfego real.
  */
 
 import type { Express, Request, Response } from "express";
@@ -31,13 +32,11 @@ import type { TipoMensagemInbound } from "../../shared/campanhas-whatsapp-ia";
 
 function responderErro(res: Response, erro: unknown, rota: string) {
   if (erro instanceof z.ZodError) {
-    res
-      .status(400)
-      .json({
-        erro: erro.issues
-          .map(i => `${i.path.join(".") || "corpo"}: ${i.message}`)
-          .join("; "),
-      });
+    res.status(400).json({
+      erro: erro.issues
+        .map(i => `${i.path.join(".") || "corpo"}: ${i.message}`)
+        .join("; "),
+    });
     return;
   }
   console.error(`[campanhas-whatsapp-inbound] ${rota}:`, erro);
@@ -79,22 +78,78 @@ const metaValueSchema = z.object({
   contacts: z.array(metaContactSchema).optional(),
 });
 
-export const whatsappInboundWebhookSchema = z.object({
-  entry: z
-    .array(
-      z.object({
-        changes: z
-          .array(
-            z.object({
-              field: z.string().optional(),
-              value: metaValueSchema,
-            })
-          )
-          .default([]),
-      })
-    )
-    .default([]),
+const metaWhatsappInboundWebhookSchema = z.object({
+  entry: z.array(
+    z.object({
+      changes: z
+        .array(
+          z.object({
+            field: z.string().optional(),
+            value: metaValueSchema,
+          })
+        )
+        .default([]),
+    })
+  ),
 });
+
+/** Fields from Helena's public message DTO used by MESSAGE_RECEIVED webhooks. */
+const helenaMessageContentSchema = z
+  .object({
+    id: z.string().min(1),
+    type: z.enum([
+      "TEXT",
+      "STICKER",
+      "IMAGE",
+      "AUDIO",
+      "VIDEO",
+      "DOCUMENT",
+      "CONTACT",
+      "LOCATION",
+      "LIST",
+      "BUTTONS",
+      "TRANSITION",
+      "TRACK",
+      "NOTE",
+    ]),
+    direction: z.enum(["FROM_HUB", "TO_HUB"]).optional(),
+    from: z.union([z.string(), z.number()]),
+    timestamp: z.string().nullable().optional(),
+    createdAt: z.string().optional(),
+    text: z.string().nullable().optional(),
+    details: z
+      .object({
+        contact: z
+          .object({ name: z.string().nullable().optional() })
+          .passthrough()
+          .optional(),
+      })
+      .passthrough()
+      .optional(),
+  })
+  .passthrough();
+
+const helenaWebhookSchema = z
+  .object({
+    eventType: z.string().min(1),
+    date: z.string().min(1),
+    content: z.record(z.string(), z.unknown()),
+  })
+  .passthrough()
+  .superRefine((evento, contexto) => {
+    if (evento.eventType !== "MESSAGE_RECEIVED") return;
+    const mensagem = helenaMessageContentSchema.safeParse(evento.content);
+    if (!mensagem.success) {
+      for (const issue of mensagem.error.issues) {
+        contexto.addIssue({ ...issue, path: ["content", ...issue.path] });
+      }
+    }
+  });
+
+export const whatsappInboundWebhookSchema = z.union([
+  metaWhatsappInboundWebhookSchema,
+  helenaWebhookSchema,
+]);
 
 interface MensagemExtraida {
   telefone: string | number;
@@ -106,11 +161,42 @@ interface MensagemExtraida {
   payloadRaw: unknown;
 }
 
-/** Converte o payload Meta em mensagens no formato interno. Isola o parsing do formato específico do
- * provedor — se a Ceci mandar algo diferente, só esta função precisa mudar. */
+/** Converts supported provider payloads to the internal message model. */
 export function extrairMensagensDoPayload(
   payload: z.infer<typeof whatsappInboundWebhookSchema>
 ): MensagemExtraida[] {
+  if ("eventType" in payload) {
+    if (payload.eventType !== "MESSAGE_RECEIVED") return [];
+
+    const mensagem = helenaMessageContentSchema.parse(payload.content);
+    // The public message DTO uses FROM_HUB for outbound messages. MESSAGE_RECEIVED is inbound by event.
+    if (mensagem.direction === "FROM_HUB") return [];
+
+    const tipoMensagem: TipoMensagemInbound =
+      mensagem.type === "BUTTONS"
+        ? "button_reply"
+        : mensagem.type === "LIST"
+          ? "list_reply"
+          : "text";
+    const dataMensagem = mensagem.timestamp ?? mensagem.createdAt;
+    const recebidoEm = dataMensagem ? new Date(dataMensagem) : null;
+
+    return [
+      {
+        telefone: mensagem.from,
+        nome: mensagem.details?.contact?.name ?? null,
+        tipoMensagem,
+        texto: mensagem.text ?? null,
+        mensagemIdExterno: mensagem.id,
+        recebidoEm:
+          recebidoEm && Number.isFinite(recebidoEm.getTime())
+            ? recebidoEm
+            : null,
+        payloadRaw: mensagem,
+      },
+    ];
+  }
+
   const resultado: MensagemExtraida[] = [];
   for (const entry of payload.entry) {
     for (const change of entry.changes) {
@@ -160,9 +246,9 @@ export function extrairMensagensDoPayload(
 
 export function registrarRotasCampanhasWhatsappInbound(app: Express) {
   /** Recebe o webhook de mensagens entrantes e grava cada uma no buffer (sem chamar IA aqui — a
-   * consolidação roda em separado, depois do debounce). Sempre 200 com o resumo processado: um provedor de
-   * webhook costuma reenviar em loop se não receber 2xx, e um erro de uma mensagem não deve impedir que as
-   * outras do mesmo payload sejam gravadas. */
+   * consolidação roda em separado, depois do debounce). Responde 2xx somente após as gravações concluírem;
+   * falhas de persistência retornam 500 para permitir retry do provedor. A chave única por ID externo torna
+   * seguro reenviar mensagens que já tenham sido gravadas antes de uma falha parcial. */
   app.post(
     "/api/v1/campaigns/whatsapp-inbound",
     exigirChaveApi,
