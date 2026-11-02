@@ -1,3 +1,4 @@
+import { sql } from "drizzle-orm";
 import {
   boolean,
   date,
@@ -3234,6 +3235,10 @@ export const historicoOs = pgTable(
     // Fornecedores (server/routers/guiaFornecedores.ts). Populado por scheduled-sync-historico.ts
     // dali pra frente; OS mais antigas ficam NULL até o backfill (server/scripts/backfill-telefone-historico.ts).
     telefone: varchar("telefone", { length: 32 }),
+    // ID/CNPJ do cliente na resposta da OS do MubiSys. Mantidos para que a engine consolide telefones
+    // compartilhados e apresente o cadastro ERP mais recente sem inferir identidade pelo nome.
+    clienteId: integer("clienteId"),
+    cnpj: varchar("cnpj", { length: 20 }),
     mes: integer("mes").notNull(),
     ano: integer("ano").notNull(),
     createdAt: timestamp("createdAt").defaultNow().notNull(),
@@ -3286,6 +3291,7 @@ export const mubisysClientesCache = pgTable("mubisys_clientes_cache", {
   nomeFantasia: varchar("nome_fantasia", { length: 256 }),
   razaoSocial: varchar("razao_social", { length: 256 }),
   telefone: varchar("telefone", { length: 32 }),
+  cnpj: varchar("cnpj", { length: 20 }),
   atualizadoEm: timestamp("atualizado_em").defaultNow().notNull(),
 });
 export type MubisysClienteCache = typeof mubisysClientesCache.$inferSelect;
@@ -4833,6 +4839,17 @@ export const campanhasWhatsapp = pgTable("campanhas_whatsapp", {
   // Descanso mínimo (dias) que um telefone precisa ter desde QUALQUER campanha antes de entrar nesta. 0 = sem trava.
   quarentenaDias: integer("quarentena_dias").notNull().default(0),
   status: campanhaWhatsappStatusEnum("status").notNull().default("ativa"),
+  // A engine de cadência é opt-in: campanhas legadas continuam sem disparo automático após a migration.
+  motorCadenciaAtivo: boolean("motor_cadencia_ativo").notNull().default(false),
+  prioridadeCadencia: integer("prioridade_cadencia").notNull().default(100),
+  versaoEtapasAtual: integer("versao_etapas_atual").notNull().default(1),
+  intervaloMinimoSegundos: integer("intervalo_minimo_segundos").notNull().default(3),
+  intervaloMaximoSegundos: integer("intervalo_maximo_segundos").notNull().default(8),
+  intervaloMinimoEntreCampanhasDias: integer("intervalo_minimo_entre_campanhas_dias").notNull().default(30),
+  consentimentoConfirmadoPor: varchar("consentimento_confirmado_por", { length: 128 }),
+  consentimentoConfirmadoEm: timestamp("consentimento_confirmado_em", { withTimezone: true }),
+  templatesAprovadosConfirmadosPor: varchar("templates_aprovados_confirmados_por", { length: 128 }),
+  templatesAprovadosConfirmadosEm: timestamp("templates_aprovados_confirmados_em", { withTimezone: true }),
   // Só para gatilho_venda: ignora vendas faturadas antes desta data. Nulo = sem limite (toda venda com prazo
   // vencido e ainda não contatada entra na lista). Existe para o usuário conter a 1ª lista de uma campanha nova.
   gatilhoAPartirDe: date("gatilho_a_partir_de"),
@@ -4916,6 +4933,9 @@ export const campanhasWhatsappOptout = pgTable("campanhas_whatsapp_optout", {
   nome: varchar("nome", { length: 200 }),
   motivo: varchar("motivo", { length: 300 }),
   registradoPor: varchar("registrado_por", { length: 128 }),
+  origem: varchar("origem", { length: 16 }).notNull().default("manual"),
+  mensagemIdExterno: varchar("mensagem_id_externo", { length: 128 }),
+  mensagemOrigem: text("mensagem_origem"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 export type CampanhaWhatsappOptout =
@@ -5006,6 +5026,7 @@ export type InsertCampanhaWhatsappArquivo =
 // "retargeting": audiência resolvida dinamicamente a partir dos leads qualificados por IA de uma campanha prévia.
 export const campanhaFonteTipoEnum = pgEnum("campanha_fonte_tipo", [
   "erp",
+  "regras_erp",
   "arquivo",
   "campanha_arquivos",
   "retargeting",
@@ -5029,6 +5050,8 @@ export const campanhasWhatsappFontes = pgTable("campanhas_whatsapp_fontes", {
   // Só para tipo="retargeting": armazena filtros como { origemCampanhaId, cluster, motivoObjecao, icpMinimo }.
   retargetingConfig:
     jsonb("retargeting_config").$type<Record<string, unknown>>(),
+  // Predicados versionados da segmentação dinâmica (DSL validada no servidor; nunca SQL livre).
+  regrasErp: jsonb("regras_erp").$type<Record<string, unknown>>(),
   ativo: boolean("ativo").notNull().default(true),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
@@ -5253,3 +5276,265 @@ export type CampanhaWhatsappLeadQualificado =
   typeof campanhasWhatsappLeadsQualificados.$inferSelect;
 export type InsertCampanhaWhatsappLeadQualificado =
   typeof campanhasWhatsappLeadsQualificados.$inferInsert;
+
+// ─── Engine de cadências autônomas ──────────────────────────────────────────
+
+export const campanhaCadenciaStatusEnum = pgEnum("campanha_cadencia_status", [
+  "aguardando",
+  "enviando",
+  "pendente_conciliacao",
+  "pausado_por_resposta",
+  "removido_por_conversao",
+  "removido_por_prioridade",
+  "opt_out",
+  "concluida",
+  "cancelada",
+]);
+
+export const campanhaCadenciaEnvioStatusEnum = pgEnum(
+  "campanha_cadencia_envio_status",
+  ["aguardando", "enviando", "pendente_conciliacao", "aceito", "entregue", "falhou", "cancelado"]
+);
+
+/** Versões imutáveis dos passos. A migration copia o template legado para a versão 1, sem ativar o motor. */
+export const campanhasWhatsappEtapas = pgTable(
+  "campanhas_whatsapp_etapas",
+  {
+    id: serial("id").primaryKey(),
+    campanhaId: integer("campanha_id")
+      .notNull()
+      .references(() => campanhasWhatsapp.id, { onDelete: "cascade" }),
+    versao: integer("versao").notNull(),
+    numero: integer("numero").notNull(),
+    templateId: varchar("template_id", { length: 120 }).notNull(),
+    atrasoDiasUteis: integer("atraso_dias_uteis").notNull().default(0),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  t => ({
+    versaoNumeroUnico: uniqueIndex("campanhas_whatsapp_etapas_versao_numero_unique").on(
+      t.campanhaId,
+      t.versao,
+      t.numero
+    ),
+    campanhaVersaoIdx: index("campanhas_whatsapp_etapas_campanha_versao_idx").on(
+      t.campanhaId,
+      t.versao
+    ),
+  })
+);
+
+export type CampanhaWhatsappEtapa = typeof campanhasWhatsappEtapas.$inferSelect;
+
+/** Inscrição persistente por telefone E.164. Respostas pausam e continuam ocupando a trava anti-cross-fire. */
+export const campanhasWhatsappInscricoes = pgTable(
+  "campanhas_whatsapp_inscricoes",
+  {
+    id: serial("id").primaryKey(),
+    campanhaId: integer("campanha_id")
+      .notNull()
+      .references(() => campanhasWhatsapp.id, { onDelete: "cascade" }),
+    telefoneE164: varchar("telefone_e164", { length: 16 }).notNull(),
+    nome: varchar("nome", { length: 256 }).notNull().default(""),
+    cnpj: varchar("cnpj", { length: 20 }),
+    clienteId: integer("cliente_id"),
+    origemTipo: varchar("origem_tipo", { length: 24 }).notNull(),
+    origemId: integer("origem_id"),
+    status: campanhaCadenciaStatusEnum("status").notNull().default("aguardando"),
+    prioridadeNoMomento: integer("prioridade_no_momento").notNull().default(100),
+    versaoEtapas: integer("versao_etapas").notNull(),
+    snapshotEtapas: jsonb("snapshot_etapas")
+      .$type<Array<{ numero: number; templateId: string; atrasoDiasUteis: number }>>()
+      .notNull(),
+    etapaAtual: integer("etapa_atual").notNull().default(1),
+    proximoEnvioEm: timestamp("proximo_envio_em", { withTimezone: true }),
+    ultimoEnvioAceitoEm: timestamp("ultimo_envio_aceito_em", { withTimezone: true }),
+    ultimaRespostaEm: timestamp("ultima_resposta_em", { withTimezone: true }),
+    motivoFim: varchar("motivo_fim", { length: 64 }),
+    leaseToken: varchar("lease_token", { length: 64 }),
+    leaseAte: timestamp("lease_ate", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  t => ({
+    campanhaTelIdx: index("campanhas_whatsapp_inscricoes_campanha_tel_idx").on(
+      t.campanhaId,
+      t.telefoneE164
+    ),
+    envioDueIdx: index("campanhas_whatsapp_inscricoes_due_idx").on(
+      t.status,
+      t.proximoEnvioEm
+    ),
+    telefoneAtivoUnico: uniqueIndex("campanhas_whatsapp_inscricoes_telefone_ativo_unique")
+      .on(t.telefoneE164)
+      .where(sql`${t.status} IN ('aguardando', 'enviando', 'pendente_conciliacao', 'pausado_por_resposta')`),
+  })
+);
+
+export type CampanhaWhatsappInscricao =
+  typeof campanhasWhatsappInscricoes.$inferSelect;
+
+/** Snapshot local dos campos de segmentação. Atualizada após sincronização ERP bem-sucedida. */
+export const campanhasWhatsappClienteFatos = pgTable(
+  "campanhas_whatsapp_cliente_fatos",
+  {
+    telefoneE164: varchar("telefone_e164", { length: 16 }).primaryKey(),
+    nome: varchar("nome", { length: 256 }).notNull().default(""),
+    cnpj: varchar("cnpj", { length: 20 }),
+    clienteId: integer("cliente_id"),
+    totalPedidos: integer("total_pedidos").notNull().default(0),
+    pedidosUltimos90Dias: integer("pedidos_ultimos_90_dias").notNull().default(0),
+    diasSemComprar: integer("dias_sem_comprar"),
+    statusOrcamento: varchar("status_orcamento", { length: 16 }),
+    diasPosOrcamento: integer("dias_pos_orcamento"),
+    pedidosAposUltimoOrcamento: integer("pedidos_apos_ultimo_orcamento").notNull().default(0),
+    ultimaCompraEm: date("ultima_compra_em"),
+    ultimoOrcamentoEm: date("ultimo_orcamento_em"),
+    clienteAtivoErp: boolean("cliente_ativo_erp").notNull().default(false),
+    atualizadoEm: timestamp("atualizado_em", { withTimezone: true }).defaultNow().notNull(),
+  },
+  t => ({ ativoIdx: index("campanhas_whatsapp_cliente_fatos_ativo_idx").on(t.clienteAtivoErp) })
+);
+
+/** Uma linha por tentativa. Retorno incerto fica em conciliação e nunca ganha retry automático. */
+export const campanhasWhatsappCadenciaEnvios = pgTable(
+  "campanhas_whatsapp_cadencia_envios",
+  {
+    id: serial("id").primaryKey(),
+    inscricaoId: integer("inscricao_id")
+      .notNull()
+      .references(() => campanhasWhatsappInscricoes.id, { onDelete: "cascade" }),
+    campanhaId: integer("campanha_id")
+      .notNull()
+      .references(() => campanhasWhatsapp.id, { onDelete: "cascade" }),
+    telefoneE164: varchar("telefone_e164", { length: 16 }).notNull(),
+    etapa: integer("etapa").notNull(),
+    tentativa: integer("tentativa").notNull().default(1),
+    templateId: varchar("template_id", { length: 120 }).notNull(),
+    status: campanhaCadenciaEnvioStatusEnum("status").notNull().default("aguardando"),
+    provedor: varchar("provedor", { length: 24 }).notNull().default("wts_chat"),
+    idMensagemExterno: varchar("id_mensagem_externo", { length: 128 }),
+    respostaProvedor: text("resposta_provedor"),
+    erro: text("erro"),
+    aceitoEm: timestamp("aceito_em", { withTimezone: true }),
+    entregueEm: timestamp("entregue_em", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  t => ({
+    inscricaoEtapaTentativaUnica: uniqueIndex(
+      "campanhas_whatsapp_cadencia_envios_inscricao_etapa_tentativa_unique"
+    ).on(t.inscricaoId, t.etapa, t.tentativa),
+    statusIdx: index("campanhas_whatsapp_cadencia_envios_status_idx").on(
+      t.status,
+      t.createdAt
+    ),
+    mensagemIdExternoUnico: uniqueIndex("campanhas_whatsapp_cadencia_envios_mensagem_unique")
+      .on(t.idMensagemExterno)
+      .where(sql`${t.idMensagemExterno} IS NOT NULL`),
+  })
+);
+
+/** Inbox idempotente de callbacks. Guarda eventos que cheguem antes de persistirmos o aceite da API. */
+export const campanhasWhatsappStatusWebhookEventos = pgTable(
+  "campanhas_whatsapp_status_webhook_eventos",
+  {
+    id: serial("id").primaryKey(),
+    idMensagemExterno: varchar("id_mensagem_externo", { length: 128 }).notNull(),
+    status: varchar("status", { length: 32 }).notNull(),
+    ocorreuEm: timestamp("ocorreu_em", { withTimezone: true }),
+    payload: jsonb("payload").$type<Record<string, unknown>>(),
+    recebidoEm: timestamp("recebido_em", { withTimezone: true }).defaultNow().notNull(),
+    processadoEm: timestamp("processado_em", { withTimezone: true }),
+  },
+  t => ({
+    mensagemStatusUnico: uniqueIndex("campanhas_whatsapp_status_webhook_eventos_mensagem_status_unique").on(
+      t.idMensagemExterno,
+      t.status
+    ),
+    pendenteIdx: index("campanhas_whatsapp_status_webhook_eventos_pendente_idx").on(
+      t.processadoEm,
+      t.recebidoEm
+    ),
+  })
+);
+
+export type CampanhaWhatsappStatusWebhookEvento =
+  typeof campanhasWhatsappStatusWebhookEventos.$inferSelect;
+
+/** Versões congeladas de listas externas. Reimportar cria outro lote, sem alterar este. */
+export const campanhasWhatsappImportacoes = pgTable(
+  "campanhas_whatsapp_importacoes",
+  {
+    id: serial("id").primaryKey(),
+    fonteId: integer("fonte_id").references(() => campanhasWhatsappFontes.id, {
+      onDelete: "set null",
+    }),
+    campanhaId: integer("campanha_id").references(() => campanhasWhatsapp.id, {
+      onDelete: "cascade",
+    }),
+    arquivoId: integer("arquivo_id").references(() => campanhasWhatsappArquivos.id, {
+      onDelete: "set null",
+    }),
+    nomeArquivo: varchar("nome_arquivo", { length: 256 }).notNull(),
+    importadoPor: varchar("importado_por", { length: 128 }),
+    importadoEm: timestamp("importado_em", { withTimezone: true }).defaultNow().notNull(),
+    totalLinhas: integer("total_linhas").notNull().default(0),
+    totalValidos: integer("total_validos").notNull().default(0),
+    totalInvalidos: integer("total_invalidos").notNull().default(0),
+    optInConfirmado: boolean("opt_in_confirmado").notNull().default(false),
+    optInConfirmadoPor: varchar("opt_in_confirmado_por", { length: 128 }),
+    optInConfirmadoEm: timestamp("opt_in_confirmado_em", { withTimezone: true }),
+  },
+  t => ({
+    fonteIdx: index("campanhas_whatsapp_importacoes_fonte_idx").on(t.fonteId),
+    campanhaIdx: index("campanhas_whatsapp_importacoes_campanha_idx").on(t.campanhaId),
+  })
+);
+
+export const campanhasWhatsappImportacaoContatos = pgTable(
+  "campanhas_whatsapp_importacao_contatos",
+  {
+    id: serial("id").primaryKey(),
+    importacaoId: integer("importacao_id")
+      .notNull()
+      .references(() => campanhasWhatsappImportacoes.id, { onDelete: "cascade" }),
+    telefoneE164: varchar("telefone_e164", { length: 16 }).notNull(),
+    nome: varchar("nome", { length: 256 }).notNull().default(""),
+    linhaOrigem: integer("linha_origem"),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  t => ({
+    importacaoTelefoneUnico: uniqueIndex(
+      "campanhas_whatsapp_importacao_contatos_importacao_tel_unique"
+    ).on(t.importacaoId, t.telefoneE164),
+    telefoneIdx: index("campanhas_whatsapp_importacao_contatos_tel_idx").on(
+      t.telefoneE164
+    ),
+  })
+);
+
+/** Saúde de cada recurso do polling MubiSys. O worker é fail-closed quando qualquer recurso está stale/falho. */
+export const campanhasWhatsappErpSyncStatus = pgTable(
+  "campanhas_whatsapp_erp_sync_status",
+  {
+    recurso: varchar("recurso", { length: 24 }).primaryKey(),
+    status: varchar("status", { length: 16 }).notNull().default("nunca"),
+    completo: boolean("completo").notNull().default(false),
+    ultimaTentativaEm: timestamp("ultima_tentativa_em", { withTimezone: true }),
+    ultimoSucessoEm: timestamp("ultimo_sucesso_em", { withTimezone: true }),
+    erro: text("erro"),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+  }
+);
+
+/** Limitador global para preservar o intervalo entre mensagens mesmo com execuções serverless concorrentes. */
+export const campanhasWhatsappMotorEstado = pgTable(
+  "campanhas_whatsapp_motor_estado",
+  {
+    id: integer("id").primaryKey().default(1),
+    proximoEnvioEm: timestamp("proximo_envio_em", { withTimezone: true }),
+    leaseToken: varchar("lease_token", { length: 64 }),
+    leaseAte: timestamp("lease_ate", { withTimezone: true }),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+  }
+);

@@ -25,7 +25,7 @@ import {
   max,
   sql,
 } from "drizzle-orm";
-import { protectedProcedure, requireRole, router } from "../_core/trpc";
+import { adminProcedure, protectedProcedure, requireRole, router } from "../_core/trpc";
 import { invokeLLM } from "../_core/llm";
 import { getDb } from "../db/db";
 import { getPool } from "../db/db-connection";
@@ -61,6 +61,11 @@ import {
   campanhasWhatsappGatilhos,
   campanhasWhatsappLeadsQualificados,
   campanhasWhatsappMensagensInbound,
+  campanhasWhatsappImportacaoContatos,
+  campanhasWhatsappImportacoes,
+  campanhasWhatsappCadenciaEnvios,
+  campanhasWhatsappEtapas,
+  campanhasWhatsappInscricoes,
   campanhasWhatsappOptout,
   campanhasWhatsappScripts,
   historicoOs,
@@ -96,6 +101,8 @@ import {
   type OsAtribuidaReceita,
 } from "../../shared/campanhas-whatsapp-ia";
 import { gerarResumoExecutivoComGemini } from "../services/campanhasWhatsappIa";
+import { conciliarEnvioCadencia, listarInscricoesDaCampanha, sincronizarAudienciasCadencia } from "../services/campanhaCadenciaEngine";
+import { obterSaudeSyncErp } from "../services/campanhaCadenciaErp";
 import {
   agruparPorCliente,
   dataLocalParaIso,
@@ -139,6 +146,7 @@ type Db = NonNullable<Awaited<ReturnType<typeof getDb>>>;
 const campanhasProcedure = protectedProcedure.use(
   requireRole("admin", "master", "gestor")
 );
+const adminCampanhasProcedure = protectedProcedure.use(requireRole("admin", "master"));
 
 export const MAX_CONTATOS_POR_DISPARO = 20_000;
 const MAX_LISTA_TELA = 500;
@@ -912,6 +920,163 @@ export const campanhasWhatsappRouter = router({
     return { hoje, campanhas: linhas, resumo: resumirCampanhas(linhas, hoje) };
   }),
 
+  obterConfiguracaoCadencia: campanhasProcedure
+    .input(z.object({ campanhaId: z.number().int().positive() }))
+    .query(async ({ input }) => {
+      const db = await obterDb();
+      const campanha = await buscarCampanha(db, input.campanhaId);
+      const etapas = await db.select().from(campanhasWhatsappEtapas)
+        .where(eq(campanhasWhatsappEtapas.campanhaId, input.campanhaId))
+        .orderBy(desc(campanhasWhatsappEtapas.versao), campanhasWhatsappEtapas.numero);
+      const versaoAtual = etapas.filter(e => e.versao === campanha.versaoEtapasAtual);
+      const inscricoes = await db.select({ status: campanhasWhatsappInscricoes.status, total: count() })
+        .from(campanhasWhatsappInscricoes).where(eq(campanhasWhatsappInscricoes.campanhaId, input.campanhaId))
+        .groupBy(campanhasWhatsappInscricoes.status);
+      const conciliacoes = await db.select({ total: count() }).from(campanhasWhatsappCadenciaEnvios)
+        .where(and(eq(campanhasWhatsappCadenciaEnvios.campanhaId, input.campanhaId), inArray(campanhasWhatsappCadenciaEnvios.status, ["pendente_conciliacao", "aceito"])));
+      const enviosPendentes = await db.select({
+        id: campanhasWhatsappCadenciaEnvios.id,
+        telefoneE164: campanhasWhatsappCadenciaEnvios.telefoneE164,
+        etapa: campanhasWhatsappCadenciaEnvios.etapa,
+        status: campanhasWhatsappCadenciaEnvios.status,
+        templateId: campanhasWhatsappCadenciaEnvios.templateId,
+        idMensagemExterno: campanhasWhatsappCadenciaEnvios.idMensagemExterno,
+        erro: campanhasWhatsappCadenciaEnvios.erro,
+        createdAt: campanhasWhatsappCadenciaEnvios.createdAt,
+      }).from(campanhasWhatsappCadenciaEnvios).where(and(
+        eq(campanhasWhatsappCadenciaEnvios.campanhaId, input.campanhaId),
+        inArray(campanhasWhatsappCadenciaEnvios.status, ["pendente_conciliacao", "aceito"]),
+      )).orderBy(desc(campanhasWhatsappCadenciaEnvios.createdAt)).limit(50);
+      const saudeErp = await obterSaudeSyncErp();
+      return { campanha, etapas: versaoAtual, versaoAtual: campanha.versaoEtapasAtual, inscricoes, enviosPendentesConciliacao: Number(conciliacoes[0]?.total ?? 0), enviosPendentes, saudeErp };
+    }),
+
+  salvarEtapasCadencia: campanhasProcedure
+    .input(z.object({
+      campanhaId: z.number().int().positive(),
+      etapas: z.array(z.object({ templateId: z.string().trim().regex(/^[\w.-]+$/).max(120), atrasoDiasUteis: z.number().int().min(0).max(365) })).min(1).max(6),
+      confirmarTemplatesAprovados: z.boolean().default(false),
+    }).superRefine((input, ctx) => {
+      if (input.etapas.some(e => !e.templateId)) ctx.addIssue({ code: "custom", path: ["etapas"], message: "Cada etapa precisa de um template aprovado." });
+    }))
+    .mutation(async ({ input, ctx }) => {
+      const db = await obterDb();
+      const campanha = await buscarCampanha(db, input.campanhaId);
+      if (campanha.motorCadenciaAtivo && !input.confirmarTemplatesAprovados) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "Confirme que todos os templates da nova versão estão aprovados na Meta." });
+      }
+      const versao = campanha.versaoEtapasAtual + 1;
+      await db.transaction(async tx => {
+        await tx.insert(campanhasWhatsappEtapas).values(input.etapas.map((etapa, index) => ({
+          campanhaId: input.campanhaId,
+          versao,
+          numero: index + 1,
+          templateId: etapa.templateId,
+          atrasoDiasUteis: index === 0 ? 0 : etapa.atrasoDiasUteis,
+        })));
+        await tx.update(campanhasWhatsapp).set({
+          versaoEtapasAtual: versao,
+          wtsTemplateId: input.etapas[0].templateId,
+          ...(campanha.motorCadenciaAtivo ? {
+            templatesAprovadosConfirmadosPor: ctx.user.name ?? ctx.user.email ?? "desconhecido",
+            templatesAprovadosConfirmadosEm: new Date(),
+          } : {}),
+          updatedAt: new Date(),
+        }).where(eq(campanhasWhatsapp.id, input.campanhaId));
+      });
+      return { versao };
+    }),
+
+  configurarMotorCadencia: campanhasProcedure
+    .input(z.object({
+      campanhaId: z.number().int().positive(),
+      ativo: z.boolean(),
+      prioridade: z.number().int().min(0).max(9999).default(100),
+      intervaloMinimoSegundos: z.number().int().min(3).max(8).default(3),
+      intervaloMaximoSegundos: z.number().int().min(3).max(8).default(8),
+      intervaloMinimoEntreCampanhasDias: z.number().int().min(0).max(365).default(30),
+      confirmarOptInAudiencia: z.boolean().default(false),
+      confirmarTemplatesAprovados: z.boolean().default(false),
+    }).refine(v => v.intervaloMinimoSegundos <= v.intervaloMaximoSegundos, {
+      path: ["intervaloMaximoSegundos"], message: "O intervalo máximo precisa ser maior ou igual ao mínimo.",
+    }))
+    .mutation(async ({ input, ctx }) => {
+      const db = await obterDb();
+      const campanha = await buscarCampanha(db, input.campanhaId);
+      if (!input.ativo) {
+        await db.update(campanhasWhatsapp).set({ motorCadenciaAtivo: false, updatedAt: new Date() })
+          .where(eq(campanhasWhatsapp.id, input.campanhaId));
+        await db.update(campanhasWhatsappInscricoes).set({
+          status: "cancelada", proximoEnvioEm: null, motivoFim: "motor_desativado_manualmente",
+          leaseToken: null, leaseAte: null, updatedAt: new Date(),
+        }).where(and(
+          eq(campanhasWhatsappInscricoes.campanhaId, input.campanhaId),
+          inArray(campanhasWhatsappInscricoes.status, ["aguardando", "enviando", "pendente_conciliacao"]),
+        ));
+        return { ativo: false, inscricoesCriadas: 0 };
+      }
+
+      if (campanha.status !== "ativa") throw new TRPCError({ code: "BAD_REQUEST", message: "A campanha precisa estar ativa antes de ligar o motor." });
+      if (!input.confirmarOptInAudiencia || !input.confirmarTemplatesAprovados) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "Confirme o opt-in da audiência e a aprovação Meta de todos os templates." });
+      }
+      const etapas = await db.select().from(campanhasWhatsappEtapas)
+        .where(and(eq(campanhasWhatsappEtapas.campanhaId, input.campanhaId), eq(campanhasWhatsappEtapas.versao, campanha.versaoEtapasAtual)));
+      if (!etapas.length) throw new TRPCError({ code: "BAD_REQUEST", message: "Configure pelo menos uma etapa com template aprovado antes da ativação." });
+      const fontes = await db.select({ id: campanhasWhatsappCampanhaFontes.id })
+        .from(campanhasWhatsappCampanhaFontes)
+        .innerJoin(campanhasWhatsappFontes, eq(campanhasWhatsappFontes.id, campanhasWhatsappCampanhaFontes.fonteId))
+        .where(and(eq(campanhasWhatsappCampanhaFontes.campanhaId, input.campanhaId), eq(campanhasWhatsappFontes.ativo, true)));
+      if (!fontes.length) throw new TRPCError({ code: "BAD_REQUEST", message: "Vincule ao menos uma fonte de audiência ativa." });
+      if (!wtsChatConfigurado()) throw new TRPCError({ code: "PRECONDITION_FAILED", message: "Configure WTS_CHAT_AUTHORIZATION para habilitar os envios." });
+      if (!process.env.CAMPANHAS_WTS_WEBHOOK_SECRET?.trim()) throw new TRPCError({ code: "PRECONDITION_FAILED", message: "Configure CAMPANHAS_WTS_WEBHOOK_SECRET e o callback de status da WTS.Chat antes de ativar a cadência." });
+      const workerUrl = process.env.CAMPANHAS_CADENCIA_WORKER_URL?.trim();
+      if (!process.env.QSTASH_TOKEN?.trim() || !process.env.CAMPANHAS_API_KEY?.trim() || !workerUrl) {
+        throw new TRPCError({ code: "PRECONDITION_FAILED", message: "Configure QSTASH_TOKEN, CAMPANHAS_API_KEY e CAMPANHAS_CADENCIA_WORKER_URL para processar a cadência continuamente." });
+      }
+      try {
+        const worker = new URL(workerUrl);
+        if (worker.protocol !== "https:") throw new Error("HTTPS obrigatório");
+        if (worker.pathname !== "/api/v1/campaigns/process-cadence" || worker.search || worker.hash) throw new Error("Endpoint do worker inválido");
+      } catch {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "CAMPANHAS_CADENCIA_WORKER_URL precisa apontar para /api/v1/campaigns/process-cadence em HTTPS." });
+      }
+      const saudeErp = await obterSaudeSyncErp();
+      if (!saudeErp.ok) throw new TRPCError({ code: "PRECONDITION_FAILED", message: `Sincronize o MubiSys antes de ativar: ${saudeErp.detalhes.map(d => `${d.recurso}: ${d.status}`).join("; ")}` });
+
+      await db.update(campanhasWhatsapp).set({
+        motorCadenciaAtivo: true,
+        prioridadeCadencia: input.prioridade,
+        intervaloMinimoSegundos: input.intervaloMinimoSegundos,
+        intervaloMaximoSegundos: input.intervaloMaximoSegundos,
+        intervaloMinimoEntreCampanhasDias: input.intervaloMinimoEntreCampanhasDias,
+        consentimentoConfirmadoPor: ctx.user.name ?? ctx.user.email ?? "desconhecido",
+        consentimentoConfirmadoEm: new Date(),
+        templatesAprovadosConfirmadosPor: ctx.user.name ?? ctx.user.email ?? "desconhecido",
+        templatesAprovadosConfirmadosEm: new Date(),
+        updatedAt: new Date(),
+      }).where(eq(campanhasWhatsapp.id, input.campanhaId));
+      try {
+        const sincronizacao = await sincronizarAudienciasCadencia();
+        return { ativo: true, ...sincronizacao };
+      } catch (error) {
+        await db.update(campanhasWhatsapp).set({ motorCadenciaAtivo: campanha.motorCadenciaAtivo, updatedAt: new Date() })
+          .where(eq(campanhasWhatsapp.id, input.campanhaId));
+        throw error;
+      }
+    }),
+
+  listarInscricoesCadencia: campanhasProcedure
+    .input(z.object({ campanhaId: z.number().int().positive(), limite: z.number().int().min(1).max(500).default(100) }))
+    .query(({ input }) => listarInscricoesDaCampanha(input.campanhaId, input.limite)),
+
+  conciliarEnvioCadencia: adminProcedure
+    .input(z.object({ envioId: z.number().int().positive(), decisao: z.enum(["entregue", "falhou"]) }))
+    .mutation(async ({ input }) => {
+      await conciliarEnvioCadencia(input.envioId, input.decisao);
+      return { ok: true };
+    }),
+
   criar: campanhasProcedure
     .input(campanhaBaseSchema)
     .mutation(async ({ input }) => {
@@ -1313,6 +1478,9 @@ export const campanhasWhatsappRouter = router({
           message: "Reative a campanha antes de enviar.",
         });
       }
+      if (campanha.motorCadenciaAtivo) {
+        throw new TRPCError({ code: "PRECONDITION_FAILED", message: "Esta campanha está usando o motor de cadência; os envios são controlados pela régua ativa." });
+      }
       if (campanha.tipo === "gatilho_venda") {
         throw new TRPCError({
           code: "BAD_REQUEST",
@@ -1367,6 +1535,17 @@ export const campanhasWhatsappRouter = router({
           );
         if (input.quantidade)
           selecionados = selecionados.slice(0, input.quantidade);
+      }
+      if (selecionados.length) {
+        const numerosE164 = selecionados.map(contato => `+${contato.telefone}`);
+        const cadenciasEmAndamento = await db.select({ telefone: campanhasWhatsappInscricoes.telefoneE164 })
+          .from(campanhasWhatsappInscricoes)
+          .where(and(
+            inArray(campanhasWhatsappInscricoes.telefoneE164, numerosE164),
+            inArray(campanhasWhatsappInscricoes.status, ["aguardando", "enviando", "pendente_conciliacao", "pausado_por_resposta"]),
+          ));
+        const bloqueadosPorCadencia = new Set(cadenciasEmAndamento.map(item => item.telefone));
+        selecionados = selecionados.filter(contato => !bloqueadosPorCadencia.has(`+${contato.telefone}`));
       }
       if (selecionados.length === 0) {
         throw new TRPCError({
@@ -1909,21 +2088,62 @@ export const campanhasWhatsappRouter = router({
           .min(0)
           .max(64 * 1024 * 1024)
           .default(0),
+        optInConfirmado: z.boolean().default(false),
       })
     )
     .mutation(async ({ input, ctx }) => {
       const db = await obterDb();
       if (input.campanhaId != null) await buscarCampanha(db, input.campanhaId);
-      const [row] = await db
-        .insert(campanhasWhatsappArquivos)
-        .values({
+      const ehLista = /\.(csv|txt|xls|xlsx|xml)$/i.test(input.nome);
+      const leitura = ehLista ? await lerArquivoDeUrl(input.url, input.nome) : null;
+      if (ehLista && !input.optInConfirmado) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "Confirme que todos os telefones da planilha autorizaram o recebimento de mensagens pelo WhatsApp." });
+      }
+      if (ehLista && !leitura?.ok) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: leitura?.erro ?? "Não foi possível ler a planilha." });
+      }
+      const importador = ctx.user.name ?? ctx.user.email ?? "desconhecido";
+      const contatos = new Map<string, string>();
+      let invalidos = 0;
+      if (leitura?.ok) {
+        for (const contato of leitura.contatos) {
+          const telefone = normalizarTelefone(contato.telefone);
+          if (!telefone) { invalidos++; continue; }
+          if (!contatos.has(telefone)) contatos.set(telefone, contato.nome.trim().slice(0, 256));
+        }
+      }
+      const row = await db.transaction(async tx => {
+        const [arquivo] = await tx.insert(campanhasWhatsappArquivos).values({
           campanhaId: input.campanhaId ?? null,
           nome: input.nome,
           url: input.url,
           tamanhoBytes: input.tamanhoBytes,
-          enviadoPor: ctx.user.name ?? ctx.user.email ?? "desconhecido",
-        })
-        .returning();
+          enviadoPor: importador,
+        }).returning();
+        if (ehLista) {
+          const [lote] = await tx.insert(campanhasWhatsappImportacoes).values({
+            arquivoId: arquivo.id,
+            campanhaId: input.campanhaId ?? null,
+            nomeArquivo: input.nome,
+            importadoPor: importador,
+            totalLinhas: leitura?.ok ? leitura.linhasLidas : 0,
+            totalValidos: contatos.size,
+            totalInvalidos: invalidos,
+            optInConfirmado: input.optInConfirmado,
+            optInConfirmadoPor: input.optInConfirmado ? importador : null,
+            optInConfirmadoEm: input.optInConfirmado ? new Date() : null,
+          }).returning({ id: campanhasWhatsappImportacoes.id });
+          const linhas = [...contatos.entries()].map(([telefone, nome]) => ({
+            importacaoId: lote.id,
+            telefoneE164: `+${telefone}`,
+            nome,
+          }));
+          for (let i = 0; i < linhas.length; i += 500) {
+            await tx.insert(campanhasWhatsappImportacaoContatos).values(linhas.slice(i, i + 500)).onConflictDoNothing();
+          }
+        }
+        return arquivo;
+      });
       return row;
     }),
 
@@ -2003,6 +2223,42 @@ export const campanhasWhatsappRouter = router({
           arquivoId: input.arquivoId,
         })
         .returning();
+      await db.update(campanhasWhatsappImportacoes)
+        .set({ fonteId: row.id })
+        .where(eq(campanhasWhatsappImportacoes.arquivoId, input.arquivoId));
+      return row;
+    }),
+
+  criarFonteRegrasErp: campanhasProcedure
+    .input(z.object({
+      label: z.string().trim().min(1).max(120),
+      descricao: z.string().trim().max(500).nullish(),
+      regras: z.array(z.object({
+        campo: z.enum(["days_since_purchase", "total_orders", "orders_last_90_days", "quote_status", "days_since_quote", "orders_after_latest_quote"]),
+        operador: z.enum(["eq", "neq", "gt", "gte", "lt", "lte"]),
+        valor: z.union([z.number().int().min(0).max(100000), z.enum(["pending", "won", "lost", "other"])]),
+      })).min(1).max(10),
+    }).superRefine((input, ctx) => {
+      input.regras.forEach((regra, index) => {
+        if (regra.campo === "quote_status" && typeof regra.valor !== "string") ctx.addIssue({ code: "custom", path: ["regras", index, "valor"], message: "Status de orçamento deve ser texto." });
+        if (regra.campo !== "quote_status" && typeof regra.valor !== "number") ctx.addIssue({ code: "custom", path: ["regras", index, "valor"], message: "Este campo exige um número inteiro." });
+        if (regra.campo === "quote_status" && !["eq", "neq"].includes(regra.operador)) ctx.addIssue({ code: "custom", path: ["regras", index, "operador"], message: "Status de orçamento aceita igualdade ou diferença." });
+      });
+    }))
+    .mutation(async ({ input }) => {
+      const db = await obterDb();
+      const existentes = await db.select({ chave: campanhasWhatsappFontes.chave }).from(campanhasWhatsappFontes);
+      const chaves = new Set(existentes.map(e => e.chave));
+      const base = gerarChaveCategoria(input.label);
+      let chave = base;
+      for (let n = 2; chaves.has(chave); n++) chave = `${base}_${n}`;
+      const [row] = await db.insert(campanhasWhatsappFontes).values({
+        tipo: "regras_erp",
+        chave,
+        label: input.label,
+        descricao: input.descricao || null,
+        regrasErp: { versao: 1, regras: input.regras },
+      }).returning();
       return row;
     }),
 
@@ -2334,6 +2590,15 @@ export const campanhasWhatsappRouter = router({
               )
               .onConflictDoNothing({ target: campanhasWhatsappOptout.telefone })
               .returning({ id: campanhasWhatsappOptout.id });
+      if (validos.size) {
+        await db.update(campanhasWhatsappInscricoes).set({
+          status: "opt_out", proximoEnvioEm: null, motivoFim: "opt_out_registrado_manualmente",
+          leaseToken: null, leaseAte: null, updatedAt: new Date(),
+        }).where(and(
+          inArray(campanhasWhatsappInscricoes.telefoneE164, [...validos].map(telefone => `+${telefone}`)),
+          inArray(campanhasWhatsappInscricoes.status, ["aguardando", "enviando", "pendente_conciliacao", "pausado_por_resposta"]),
+        ));
+      }
       return {
         adicionados: inseridos.length,
         jaExistiam: validos.size - inseridos.length,
@@ -2341,7 +2606,7 @@ export const campanhasWhatsappRouter = router({
       };
     }),
 
-  removerOptOut: campanhasProcedure
+  removerOptOut: adminCampanhasProcedure
     .input(z.object({ id: z.number().int() }))
     .mutation(async ({ input }) => {
       const db = await obterDb();

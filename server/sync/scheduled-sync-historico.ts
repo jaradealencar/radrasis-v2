@@ -65,19 +65,19 @@ function primeiroTelefone(os: MubiSysOS): string {
   return numeroDe(escolhido);
 }
 
-const HISTORICO_OS_COLS = [
+export const HISTORICO_OS_COLS = [
   'osNumero', 'tipoOs', 'empresa', 'trabalho', 'logistica', 'dataAprovacao', 'dataEntrega', 'dataFaturamento',
   'status', 'vendedor', 'valorTotal', 'descontos', 'valorOs', 'materiaPrima', 'custoFixo', 'maoDeObra',
   'tarifasFinanceiras', 'comissoesInternas', 'comissoesExternas', 'terceirizados', 'tributos', 'custosTotal',
-  'resultadoReais', 'resultadoPct', 'contribuicaoReais', 'contribuicaoPct', 'cidade', 'estado', 'telefone', 'mes', 'ano',
+  'resultadoReais', 'resultadoPct', 'contribuicaoReais', 'contribuicaoPct', 'cidade', 'estado', 'telefone', 'clienteId', 'cnpj', 'mes', 'ano',
 ];
 
-const HISTORICO_ORC_COLS = [
+export const HISTORICO_ORC_COLS = [
   'orcNumero', 'empresa', 'trabalho', 'dataCadastro', 'validade', 'vendedor', 'status', 'motivoCancelamento',
   'total', 'custosTotal', 'margemLiquida', 'clienteId', 'mes', 'ano',
 ];
 
-function osParaLinha(os: MubiSysOS, mes: number, ano: number): Record<string, unknown> {
+export function osParaLinha(os: MubiSysOS, mes: number, ano: number): Record<string, unknown> {
   const valorTotal = Number((os as any).valor_total) || 0;
   const valorDesconto = Number((os as any).valor_desconto) || 0;
   const valorCusto = Number((os as any).valor_custo) || 0;
@@ -116,12 +116,14 @@ function osParaLinha(os: MubiSysOS, mes: number, ano: number): Record<string, un
     cidade,
     estado: estado ? String(estado).slice(0, 2) : null,
     telefone: telefone || null,
+    clienteId: Number.isInteger(os.cliente_id) && os.cliente_id > 0 ? os.cliente_id : null,
+    cnpj: os.cliente_cnpj_cpf ? String(os.cliente_cnpj_cpf).replace(/\D/g, "").slice(0, 20) : null,
     mes,
     ano,
   };
 }
 
-function orcParaLinha(orc: MubiSysOrcamento, mes: number, ano: number): Record<string, unknown> {
+export function orcParaLinha(orc: MubiSysOrcamento, mes: number, ano: number): Record<string, unknown> {
   return {
     orcNumero: String(orc.sequencial_orcamento || orc.id || ''),
     empresa: nomeCliente(orc.cliente),
@@ -141,7 +143,7 @@ function orcParaLinha(orc: MubiSysOrcamento, mes: number, ano: number): Record<s
 }
 
 /** Upsert em lotes por `INSERT ... ON CONFLICT DO UPDATE` — ver nota de topo sobre maxDuration. */
-async function upsertEmLotes(table: string, cols: string[], linhas: Record<string, unknown>[], conflictCol: string, batchSize = 150) {
+export async function upsertEmLotes(table: string, cols: string[], linhas: Record<string, unknown>[], conflictCol: string, batchSize = 150) {
   if (linhas.length === 0) return 0;
   const pool = getPool();
   const colList = cols.map(c => `"${c}"`).join(', ');
