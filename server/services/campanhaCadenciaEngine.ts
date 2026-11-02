@@ -866,5 +866,3 @@ export async function registrarOptOutInbound(telefone: string, nome: string | nu
     .where(and(eq(campanhasWhatsappInscricoes.telefoneE164, e164), inArray(campanhasWhatsappInscricoes.status, [...ESTADOS_ATIVOS])));
   return !!inserted;
 }
-
-\n

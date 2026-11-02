@@ -300,5 +300,3 @@ export async function obterContatosErpAtivos(): Promise<Set<string>> {
     .where(eq(campanhasWhatsappClienteFatos.clienteAtivoErp, true));
   return new Set(rows.map(r => r.telefoneE164));
 }
-
-\n
