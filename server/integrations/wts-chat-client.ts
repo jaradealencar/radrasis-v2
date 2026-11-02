@@ -13,8 +13,73 @@ export interface WtsChatResultadoEnvio {
   ok: boolean;
   status: number;
   erro?: string;
+  /** true quando houve timeout/5xx ou aceite sem ID conciliável; nunca repetir automaticamente. */
+  incerto?: boolean;
   /** Corpo devolvido pela WTS.Chat (cortado em 500 caracteres): é onde aparece o motivo de uma rejeição. */
   resposta?: string;
+}
+
+/**
+ * Envio para a engine: só tenta outro host após 404 explícito. Timeout, erro de rede e 5xx são incertos e
+ * não podem ser repetidos no host alternativo, porque o provedor pode ter enfileirado a mensagem.
+ */
+export async function enviarTemplateWtsSeguro(
+  telefone: string,
+  templateId: string,
+  parameters?: string[],
+): Promise<WtsChatResultadoEnvio> {
+  const authorization = process.env.WTS_CHAT_AUTHORIZATION?.trim();
+  if (!authorization) throw new Error("Configure WTS_CHAT_AUTHORIZATION antes de enviar cadências.");
+  const header = /^Bearer\s/i.test(authorization) ? authorization : `Bearer ${authorization}`;
+  const canalId = obterCanalId();
+  const payload: Record<string, unknown> = {
+    to: telefone.replace(/\D/g, ""),
+    from: obterCanalTelefone(),
+    senderId: canalId,
+    channelId: canalId,
+    templateId,
+  };
+  if (parameters?.length) payload.parameters = parameters;
+
+  const endpoints = [
+    `${CECI_API_BASE_URL}/chat/v1/send/template`,
+    `${WTS_API_BASE_URL}/chat/v1/send/template`,
+  ];
+  for (let i = 0; i < endpoints.length; i++) {
+    try {
+      const response = await fetch(endpoints[i], {
+        method: "POST",
+        headers: { accept: "application/json", "content-type": "application/json", Authorization: header },
+        body: JSON.stringify(payload),
+        signal: AbortSignal.timeout(15_000),
+      });
+      const body = (await response.text().catch(() => "")).slice(0, 500);
+      if (response.status === 404 && i === 0) continue;
+      if (!response.ok) {
+        const incerto = response.status === 408 || response.status >= 500;
+        return {
+          ok: false,
+          status: response.status,
+          incerto,
+          erro: `WTS.Chat respondeu HTTP ${response.status}${body ? `: ${body}` : "."}`,
+          resposta: body,
+        };
+      }
+      const recusa = motivoRecusaNoCorpo(body);
+      if (recusa) return { ok: false, status: response.status, erro: `WTS.Chat recusou: ${recusa}`, resposta: body };
+      return { ok: true, status: response.status, resposta: body };
+    } catch (error) {
+      return {
+        ok: false,
+        status: 0,
+        incerto: true,
+        erro: error instanceof Error && error.name === "TimeoutError"
+          ? "Tempo esgotado ao conectar à WTS.Chat; o resultado precisa de conciliação."
+          : "Falha de rede ao conectar à WTS.Chat; o resultado precisa de conciliação.",
+      };
+    }
+  }
+  return { ok: false, status: 404, erro: "A rota de envio não existe nos hosts conhecidos da WTS.Chat." };
 }
 
 export interface WtsChatResultadoCampanha {
