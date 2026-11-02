@@ -65,11 +65,11 @@ function primeiroTelefone(os: MubiSysOS): string {
   return numeroDe(escolhido);
 }
 
-const HISTORICO_OS_COLS = [
+export const HISTORICO_OS_COLS = [
   'osNumero', 'tipoOs', 'empresa', 'trabalho', 'logistica', 'dataAprovacao', 'dataEntrega', 'dataFaturamento',
   'status', 'vendedor', 'valorTotal', 'descontos', 'valorOs', 'materiaPrima', 'custoFixo', 'maoDeObra',
   'tarifasFinanceiras', 'comissoesInternas', 'comissoesExternas', 'terceirizados', 'tributos', 'custosTotal',
-  'resultadoReais', 'resultadoPct', 'contribuicaoReais', 'contribuicaoPct', 'cidade', 'estado', 'telefone', 'mes', 'ano',
+  'resultadoReais', 'resultadoPct', 'contribuicaoReais', 'contribuicaoPct', 'cidade', 'estado', 'telefone', 'clienteId', 'cnpj', 'mes', 'ano',
 ];
 
 export const HISTORICO_ORC_COLS = [
@@ -77,7 +77,7 @@ export const HISTORICO_ORC_COLS = [
   'total', 'custosTotal', 'margemLiquida', 'clienteId', 'mes', 'ano',
 ];
 
-function osParaLinha(os: MubiSysOS, mes: number, ano: number): Record<string, unknown> {
+export function osParaLinha(os: MubiSysOS, mes: number, ano: number): Record<string, unknown> {
   const valorTotal = Number((os as any).valor_total) || 0;
   const valorDesconto = Number((os as any).valor_desconto) || 0;
   const valorCusto = Number((os as any).valor_custo) || 0;
@@ -116,6 +116,8 @@ function osParaLinha(os: MubiSysOS, mes: number, ano: number): Record<string, un
     cidade,
     estado: estado ? String(estado).slice(0, 2) : null,
     telefone: telefone || null,
+    clienteId: Number.isInteger(os.cliente_id) && os.cliente_id > 0 ? os.cliente_id : null,
+    cnpj: os.cliente_cnpj_cpf ? String(os.cliente_cnpj_cpf).replace(/\D/g, "").slice(0, 20) : null,
     mes,
     ano,
   };
