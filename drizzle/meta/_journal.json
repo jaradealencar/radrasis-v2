@@ -834,6 +834,13 @@
       "when": 1792277660636,
       "tag": "0118_gorgeous_bill_hollister",
       "breakpoints": true
+    },
+    {
+      "idx": 119,
+      "version": "7",
+      "when": 1793638049628,
+      "tag": "0119_campanhas_whatsapp_inbound_polling_cursor",
+      "breakpoints": true
     }
   ]
 }

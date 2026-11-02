@@ -5184,6 +5184,20 @@ export type CampanhaWhatsappMensagemInbound =
 export type InsertCampanhaWhatsappMensagemInbound =
   typeof campanhasWhatsappMensagensInbound.$inferInsert;
 
+/** Cursor durável do polling somente de leitura da API Helena; uma chave por integração/canal. */
+export const campanhasWhatsappInboundPollingCursor = pgTable(
+  "campanhas_whatsapp_inbound_polling_cursor",
+  {
+    chave: varchar("chave", { length: 64 }).primaryKey(),
+    cursorAt: timestamp("cursor_at").notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  }
+);
+export type CampanhaWhatsappInboundPollingCursor =
+  typeof campanhasWhatsappInboundPollingCursor.$inferSelect;
+export type InsertCampanhaWhatsappInboundPollingCursor =
+  typeof campanhasWhatsappInboundPollingCursor.$inferInsert;
+
 // ─── Leads Qualificados por IA (Gemini Flash: Clusters, ICP Score & Objeções) ──────
 // Armazena a qualificação semântica dos contatos que responderam a campanhas.
 // Cada lead é qualificado uma única vez por campanha para controle de custos de tokens.

@@ -40,6 +40,16 @@ Referências oficiais consultadas: [Webhooks Helena](https://helena.readme.io/re
 
 **Bloqueios antes da ativação.** A assinatura documentada aceita `name`, `url`, `enabled` e `events`, sem campo documentado para cabeçalho customizado ou assinatura HMAC. A rota Radrasys continua exigindo `CAMPANHAS_API_KEY` em `Authorization: Bearer` ou `x-api-key`. O parser e seus fixtures locais não comprovam o payload integral nem a autenticação usada nas entregas; antes de ativar, obter da Helena um exemplo sanitizado de `MESSAGE_RECEIVED` e confirmar um mecanismo de autenticação suportado. Nenhuma assinatura foi criada e nenhum tráfego real foi recebido nesta etapa.
 
+### Alternativa de leitura periódica (sem webhook da Helena)
+
+O endpoint protegido `POST /api/v1/campaigns/process-buffers` também pode importar respostas usando a API oficial de leitura da Helena: lista sessões do canal configurado em `CECI_CHANNEL_ID` (ou no ID padrão existente), depois consulta as mensagens por sessão. Só mensagens `direction = TO_HUB` entram no buffer; `FROM_HUB` é ignorada. A gravação usa `campanhas_whatsapp_mensagens_inbound.mensagem_id_externo`, cuja restrição única torna reexecuções idempotentes. Um cursor durável por canal é armazenado em `campanhas_whatsapp_inbound_polling_cursor` (migration `0119`); o cursor só avança depois que todas as páginas foram lidas e as mensagens foram gravadas.
+
+O polling fica **desligado por padrão** (`CAMPANHAS_CECI_POLLING_ENABLED=false`) e reutiliza `WTS_CHAT_AUTHORIZATION`; o token precisa ter permissão de leitura da API Helena, algo que não foi validado nesta implementação. A primeira consulta começa até 7 dias antes; consultas seguintes usam o cursor persistido com sobreposição de 48 horas. Uma indisponibilidade superior à janela móvel pode deixar mensagens antigas de fora. Falhas da leitura são reportadas na resposta do cron e não impedem a consolidação de buffers que já estejam no banco.
+
+O cron QStash que já chama `process-buffers` precisa continuar ativo. Não foi feita chamada real à API, não houve leitura do banco ou envio de WhatsApp nesta implementação. A atribuição continua usando a regra existente de associar a resposta ao envio mais recente do telefone; o polling não consegue distinguir respostas de campanhas simultâneas.
+
+Referências da API usada: [listar sessões](https://helena.readme.io/reference/get_v2-session.md) e [listar mensagens de uma sessão](https://helena.readme.io/reference/get_v1-session-id-message.md).
+
 **Por que não Redis.** O deploy é Vercel serverless (ver AGENTS.md: o rate-limiting da aplicação já foi
 desligado em produção porque o `MemoryStore` do `express-rate-limit` não sobrevive entre instâncias — mesmo
 problema valeria para uma fila em memória). O buffer de debounce é a própria tabela

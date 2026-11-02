@@ -28,6 +28,8 @@ import {
   consolidarBuffersVencidos,
   registrarMensagemInbound,
 } from "../services/campanhasWhatsappInboundBuffer";
+import { sincronizarRespostasHelena } from "../services/campanhasWhatsappHelenaPolling";
+import { HelenaChatApiError } from "../integrations/helena-chat-client";
 import type { TipoMensagemInbound } from "../../shared/campanhas-whatsapp-ia";
 
 function responderErro(res: Response, erro: unknown, rota: string) {
@@ -297,8 +299,28 @@ export function registrarRotasCampanhasWhatsappInbound(app: Express) {
           Math.max(Number(req.query.limite) || 25, 1),
           100
         );
+        let polling:
+          | Awaited<ReturnType<typeof sincronizarRespostasHelena>>
+          | {
+              estado: "falhou";
+              motivo: string;
+            };
+        try {
+          polling = await sincronizarRespostasHelena();
+        } catch (erro) {
+          const motivo =
+            erro instanceof HelenaChatApiError
+              ? `API Helena HTTP ${erro.status || "sem resposta"}`
+              : "falha no polling de respostas";
+          console.error(`[campanhas-whatsapp-inbound] polling: ${motivo}`);
+          polling = { estado: "falhou", motivo };
+        }
         const resultados = await consolidarBuffersVencidos(limite);
-        res.status(200).json({ processados: resultados.length, resultados });
+        res.status(200).json({
+          polling,
+          processados: resultados.length,
+          resultados,
+        });
       } catch (erro) {
         responderErro(res, erro, "process-buffers");
       }
