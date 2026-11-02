@@ -6,12 +6,15 @@ Guia para agentes de IA (e humanos) trabalhando neste repositório.
 
 Radrasys — sistema interno de gestão (logística, qualidade, comercial,
 financeiro, RH) originado do template "Manus webdev fullstack", mas já sem
-nenhuma dependência do Forge (Manus) ou do Gemini — banco é Postgres, auth é
-Better Auth local-only, LLM é OpenAI, storage é UploadThing (ver
+nenhuma dependência do Forge (Manus) — banco é Postgres, auth é Better Auth
+local-only, LLM é predominantemente OpenAI, storage é UploadThing (ver
 `docs/webdev-template-guide.md` para as convenções originais do
 template — **cuidado**: esse doc ainda descreve o template original em
 MySQL/Manus OAuth/Forge "puro"; onde ele divergir do que está escrito aqui,
-este AGENTS.md vale, não ele).
+este AGENTS.md vale, não ele). **Exceção pontual ao Gemini:** a qualificação
+de leads de Campanhas WhatsApp usa `@google/generative-ai` (Gemini Flash,
+Structured Output), isolado em `server/integrations/gemini-client.ts` e
+`server/services/campanhasWhatsappIa.ts`; não é uma dependência geral do app.
 
 Stack: React 19 + Tailwind 4 + Vite 7 no client (SPA servida pelo próprio
 Express); Express 4 + tRPC 11 no server (`superjson` como transformer —
@@ -287,11 +290,15 @@ server/
   db/                  acesso a dados (Drizzle + pg puro via getPool()): db.ts, db-connection.ts,
                        db-helpers*.ts, storage.ts
   integrations/        clientes de APIs externas: mubisys-client.ts, mubisys-frete.ts,
-                       opencnpj-client.ts (consulta de CNPJ, sem chave), wts-chat-client.ts (envio do template de marketing WTS.Chat para clientes de primeira compra)
+                       opencnpj-client.ts (consulta de CNPJ, sem chave), wts-chat-client.ts (envio do template de marketing WTS.Chat para clientes de primeira compra),
+                       gemini-client.ts (Structured Output para qualificação de leads de campanhas) e
+                       helena-chat-client.ts (polling somente de leitura de mensagens inbound)
   services/            lógica de domínio reutilizada por routers; manter funções
                        puras quando não precisarem de I/O:
                        inteligenciaClientes.ts (RFM/classificação/funil/previsão
-                       comercial), qualificacaoLeadCnpj.ts (score de lead por CNPJ)
+                       comercial), qualificacaoLeadCnpj.ts (score de lead por CNPJ),
+                       campanhasWhatsappIa.ts (qualificação e resumo de leads) e
+                       campanhasWhatsappInboundBuffer.ts (filtro de bot e debounce de respostas)
                        (telefones das campanhas: `server/sync/clientes-mubisys.ts` espelha o cadastro
                        de clientes do MubiSys em `mubisys_clientes_cache`, atualizado sozinho ao abrir
                        o painel de Campanhas; 429 da API tem retentativa e o lote tem orçamento de 40s),
@@ -310,7 +317,8 @@ server/
   routes/              rotas REST fora do tRPC: publico-guia-fornecedores.ts (CORS aberto, site
                        espelho: listagem pública, busca por CEP em raio de 300km com cálculo Haversine e fallback dos 2 mais próximos,
                        questionário público de enriquecimento de parceiros por token com logo, cidades vizinhas e produtos fabricados;
-                       tabela `guia_fornecedores_questionarios` na migration 0116), campanhas-whatsapp-api.ts (webhooks com chave CAMPANHAS_API_KEY)
+                       tabela `guia_fornecedores_questionarios` na migration 0116), campanhas-whatsapp-api.ts (webhooks com chave CAMPANHAS_API_KEY),
+                       campanhas-whatsapp-inbound.ts (webhook de mensagens recebidas e consolidação do buffer de debounce, com CAMPANHAS_API_KEY)
                        e price-table-api.ts (export somente-leitura da Tabela de Preços com chave
                        PRICE_TABLE_API_KEY, para o precificador automatizado externo),
                        estudio-cotacoes.ts (cotações do HTML estático do CPQ, snapshots comerciais imutáveis e vínculo posterior com OS MubiSys),
@@ -391,11 +399,13 @@ descartável isolado, como o serviço Postgres do workflow de qualidade.
 - **Vendas/ABC do MubiSys na Tabela de Preços (07/10/2026):** `server/services/mubisysVendas.ts` sincroniza OS faturadas por mês ao abrir a calculadora, com TTL de 6 h, grava as linhas em `mubisys_vendas_itens`, status em `mubisys_vendas_sync_status` e ABC em `abc_cache`; `server/services/priceTableImpact.ts` cruza snapshots do histórico com vendas pelos IDs de produtos e modelos afiliados. Migrações `0099_precos_vendas_mubisys` e `0100_afiliacao_blocos_tabela_preco` criam tabelas de vendas, pareamento, afiliações e histórico; `0101_afiliacao_modelos_faixa_preco` permite afiliar o produto inteiro ou modelos específicos (`null` significa todos). A edição pode começar em qualquer uma das tabelas e é espelhada no bloco pareado. Sincronização externa de setembro e outubro/2026 foi validada; token MubiSys ainda é renovação manual. Detalhes em `docs/integracao-mubisys.md`.
 - **Painéis de preço e metas (07/10/2026):** `server/services/priceTableRevenueAnalysis.ts` fornece `price.getRevenueAnalysis` (protegido por login) para o dashboard da Tabela de Preços e o painel Previsões. Reutiliza metas comerciais (fallback explícito à meta operacional), vendas/ABC MubiSys, pareamento e afiliações cadastradas e snapshots de cotação com OS; o detalhe de faixa exibe margem atual e preço/margem observados quando o snapshot vincula a OS àquela faixa. Receita de venda sem faixa permanece no nível produto/modelo; o painel expõe cobertura, lacunas de afiliação, categorias e limitações de previsão/causalidade. Componente compartilhado: `client/src/components/PriceRevenueDashboard.tsx`.
 - **Campanhas WhatsApp via WTS.Chat / Ceci.Chat (atualizado 20/10/2026):** cada campanha guarda o **ID do template aprovado pela Meta** (`campanhas_whatsapp.wts_template_id`, migration `0105`, campo em Editar campanha); em Ver contatos, `campanhasWhatsapp.dispararWts` envia o template aos contatos prontos (até 100 por clique) diretamente pelo canal oficial do WhatsApp e registra o disparo no Radrasis (cadência, quarentena e histórico centralizados no Radrasys, usando a Ceci apenas para envio). **Envio é sequencial, 1 contato por vez com intervalo de 1,2 s** (`INTERVALO_DISPARO_WTS_MS`), não em paralelo: achado em teste real (16/10/2026) — disparo com 8 chamadas simultâneas era aceito pela Ceci (HTTP 200/`QUEUED`/`READ`) mas **não chegava** ao WhatsApp do destinatário (confirmado com número novo, sem conversa prévia); o mesmo número recebeu na hora quando enviado isolado pela API ou manualmente pela tela da Ceci. Durante o disparo, as telas de envio exibem cronômetro em tempo real (segundos decorridos), tempo estimado e barra de progresso suave, orientando o usuário sobre o ritmo seguro. **O status HTTP 200/`QUEUED`/`READ` do endpoint não garante entrega** — só a confirmação no aparelho do destinatário prova. As respostas dos clientes chegam normalmente no atendimento da Ceci.Chat. A janela também permite testar o template em um telefone digitado (`campanhasWhatsapp.testarNumeroWts`): envia só para esse número e não registra disparo nem altera cadência/quarentena/histórico. Gatilho de venda ainda é manual. O upload de listas aceita CSV/XLSX/XLS/XML e se ajusta sozinho (`shared/lista-contatos.ts`), e `normalizarTelefone` insere o 9º dígito em celulares de 8 dígitos para compatibilidade com a Meta/WhatsApp. `server/integrations/wts-chat-client.ts` envia um objeto `PublicReqSendTemplateSingleDTO` na raiz do JSON para `POST /chat/v1/send/template` em `api.app.ceci.chat`, com `to`, `from` (telefone canal `5511942666377`), `templateId`, `parameters` como objeto quando o template tiver variáveis, `senderId` UUID novo por mensagem (identificador de rastreamento do sistema chamador) e `channelId` fixo do canal físico da Ceci (`b13d2257-af6d-4cbb-a4fd-fa73069ae863`). Para consultar até dez mensagens aceitas, prioriza o `statusUrl` devolvido no aceite (`/v1/send/message/{id}`) e usa `GET /chat/v1/message/{id}/status` como alternativa. Configure `WTS_CHAT_AUTHORIZATION` como segredo no servidor (`WTS_CHAT_TEMPLATE_ID` não é mais lido). **"Ver envios" no Histórico (migration `0115`, tabela `campanhas_whatsapp_disparo_itens`):** cada disparo pode ter a lista detalhada de contatos com status individual — `dispararWts` grava sozinho (origem "auto", com o `wts_mensagem_id` do aceite); disparos antigos/upload/webhook recuperam a lista automaticamente de `campanhas_whatsapp_contatos_historico` cruzada com o cadastro de clientes/OS, ou preenchida pela **lista manual** (`salvarItensDisparoManual`, dentro do próprio diálogo "Ver envios": cola `telefone`, `telefone, nome` ou `telefone, nome, idDaMensagem`). Status é consultado **só sob demanda** (botão "Atualizar status", nunca ao abrir a lista) por `atualizarStatusItensDisparo`, que tenta `GET /chat/v1/send/message/{id}` (WTS e Ceci) além da `statusUrl`/rota documentada já existentes. `classificarStatusWts` (`shared/campanhas-whatsapp.ts`) resume READ/DELIVERED/SENT/QUEUED/.../FAILED em 5 classes (lido/entregue/na_fila/falha/sem_consulta), reaproveitada no resumo em badges e na amostra pós-disparo. Detalhes em `docs/campanhas-whatsapp.md`.
+- **Respostas e qualificação de leads de campanhas:** `POST /api/v1/campaigns/whatsapp-inbound` recebe eventos da Helena/Ceci ou Meta; os eventos são deduplicados, mensagens enviadas pelo próprio hub são ignoradas e respostas humanas passam pelo filtro de bot e buffer com debounce antes da qualificação por IA. `POST /api/v1/campaigns/process-buffers` consolida o buffer e atualiza `campanhas_whatsapp_leads_qualificados`; a interface mostra qualificação, resumo, intenção, objeção e métricas. O polling Helena é somente leitura, usa `WTS_CHAT_AUTHORIZATION`, importa apenas mensagens inbound e persiste cursor por canal. `CAMPANHAS_CECI_POLLING_ENABLED` deve permanecer `false` até a migration `0118` do cursor estar aplicada no ambiente isolado e o token de leitura ser validado. Detalhes em `docs/campanhas-whatsapp-ia.md`.
 - `docs/migracao-postgres-better-auth.md` — plano ativo da migração
   MySQL→Postgres/Better Auth (ver aviso no topo deste arquivo). **O doc mais
   importante pra entender o estado real do banco/auth agora.**
 - `docs/campanhas-whatsapp.md` — módulo Campanhas WhatsApp (aba ao lado de ROI Marketing): regras de
   cadência/quarentena/pós-venda, modelo de dados e contrato dos webhooks REST.
+- `docs/campanhas-whatsapp-ia.md` — respostas inbound, filtro de bot, debounce, qualificação Gemini, métricas e polling de leitura da Helena.
 - `docs/protecao-ambientes-banco-publicacao.md` — separação entre build,
   migrations e testes; confirmações locais e configurações externas de Vercel/GitHub pendentes.
 - `docs/cpq-cores-materiais-pre-nesting.md` — análise, aprovação e custo de cores do CPQ antes do nesting.

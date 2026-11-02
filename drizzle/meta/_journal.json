@@ -820,6 +820,20 @@
       "when": 1792505937931,
       "tag": "0116_pink_nebula",
       "breakpoints": true
+    },
+    {
+      "idx": 117,
+      "version": "7",
+      "when": 1793644962314,
+      "tag": "0117_campaigns_whatsapp_features",
+      "breakpoints": true
+    },
+    {
+      "idx": 118,
+      "version": "7",
+      "when": 1793644975447,
+      "tag": "0118_campanhas_whatsapp_inbound_polling_cursor",
+      "breakpoints": true
     }
   ]
 }
