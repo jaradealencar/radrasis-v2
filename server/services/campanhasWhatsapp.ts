@@ -6,8 +6,19 @@
  */
 
 import {
-  calcularProximoEnvio, classificarSemaforo, dataIsoValida, diasEntre, normalizarTelefone, semNumeroDeTelefone, somarDias,
-  DIAS_UTEIS_MINIMOS_POS_VENDA, JANELA_SEMANA_DIAS, type SemaforoCampanha, type StatusCampanha, type TipoCampanha,
+  calcularProximoEnvio,
+  classificarSemaforo,
+  dataIsoValida,
+  diasEntre,
+  normalizarTelefone,
+  semNumeroDeTelefone,
+  somarDias,
+  DIAS_UTEIS_MINIMOS_POS_VENDA,
+  JANELA_SEMANA_DIAS,
+  type RegraCadencia,
+  type SemaforoCampanha,
+  type StatusCampanha,
+  type TipoCampanha,
 } from "../../shared/campanhas-whatsapp";
 import { adicionarDiasUteisComFeriados } from "../../shared/feriados-nacionais";
 import { parseDataFlexivel } from "./inteligenciaClientes";
@@ -75,7 +86,7 @@ export function higienizarLista(
   quarentena: ReadonlyMap<string, string>,
   dataEnvio: string,
   quarentenaDias: number,
-  bloqueados: ReadonlySet<string> = new Set(),
+  bloqueados: ReadonlySet<string> = new Set()
 ): ResultadoHigienizacao {
   const enviar: ContatoLimpo[] = [];
   const ignoradosBloqueados: ContatoBloqueado[] = [];
@@ -88,14 +99,25 @@ export function higienizarLista(
     const os = String(c.osNumero ?? "").trim();
     const telefone = normalizarTelefone(c.telefone);
     if (!telefone) {
-      invalidos.push({ telefoneOriginal: String(c.telefone ?? "").trim(), nome, motivo: semNumeroDeTelefone(c.telefone) ? "sem_telefone" : "telefone_invalido" });
+      invalidos.push({
+        telefoneOriginal: String(c.telefone ?? "").trim(),
+        nome,
+        motivo: semNumeroDeTelefone(c.telefone)
+          ? "sem_telefone"
+          : "telefone_invalido",
+      });
       continue;
     }
 
     if (vistos.has(telefone)) {
       const mantido = vistos.get(telefone);
-      if (mantido && os && !mantido.osNumeros.includes(os)) mantido.osNumeros.push(os);
-      invalidos.push({ telefoneOriginal: String(c.telefone ?? "").trim(), nome, motivo: "duplicado" });
+      if (mantido && os && !mantido.osNumeros.includes(os))
+        mantido.osNumeros.push(os);
+      invalidos.push({
+        telefoneOriginal: String(c.telefone ?? "").trim(),
+        nome,
+        motivo: "duplicado",
+      });
       continue;
     }
 
@@ -106,9 +128,18 @@ export function higienizarLista(
     }
 
     const ultimo = quarentena.get(telefone);
-    if (quarentenaDias > 0 && ultimo && Math.abs(diasEntre(ultimo, dataEnvio)) < quarentenaDias) {
+    if (
+      quarentenaDias > 0 &&
+      ultimo &&
+      Math.abs(diasEntre(ultimo, dataEnvio)) < quarentenaDias
+    ) {
       vistos.set(telefone, null);
-      ignoradosQuarentena.push({ telefone, nome, ultimoContatoEm: ultimo, disponivelEm: somarDias(ultimo, quarentenaDias) });
+      ignoradosQuarentena.push({
+        telefone,
+        nome,
+        ultimoContatoEm: ultimo,
+        disponivelEm: somarDias(ultimo, quarentenaDias),
+      });
       continue;
     }
 
@@ -139,15 +170,24 @@ export function filtrarPorCadenciaCampanha(
   contatos: ContatoLimpo[],
   historicoCampanha: ReadonlyMap<string, string>,
   dataEnvio: string,
-  frequenciaDias: number,
-): { aprovados: ContatoLimpo[]; descartadosCadencia: ContatoDescartadoCadencia[] } {
-  if (frequenciaDias <= 0) return { aprovados: contatos, descartadosCadencia: [] };
+  frequenciaDias: number
+): {
+  aprovados: ContatoLimpo[];
+  descartadosCadencia: ContatoDescartadoCadencia[];
+} {
+  if (frequenciaDias <= 0)
+    return { aprovados: contatos, descartadosCadencia: [] };
   const aprovados: ContatoLimpo[] = [];
   const descartadosCadencia: ContatoDescartadoCadencia[] = [];
   for (const c of contatos) {
     const ultimo = historicoCampanha.get(c.telefone);
     if (ultimo && Math.abs(diasEntre(ultimo, dataEnvio)) < frequenciaDias) {
-      descartadosCadencia.push({ telefone: c.telefone, nome: c.nome, ultimoEnvioNaCampanha: ultimo, disponivelEm: somarDias(ultimo, frequenciaDias) });
+      descartadosCadencia.push({
+        telefone: c.telefone,
+        nome: c.nome,
+        ultimoEnvioNaCampanha: ultimo,
+        disponivelEm: somarDias(ultimo, frequenciaDias),
+      });
     } else {
       aprovados.push(c);
     }
@@ -202,13 +242,19 @@ export function dataLocalParaIso(d: Date): string {
  */
 export function listarVendasPosVenda(
   linhas: LinhaVenda[],
-  campanha: { frequenciaDias: number; gatilhoAPartirDe: string | null; gatilhoAte?: string | null },
+  campanha: {
+    frequenciaDias: number;
+    gatilhoAPartirDe: string | null;
+    gatilhoAte?: string | null;
+  },
   hoje: string,
-  osJaContatadas: ReadonlySet<string>,
+  osJaContatadas: ReadonlySet<string>
 ): { pendentes: VendaPosVenda[]; proximas: VendaPosVenda[] } {
   const pendentes: VendaPosVenda[] = [];
   const proximas: VendaPosVenda[] = [];
-  const isoDe = (valor: string | null | undefined): { iso: string; data: Date } | null => {
+  const isoDe = (
+    valor: string | null | undefined
+  ): { iso: string; data: Date } | null => {
     const dt = parseDataFlexivel(valor ?? null);
     if (!dt) return null;
     const iso = dataLocalParaIso(dt);
@@ -225,15 +271,31 @@ export function listarVendasPosVenda(
     if (!dataCompra) continue;
     if (dataCompra > hoje) continue;
     if (faturamento && faturamento.iso > hoje) continue; // data no futuro = erro de cadastro, não é venda faturada
-    if (campanha.gatilhoAPartirDe && dataCompra < campanha.gatilhoAPartirDe) continue;
+    if (campanha.gatilhoAPartirDe && dataCompra < campanha.gatilhoAPartirDe)
+      continue;
     // Data final da apuração (opcional): compras depois dela ficam de fora. Sem ela, a lista é permanente.
     if (campanha.gatilhoAte && dataCompra > campanha.gatilhoAte) continue;
 
     // Nunca antes de 16 dias úteis (sem feriados nacionais) após a aprovação — pedido do usuário 03/10/2026.
-    const piso = aprovacao ? dataLocalParaIso(adicionarDiasUteisComFeriados(aprovacao.data, DIAS_UTEIS_MINIMOS_POS_VENDA)) : null;
-    const porFaturamento = faturamento ? somarDias(faturamento.iso, campanha.frequenciaDias) : null;
-    const prazo = [piso, porFaturamento].filter((d): d is string => !!d).sort().pop()!;
-    const valor = l.valorOs === null || l.valorOs === undefined || l.valorOs === "" ? null : Number(l.valorOs);
+    const piso = aprovacao
+      ? dataLocalParaIso(
+          adicionarDiasUteisComFeriados(
+            aprovacao.data,
+            DIAS_UTEIS_MINIMOS_POS_VENDA
+          )
+        )
+      : null;
+    const porFaturamento = faturamento
+      ? somarDias(faturamento.iso, campanha.frequenciaDias)
+      : null;
+    const prazo = [piso, porFaturamento]
+      .filter((d): d is string => !!d)
+      .sort()
+      .pop()!;
+    const valor =
+      l.valorOs === null || l.valorOs === undefined || l.valorOs === ""
+        ? null
+        : Number(l.valorOs);
     const venda: VendaPosVenda = {
       osNumero,
       empresa: String(l.empresa ?? "").trim(),
@@ -248,7 +310,8 @@ export function listarVendasPosVenda(
     (prazo <= hoje ? pendentes : proximas).push(venda);
   }
 
-  const porPrazo = (a: VendaPosVenda, b: VendaPosVenda) => a.prazo.localeCompare(b.prazo) || a.osNumero.localeCompare(b.osNumero);
+  const porPrazo = (a: VendaPosVenda, b: VendaPosVenda) =>
+    a.prazo.localeCompare(b.prazo) || a.osNumero.localeCompare(b.osNumero);
   pendentes.sort(porPrazo);
   proximas.sort(porPrazo);
   return { pendentes, proximas };
@@ -279,29 +342,44 @@ export function agruparPorCliente(vendas: VendaPosVenda[]): ClientePosVenda[] {
     const atual = mapa.get(chave);
     if (!atual) {
       mapa.set(chave, {
-        chave, empresa: v.empresa, telefone: v.telefone, vendedor: v.vendedor, osNumeros: [v.osNumero],
-        valor: v.valor ?? 0, dataCompra: compra, prazo: v.prazo, diasAtraso: v.diasAtraso,
+        chave,
+        empresa: v.empresa,
+        telefone: v.telefone,
+        vendedor: v.vendedor,
+        osNumeros: [v.osNumero],
+        valor: v.valor ?? 0,
+        dataCompra: compra,
+        prazo: v.prazo,
+        diasAtraso: v.diasAtraso,
       });
       continue;
     }
     atual.osNumeros.push(v.osNumero);
     atual.valor += v.valor ?? 0;
     if (compra < atual.dataCompra) atual.dataCompra = compra;
-    if (v.prazo < atual.prazo) { atual.prazo = v.prazo; atual.diasAtraso = v.diasAtraso; }
+    if (v.prazo < atual.prazo) {
+      atual.prazo = v.prazo;
+      atual.diasAtraso = v.diasAtraso;
+    }
   }
   return [...mapa.values()];
 }
 
-
 /** Resumo em CLIENTES únicos (não em OS): quem já pode receber e quem ainda aguarda o prazo. */
-export function resumirVendas(listas: { pendentes: VendaPosVenda[]; proximas: VendaPosVenda[] }): ResumoVendasCampanha {
+export function resumirVendas(listas: {
+  pendentes: VendaPosVenda[];
+  proximas: VendaPosVenda[];
+}): ResumoVendasCampanha {
   const prontos = agruparPorCliente(listas.pendentes);
   const chavesProntas = new Set(prontos.map(c => c.chave));
-  const aguardando = agruparPorCliente(listas.proximas).filter(c => !chavesProntas.has(c.chave));
+  const aguardando = agruparPorCliente(listas.proximas).filter(
+    c => !chavesProntas.has(c.chave)
+  );
   return {
     pendentes: prontos.length,
     aguardando: aguardando.length,
-    prazoMaisProximo: listas.pendentes[0]?.prazo ?? listas.proximas[0]?.prazo ?? null,
+    prazoMaisProximo:
+      listas.pendentes[0]?.prazo ?? listas.proximas[0]?.prazo ?? null,
   };
 }
 
@@ -311,6 +389,8 @@ export interface CampanhaParaStatus {
   tipo: TipoCampanha;
   status: StatusCampanha;
   frequenciaDias: number;
+  regraCadencia?: RegraCadencia | null;
+  diaFixoMes?: number | null;
   /** Data de criação (`YYYY-MM-DD`): vira o 1º prazo de uma recorrente que nunca foi disparada. */
   criadaEm: string;
 }
@@ -333,30 +413,83 @@ export interface StatusDaCampanha {
 }
 
 /**
- * Recorrente: próximo = último envio + frequência ATUAL da campanha (editar a frequência reflete na hora); sem
- * nenhum envio, o prazo é a data de criação (nasce vermelha — foi criada para ser disparada).
+ * Recorrente: próximo = último envio + regra de cadência (dias corridos, fim de mês ou dia fixo); sem
+ * nenhum envio, o prazo é a data de criação (ou o fim do mês corrente se for fim_de_mes).
  * Gatilho: vermelho se há venda com prazo vencido; senão, o menor prazo futuro; sem vendas a vencer, verde e sem data.
  */
 export function montarStatusCampanha(
   campanha: CampanhaParaStatus,
   ultimoEnvio: string | null,
   hoje: string,
-  vendas?: ResumoVendasCampanha,
+  vendas?: ResumoVendasCampanha
 ): StatusDaCampanha {
   if (campanha.status !== "ativa") {
-    return { semaforo: null, ultimoEnvio, proximoEnvio: null, primeiroDisparoPendente: false };
+    return {
+      semaforo: null,
+      ultimoEnvio,
+      proximoEnvio: null,
+      primeiroDisparoPendente: false,
+    };
   }
 
   if (campanha.tipo === "gatilho_venda") {
     if (vendas && vendas.pendentes > 0) {
-      return { semaforo: "vermelho", ultimoEnvio, proximoEnvio: vendas.prazoMaisProximo, primeiroDisparoPendente: false };
+      return {
+        semaforo: "vermelho",
+        ultimoEnvio,
+        proximoEnvio: vendas.prazoMaisProximo,
+        primeiroDisparoPendente: false,
+      };
     }
     const proximo = vendas?.prazoMaisProximo ?? null;
-    return { semaforo: proximo ? classificarSemaforo(proximo, hoje) : "verde", ultimoEnvio, proximoEnvio: proximo, primeiroDisparoPendente: false };
+    return {
+      semaforo: proximo ? classificarSemaforo(proximo, hoje) : "verde",
+      ultimoEnvio,
+      proximoEnvio: proximo,
+      primeiroDisparoPendente: false,
+    };
   }
 
-  const proximoEnvio = ultimoEnvio ? calcularProximoEnvio(ultimoEnvio, campanha.frequenciaDias) : campanha.criadaEm;
-  return { semaforo: classificarSemaforo(proximoEnvio, hoje), ultimoEnvio, proximoEnvio, primeiroDisparoPendente: !ultimoEnvio };
+  const regra = campanha.regraCadencia ?? "dias_corridos";
+  let proximoEnvio: string;
+  if (ultimoEnvio) {
+    proximoEnvio = calcularProximoEnvio(
+      ultimoEnvio,
+      campanha.frequenciaDias,
+      regra,
+      campanha.diaFixoMes
+    );
+  } else {
+    // 1º prazo: se for fim_de_mes, o primeiro envio já nasce no fim do mês corrente da criação.
+    if (regra === "fim_de_mes") {
+      const ano = Number(campanha.criadaEm.slice(0, 4));
+      const mes = Number(campanha.criadaEm.slice(5, 7));
+      const ult = new Date(Date.UTC(ano, mes, 0)).getUTCDate();
+      proximoEnvio = `${ano}-${String(mes).padStart(2, "0")}-${String(ult).padStart(2, "0")}`;
+    } else if (regra === "dia_fixo_mes") {
+      const ano = Number(campanha.criadaEm.slice(0, 4));
+      const mes = Number(campanha.criadaEm.slice(5, 7));
+      const dia = Number(campanha.criadaEm.slice(8, 10));
+      const alvo = Math.max(1, Math.min(31, campanha.diaFixoMes ?? 1));
+      const ult = new Date(Date.UTC(ano, mes, 0)).getUTCDate();
+      if (dia <= alvo) {
+        proximoEnvio = `${ano}-${String(mes).padStart(2, "0")}-${String(Math.min(alvo, ult)).padStart(2, "0")}`;
+      } else {
+        const proxMes = mes === 12 ? 1 : mes + 1;
+        const proxAno = mes === 12 ? ano + 1 : ano;
+        const ultProx = new Date(Date.UTC(proxAno, proxMes, 0)).getUTCDate();
+        proximoEnvio = `${proxAno}-${String(proxMes).padStart(2, "0")}-${String(Math.min(alvo, ultProx)).padStart(2, "0")}`;
+      }
+    } else {
+      proximoEnvio = campanha.criadaEm;
+    }
+  }
+  return {
+    semaforo: classificarSemaforo(proximoEnvio, hoje),
+    ultimoEnvio,
+    proximoEnvio,
+    primeiroDisparoPendente: !ultimoEnvio,
+  };
 }
 
 export interface ResumoCampanhas {
@@ -368,8 +501,12 @@ export interface ResumoCampanhas {
 }
 
 export function resumirCampanhas(
-  campanhas: Array<{ status: StatusCampanha; proximoEnvio: string | null; semaforo: SemaforoCampanha | null }>,
-  hoje: string,
+  campanhas: Array<{
+    status: StatusCampanha;
+    proximoEnvio: string | null;
+    semaforo: SemaforoCampanha | null;
+  }>,
+  hoje: string
 ): ResumoCampanhas {
   const ativas = campanhas.filter(c => c.status === "ativa");
   return {
@@ -389,18 +526,35 @@ export function resumirCampanhas(
  * Datas previstas de uma campanha recorrente dentro de [inicio, fim]: o próximo envio (mesmo atrasado) e a cadeia
  * seguinte. Se o próximo envio já passou, a cadeia recomeça de hoje (assume-se que o disparo atrasado sai hoje —
  * prever a partir da data vencida colocaria no calendário datas que já são impossíveis).
+ * Respeita regras de fim de mês e dia fixo.
  */
 export function expandirPrevistos(
-  proximoEnvio: string, frequenciaDias: number, hoje: string, inicio: string, fim: string, limite = 120,
+  proximoEnvio: string,
+  frequenciaDias: number,
+  hoje: string,
+  inicio: string,
+  fim: string,
+  limite = 120,
+  regraCadencia: RegraCadencia = "dias_corridos",
+  diaFixoMes?: number | null
 ): string[] {
-  if (frequenciaDias < 1) return [];
+  if (regraCadencia === "dias_corridos" && frequenciaDias < 1) return [];
   const datas: string[] = [];
-  const empurrar = (d: string) => { if (d >= inicio && d <= fim) datas.push(d); };
+  const empurrar = (d: string) => {
+    if (d >= inicio && d <= fim) datas.push(d);
+  };
 
   empurrar(proximoEnvio);
   let cursor = proximoEnvio < hoje ? hoje : proximoEnvio;
   for (let i = 0; i < limite; i++) {
-    cursor = somarDias(cursor, frequenciaDias);
+    const proximo = calcularProximoEnvio(
+      cursor,
+      frequenciaDias,
+      regraCadencia,
+      diaFixoMes
+    );
+    if (proximo <= cursor) break; // trava de segurança contra loop
+    cursor = proximo;
     if (cursor > fim) break;
     empurrar(cursor);
   }

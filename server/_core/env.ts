@@ -7,6 +7,9 @@ export const ENV = {
   // Consultor de IA do Painel da Meta (server/services/consultorLlm.ts): tenta os provedores
   // com chave configurada, nesta ordem — Gemini (tem plano gratuito), Claude, OpenAI.
   // CONSULTOR_IA_PROVEDOR ("gemini" | "anthropic" | "openai") força um só provedor.
+  // Mesma chave também usada pela qualificação de leads de Campanhas WhatsApp via SDK oficial
+  // @google/generative-ai (server/integrations/gemini-client.ts, server/services/campanhasWhatsappIa.ts) —
+  // decisão específica desse módulo (17/10/2026), ver AGENTS.md sobre o resto do app usar OpenAI.
   geminiApiKey: process.env.GEMINI_API_KEY ?? "",
   geminiModel: process.env.GEMINI_MODEL ?? "gemini-2.5-flash",
   consultorProvedor: process.env.CONSULTOR_IA_PROVEDOR ?? "",

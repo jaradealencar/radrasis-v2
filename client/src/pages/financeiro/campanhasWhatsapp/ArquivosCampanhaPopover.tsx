@@ -4,6 +4,7 @@ import { Download, FolderOpen, Loader2, Trash2, Upload, X } from "lucide-react";
 import { trpc } from "@/lib/trpc";
 import { enviarArquivo } from "@/lib/upload";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Spinner } from "@/components/ui/spinner";
 
@@ -23,6 +24,7 @@ function fmtBytes(n: number): string {
 export default function ArquivosCampanhaPopover({ campanhaId }: { campanhaId: number }) {
   const [open, setOpen] = useState(false);
   const [enviando, setEnviando] = useState(false);
+  const [optInConfirmado, setOptInConfirmado] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const utils = trpc.useUtils();
 
@@ -39,13 +41,20 @@ export default function ArquivosCampanhaPopover({ campanhaId }: { campanhaId: nu
 
   async function handleFile(file: File | undefined) {
     if (!file) return;
+    const ehLista = /\.(csv|txt|xls|xlsx|xml)$/i.test(file.name);
+    if (ehLista && !optInConfirmado) {
+      toast.error("Confirme que os contatos da planilha autorizaram mensagens pelo WhatsApp.");
+      if (inputRef.current) inputRef.current.value = "";
+      return;
+    }
     setEnviando(true);
     let uploadConcluido = false;
     try {
       const up = await enviarArquivo("documento", file);
       uploadConcluido = true;
-      await adicionar.mutateAsync({ campanhaId, nome: file.name, url: up.url, tamanhoBytes: file.size });
-      toast.success("Arquivo salvo.");
+      await adicionar.mutateAsync({ campanhaId, nome: file.name, url: up.url, tamanhoBytes: file.size, optInConfirmado: ehLista && optInConfirmado });
+      toast.success(ehLista ? "Lista importada com confirmação de opt-in." : "Arquivo salvo.");
+      setOptInConfirmado(false);
     } catch (erro) {
       const detalhe = erro instanceof Error ? erro.message : "Tente novamente.";
       toast.error(
@@ -74,6 +83,10 @@ export default function ArquivosCampanhaPopover({ campanhaId }: { campanhaId: nu
 
         <div className="p-3 space-y-3 bg-gray-50">
           <input ref={inputRef} type="file" className="hidden" onChange={e => { handleFile(e.target.files?.[0]); e.target.value = ""; }} />
+          <label className="flex items-start gap-2 rounded-md border bg-white p-2 text-xs text-slate-700 cursor-pointer">
+            <Checkbox checked={optInConfirmado} onCheckedChange={v => setOptInConfirmado(v === true)} className="mt-0.5" />
+            <span>Confirmo que os contatos de uma planilha autorizaram o recebimento de mensagens pelo WhatsApp. A confirmação e o usuário responsável ficam registrados no lote.</span>
+          </label>
           <Button type="button" variant="outline" size="sm" className="w-full gap-1.5 border-amber-400 text-amber-700 hover:bg-amber-50"
             onClick={() => inputRef.current?.click()} disabled={enviando}>
             {enviando ? <Spinner className="size-3.5" /> : <Upload size={14} />} {enviando ? "Enviando..." : "Enviar arquivo"}
