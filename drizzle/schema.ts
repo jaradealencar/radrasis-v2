@@ -5840,6 +5840,32 @@ export const trainingLessonProgress = pgTable(
   })
 );
 
+export const trainingEnrollments = pgTable(
+  "training_enrollments",
+  {
+    id: serial("id").primaryKey(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    subjectId: integer("subject_id")
+      .notNull()
+      .references(() => trainingSubjects.id, { onDelete: "cascade" }),
+    enrolledAt: timestamp("enrolled_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  t => ({
+    userSubjectUnique: uniqueIndex("training_enrollments_user_subject_uq").on(
+      t.userId,
+      t.subjectId
+    ),
+    subjectEnrolledAtIdx: index("training_enrollments_subject_enrolled_at_idx").on(
+      t.subjectId,
+      t.enrolledAt
+    ),
+  })
+);
+
 export const trainingLessonVersions = pgTable(
   "training_lesson_versions",
   {

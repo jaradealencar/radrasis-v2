@@ -5,6 +5,7 @@ import {
   trainingAssessments,
   trainingAttemptAnswers,
   trainingAttempts,
+  trainingEnrollments,
   trainingLessons,
   trainingLessonProgress,
   trainingLessonVersions,
@@ -83,6 +84,28 @@ function getDatabase() {
       });
     return db;
   });
+}
+
+async function requireEnrollment(
+  db: Awaited<ReturnType<typeof getDatabase>>,
+  userId: string,
+  subjectId: number
+) {
+  const [enrollment] = await db
+    .select({ id: trainingEnrollments.id })
+    .from(trainingEnrollments)
+    .where(
+      and(
+        eq(trainingEnrollments.userId, userId),
+        eq(trainingEnrollments.subjectId, subjectId)
+      )
+    )
+    .limit(1);
+  if (!enrollment)
+    throw new TRPCError({
+      code: "FORBIDDEN",
+      message: "Matricule-se nesta matéria antes de acessar as provas.",
+    });
 }
 
 const trainingProcedure = protectedProcedure.use(async ({ ctx, next }) => {
@@ -457,7 +480,7 @@ export const treinamentoRouter = router({
 
   subject: trainingProcedure
     .input(z.object({ id: z.number().int().positive() }))
-    .query(async ({ input }) => {
+    .query(async ({ ctx, input }) => {
       const db = await getDatabase();
       const [subject] = await db
         .select()
@@ -491,7 +514,7 @@ export const treinamentoRouter = router({
           code: "NOT_FOUND",
           message: "Setor não encontrado.",
         });
-      const [lessons, assessments] = await Promise.all([
+      const [lessons, assessments, enrollment] = await Promise.all([
         db
           .select()
           .from(trainingLessons)
@@ -522,8 +545,61 @@ export const treinamentoRouter = router({
             )
           )
           .orderBy(asc(trainingAssessments.position)),
+        db
+          .select({ enrolledAt: trainingEnrollments.enrolledAt })
+          .from(trainingEnrollments)
+          .where(
+            and(
+              eq(trainingEnrollments.userId, ctx.user.id),
+              eq(trainingEnrollments.subjectId, subject.id)
+            )
+          )
+          .limit(1),
       ]);
-      return { ...subject, sector, lessons, assessments };
+      return {
+        ...subject,
+        sector,
+        lessons,
+        assessments,
+        isEnrolled: Boolean(enrollment[0]),
+        enrolledAt: enrollment[0]?.enrolledAt ?? null,
+      };
+    }),
+
+  enrollSubject: trainingProcedure
+    .input(z.object({ subjectId: z.number().int().positive() }))
+    .mutation(async ({ ctx, input }) => {
+      const db = await getDatabase();
+      const [subject] = await db
+        .select({ id: trainingSubjects.id })
+        .from(trainingSubjects)
+        .innerJoin(
+          trainingSectors,
+          eq(trainingSubjects.sectorId, trainingSectors.id)
+        )
+        .where(
+          and(
+            eq(trainingSubjects.id, input.subjectId),
+            eq(trainingSubjects.isPublished, true),
+            isNull(trainingSubjects.archivedAt),
+            eq(trainingSectors.isPublished, true),
+            isNull(trainingSectors.archivedAt)
+          )
+        )
+        .limit(1);
+      if (!subject)
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "Matéria indisponível para matrícula.",
+        });
+
+      await db
+        .insert(trainingEnrollments)
+        .values({ userId: ctx.user.id, subjectId: subject.id })
+        .onConflictDoNothing({
+          target: [trainingEnrollments.userId, trainingEnrollments.subjectId],
+        });
+      return { ok: true };
     }),
 
   markLessonComplete: trainingProcedure
@@ -756,6 +832,19 @@ export const treinamentoRouter = router({
           code: "NOT_FOUND",
           message: "Tentativa não encontrada.",
         });
+      if (attempt.userId === ctx.user.id) {
+        const [assessment] = await db
+          .select({ subjectId: trainingAssessments.subjectId })
+          .from(trainingAssessments)
+          .where(eq(trainingAssessments.id, attempt.assessmentId))
+          .limit(1);
+        if (!assessment)
+          throw new TRPCError({
+            code: "NOT_FOUND",
+            message: "Avaliação não encontrada.",
+          });
+        await requireEnrollment(db, ctx.user.id, assessment.subjectId);
+      }
       if (attempt.status !== "completed")
         throw new TRPCError({
           code: "PRECONDITION_FAILED",
@@ -836,6 +925,7 @@ export const treinamentoRouter = router({
           code: "NOT_FOUND",
           message: "Matéria indisponível.",
         });
+      await requireEnrollment(db, ctx.user.id, subject.id);
       const [sector] = await db
         .select({ id: trainingSectors.id })
         .from(trainingSectors)
@@ -925,6 +1015,7 @@ export const treinamentoRouter = router({
           message: "Tentativa indisponível.",
         });
       const snapshot = attempt.snapshot as unknown as AssessmentSnapshot;
+      await requireEnrollment(db, ctx.user.id, snapshot.subjectId);
       const question = getQuestion(snapshot, input.questionKey);
       const isPractice = attempt.mode === "practice";
       const existing = await db
@@ -1060,6 +1151,7 @@ export const treinamentoRouter = router({
           message: "Esta tentativa já foi concluída.",
         });
       const snapshot = attempt.snapshot as unknown as AssessmentSnapshot;
+      await requireEnrollment(db, ctx.user.id, snapshot.subjectId);
       const answers = await db
         .select()
         .from(trainingAttemptAnswers)

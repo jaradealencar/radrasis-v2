@@ -862,6 +862,13 @@
       "when": 1794535174234,
       "tag": "0122_nifty_toro",
       "breakpoints": true
+    },
+    {
+      "idx": 123,
+      "version": "7",
+      "when": 1794537196347,
+      "tag": "0123_easy_blacklash",
+      "breakpoints": true
     }
   ]
 }

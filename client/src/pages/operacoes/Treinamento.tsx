@@ -1304,7 +1304,15 @@ export default function Treinamento() {
   );
   const currentQuestion = attempt?.questions[questionIndex];
   const activeScenario = scenarioNode ?? currentQuestion?.config;
+  const enrollSubject = trpc.treinamento.enrollSubject.useMutation({
+    onSuccess: async () => {
+      await utils.treinamento.subject.invalidate({ id: subjectId ?? 0 });
+      toast.success("Matrícula confirmada. As avaliações foram liberadas.");
+    },
+    onError: error => toast.error(error.message),
+  });
   const startAttempt = trpc.treinamento.startAttempt.useMutation({
+    onError: error => toast.error(error.message),
     onSuccess: data => {
       setAttempt(data as AttemptView);
       setQuestionIndex(0);
@@ -1752,9 +1760,27 @@ export default function Treinamento() {
                         {subject.description}
                       </CardDescription>
                     </div>
-                    <Badge variant="outline">
-                      {currentProgress?.progressPercent ?? 0}% concluído
-                    </Badge>
+                    <div className="flex flex-col items-end gap-2">
+                      <Badge variant="outline">
+                        {currentProgress?.progressPercent ?? 0}% concluído
+                      </Badge>
+                      {subject.isEnrolled ? (
+                        <Badge variant="secondary">
+                          Matriculado · {formatDate(subject.enrolledAt)}
+                        </Badge>
+                      ) : (
+                        <Button
+                          onClick={() =>
+                            enrollSubject.mutate({ subjectId: subject.id })
+                          }
+                          disabled={enrollSubject.isPending}
+                        >
+                          {enrollSubject.isPending
+                            ? "Matriculando…"
+                            : "Matricular-se"}
+                        </Button>
+                      )}
+                    </div>
                   </div>
                 </CardHeader>
                 <CardContent>
@@ -1836,6 +1862,12 @@ export default function Treinamento() {
                     </CardDescription>
                   </CardHeader>
                   <CardContent className="space-y-3">
+                    {!subject.isEnrolled && (
+                      <div className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-950">
+                        Matricule-se nesta matéria para liberar as provas. As
+                        aulas continuam disponíveis.
+                      </div>
+                    )}
                     {subject.assessments.map((assessment: any) => (
                       <div
                         key={assessment.id}
@@ -1850,7 +1882,9 @@ export default function Treinamento() {
                             <Button
                               size="sm"
                               onClick={() => start(assessment.id, "practice")}
-                              disabled={startAttempt.isPending}
+                              disabled={
+                                !subject.isEnrolled || startAttempt.isPending
+                              }
                             >
                               <Play className="mr-1 h-4 w-4" />
                               Praticar
@@ -1861,7 +1895,9 @@ export default function Treinamento() {
                               size="sm"
                               variant="outline"
                               onClick={() => start(assessment.id, "formal")}
-                              disabled={startAttempt.isPending}
+                              disabled={
+                                !subject.isEnrolled || startAttempt.isPending
+                              }
                             >
                               <LockKeyhole className="mr-1 h-4 w-4" />
                               Avaliação formal
