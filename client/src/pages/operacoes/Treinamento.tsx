@@ -76,6 +76,8 @@ type SimulatedStudent = {
   attempts: SimulatedAttempt[];
 };
 
+const QUESTIONS_PER_MODULE = 10;
+
 const EMPTY_SECTOR = {
   name: "",
   slug: "",
@@ -2098,6 +2100,7 @@ export default function Treinamento() {
   const [orderedIds, setOrderedIds] = useState<string[]>([]);
   const [scenarioNode, setScenarioNode] = useState<any>(null);
   const [answerResult, setAnswerResult] = useState<any>(null);
+  const [moduleCheckpoint, setModuleCheckpoint] = useState(false);
   const [finalResult, setFinalResult] = useState<any>(null);
   const [savingLesson, setSavingLesson] = useState(false);
   const [reviewAttemptId, setReviewAttemptId] = useState<number | undefined>();
@@ -2131,6 +2134,19 @@ export default function Treinamento() {
     (item: any) => item.id === lessonId
   );
   const currentQuestion = attempt?.questions[questionIndex];
+  const currentModuleNumber =
+    Math.floor(questionIndex / QUESTIONS_PER_MODULE) + 1;
+  const moduleCount = attempt
+    ? Math.ceil(attempt.questions.length / QUESTIONS_PER_MODULE)
+    : 0;
+  const moduleStartQuestion =
+    (currentModuleNumber - 1) * QUESTIONS_PER_MODULE + 1;
+  const moduleEndQuestion = attempt
+    ? Math.min(
+        currentModuleNumber * QUESTIONS_PER_MODULE,
+        attempt.questions.length
+      )
+    : 0;
   const activeScenario = scenarioNode ?? currentQuestion?.config;
   const enrollSubject = trpc.treinamento.enrollSubject.useMutation({
     onSuccess: async () => {
@@ -2141,7 +2157,7 @@ export default function Treinamento() {
   });
   const startAttempt = trpc.treinamento.startAttempt.useMutation({
     onError: error => toast.error(error.message),
-    onSuccess: data => {
+    onSuccess: async data => {
       setAttempt(data as AttemptView);
       setQuestionIndex(data.initialQuestionIndex ?? 0);
       setSelected("");
@@ -2151,6 +2167,8 @@ export default function Treinamento() {
         data.currentQuestionAnswered ? { questionComplete: true } : null
       );
       setFinalResult(null);
+      setModuleCheckpoint(false);
+      await utils.treinamento.subject.invalidate({ id: subjectId ?? 0 });
     },
   });
   const submitAnswer = trpc.treinamento.submitAnswer.useMutation({
@@ -2169,6 +2187,7 @@ export default function Treinamento() {
         utils.treinamento.resultsReport.invalidate(),
         utils.treinamento.assignmentReport.invalidate(),
         utils.treinamento.leaderboardReport.invalidate(),
+        utils.treinamento.subject.invalidate({ id: subjectId ?? 0 }),
       ]);
     },
   });
@@ -2245,6 +2264,8 @@ export default function Treinamento() {
     if (!attempt || !currentQuestion) return;
     if (questionIndex + 1 >= attempt.questions.length)
       completeAttempt.mutate({ attemptId: attempt.attemptId });
+    else if ((questionIndex + 1) % QUESTIONS_PER_MODULE === 0)
+      setModuleCheckpoint(true);
     else {
       setQuestionIndex(questionIndex + 1);
       setSelected("");
@@ -2256,6 +2277,16 @@ export default function Treinamento() {
     setAttempt(null);
     setFinalResult(null);
     setAnswerResult(null);
+    setModuleCheckpoint(false);
+    void utils.treinamento.subject.invalidate({ id: subjectId ?? 0 });
+  };
+  const continueToNextModule = () => {
+    setQuestionIndex(questionIndex + 1);
+    setSelected("");
+    setOrderedIds([]);
+    setScenarioNode(null);
+    setAnswerResult(null);
+    setModuleCheckpoint(false);
   };
   const toggleMulti = (id: string) =>
     setSelected(previous =>
@@ -2380,6 +2411,33 @@ export default function Treinamento() {
           </CardContent>
         </Card>
       );
+    if (attempt && moduleCheckpoint)
+      return (
+        <Card className="mx-auto max-w-4xl">
+          <CardHeader>
+            <Badge variant="secondary" className="w-fit">
+              Módulo {currentModuleNumber} concluído
+            </Badge>
+            <CardTitle className="text-2xl">Seu progresso foi salvo</CardTitle>
+            <CardDescription>
+              Você concluiu as questões {moduleStartQuestion} a{" "}
+              {moduleEndQuestion}. A nota final será calculada quando todos os
+              módulos forem concluídos.
+            </CardDescription>
+            <Progress
+              value={(moduleEndQuestion / attempt.questions.length) * 100}
+            />
+          </CardHeader>
+          <CardContent className="flex flex-wrap gap-2">
+            <Button onClick={continueToNextModule}>
+              Continuar para o módulo {currentModuleNumber + 1}
+            </Button>
+            <Button variant="outline" onClick={closeAttempt}>
+              Sair e retomar depois
+            </Button>
+          </CardContent>
+        </Card>
+      );
     if (attempt && currentQuestion) {
       const options =
         currentQuestion.type === "negotiation"
@@ -2409,19 +2467,30 @@ export default function Treinamento() {
                     : "Avaliação formal"}
                 </Badge>
                 <Badge variant="outline">v{attempt.version}</Badge>
+                <Badge variant="secondary">
+                  Módulo {currentModuleNumber} de {moduleCount}
+                </Badge>
               </div>
               <Button variant="ghost" size="sm" onClick={closeAttempt}>
-                Sair da avaliação
+                Sair e retomar depois
               </Button>
             </div>
             <CardTitle>{attempt.title}</CardTitle>
             <CardDescription>
-              Questão {questionIndex + 1} de {attempt.questions.length} ·{" "}
-              {currentQuestion.points} ponto(s)
+              Módulo {currentModuleNumber} de {moduleCount} · questões{" "}
+              {moduleStartQuestion}–{moduleEndQuestion}
+              <span className="block">
+                Questão {questionIndex + 1} de {attempt.questions.length} ·{" "}
+                {currentQuestion.points} ponto(s)
+              </span>
             </CardDescription>
             <Progress
               value={(questionIndex / attempt.questions.length) * 100}
             />
+            <p className="mt-2 text-xs text-muted-foreground">
+              Cada resposta enviada fica salva. Você pode sair e retomar esta
+              tentativa; a nota só aparece ao concluir todos os módulos.
+            </p>
           </CardHeader>
           <CardContent>
             <h3 className="text-lg font-semibold leading-7">
@@ -2930,7 +2999,9 @@ export default function Treinamento() {
                               }
                             >
                               <Play className="mr-1 h-4 w-4" />
-                              Praticar
+                              {assessment.hasActivePracticeAttempt
+                                ? "Retomar prática"
+                                : "Praticar"}
                             </Button>
                           )}
                           {assessment.allowFormal &&

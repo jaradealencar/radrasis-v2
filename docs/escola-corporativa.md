@@ -23,6 +23,8 @@ Antes de iniciar qualquer prova de uma matéria, o usuário deve se matricular n
 
 Instrutores aplicam uma avaliação formal publicada aos alunos já matriculados, escolhendo os destinatários, a data limite e de 1 a 20 tentativas. O servidor valida novamente a publicação e a matrícula no momento da aplicação e do início. Cada tentativa fica vinculada à aplicação; uma prova em andamento pode ser retomada, o limite considera tentativas iniciadas e as concluídas mostram suas notas individualmente para o aluno e no relatório do instrutor. O acesso à prova e às notas requer matrícula ativa.
 
+As avaliações são divididas automaticamente em módulos sequenciais de até 10 questões, conforme o total da versão iniciada (por exemplo, 29 questões formam três módulos). Cada questão enviada é salva; o aluno pode sair a qualquer momento e retomar a tentativa aberta pela mesma avaliação. Ao concluir um módulo, pode avançar ou sair e voltar depois. O sistema calcula a nota somente ao concluir o último módulo. A prática também retoma a tentativa em andamento.
+
 O painel administrativo também apresenta o ranking de cada avaliação formal concluída. Cada aluno aparece uma vez por avaliação, com sua melhor nota, data da nota e quantidade de tentativas concluídas. Notas iguais compartilham a posição; as práticas não entram no ranking.
 
 ## Cobertura integral da avaliação de Técnicas de Closer

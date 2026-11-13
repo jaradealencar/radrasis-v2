@@ -905,6 +905,23 @@ export const treinamentoRouter = router({
         ]);
       const visibleAssignedExams = enrollment[0] ? assignedExams : [];
       const assessmentIds = assessments.map(assessment => assessment.id);
+      const activePracticeAttempts =
+        enrollment[0] && assessmentIds.length
+          ? await db
+              .select({
+                assessmentId: trainingAttempts.assessmentId,
+              })
+              .from(trainingAttempts)
+              .where(
+                and(
+                  eq(trainingAttempts.userId, ctx.user.id),
+                  eq(trainingAttempts.mode, "practice"),
+                  eq(trainingAttempts.status, "in_progress"),
+                  inArray(trainingAttempts.assessmentId, assessmentIds)
+                )
+              )
+              .orderBy(desc(trainingAttempts.startedAt))
+          : [];
       const subjectMaterials =
         enrollment[0] && assessmentIds.length
           ? await db
@@ -957,6 +974,9 @@ export const treinamentoRouter = router({
         lessons,
         assessments: assessments.map(assessment => ({
           ...assessment,
+          hasActivePracticeAttempt: activePracticeAttempts.some(
+            attempt => attempt.assessmentId === assessment.id
+          ),
           materials: materialsByAssessment.get(assessment.id) ?? [],
         })),
         isEnrolled: Boolean(enrollment[0]),
@@ -1855,6 +1875,27 @@ export const treinamentoRouter = router({
               code: "FORBIDDEN",
               message: "Você já usou todas as tentativas desta prova.",
             });
+        } else {
+          const [activeAttempt] = await tx
+            .select()
+            .from(trainingAttempts)
+            .where(
+              and(
+                eq(trainingAttempts.userId, ctx.user.id),
+                eq(trainingAttempts.assessmentId, assessment.id),
+                eq(trainingAttempts.mode, "practice"),
+                eq(trainingAttempts.status, "in_progress")
+              )
+            )
+            .orderBy(desc(trainingAttempts.startedAt))
+            .for("update")
+            .limit(1);
+          if (activeAttempt)
+            return {
+              attempt: activeAttempt,
+              assignmentStudentId: null,
+              resumed: true,
+            };
         }
 
         const [createdAttempt] = await tx
