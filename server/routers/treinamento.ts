@@ -1,10 +1,12 @@
-import { and, asc, desc, eq, isNull } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNull } from "drizzle-orm";
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import {
   trainingAssessments,
   trainingAttemptAnswers,
   trainingAttempts,
+  trainingExamAssignmentStudents,
+  trainingExamAssignments,
   trainingEnrollments,
   trainingLessons,
   trainingLessonProgress,
@@ -73,6 +75,22 @@ type AssessmentSnapshot = {
   version: number;
   subjectId: number;
   questions: SnapshotQuestion[];
+};
+type AssignmentAttemptReport = {
+  id: number;
+  mode: string;
+  status: string;
+  score: string | null;
+  startedAt: Date;
+  completedAt: Date | null;
+};
+type AssignmentStudentReport = {
+  id: number;
+  assignmentId: number;
+  userId: string;
+  name: string;
+  assignedAt: Date;
+  attempts: AssignmentAttemptReport[];
 };
 
 function getDatabase() {
@@ -514,7 +532,7 @@ export const treinamentoRouter = router({
           code: "NOT_FOUND",
           message: "Setor não encontrado.",
         });
-      const [lessons, assessments, enrollment] = await Promise.all([
+      const [lessons, assessments, enrollment, assignedExams] = await Promise.all([
         db
           .select()
           .from(trainingLessons)
@@ -555,7 +573,59 @@ export const treinamentoRouter = router({
             )
           )
           .limit(1),
+        db
+          .select({
+            assignmentStudentId: trainingExamAssignmentStudents.id,
+            assignmentId: trainingExamAssignments.id,
+            assessmentId: trainingAssessments.id,
+            title: trainingAssessments.title,
+            deadlineAt: trainingExamAssignments.dueAt,
+            maxAttempts: trainingExamAssignments.maxAttempts,
+            assignedAt: trainingExamAssignmentStudents.assignedAt,
+          })
+          .from(trainingExamAssignmentStudents)
+          .innerJoin(
+            trainingExamAssignments,
+            eq(
+              trainingExamAssignmentStudents.assignmentId,
+              trainingExamAssignments.id
+            )
+          )
+          .innerJoin(
+            trainingAssessments,
+            eq(trainingExamAssignments.assessmentId, trainingAssessments.id)
+          )
+          .where(
+            and(
+              eq(trainingExamAssignmentStudents.userId, ctx.user.id),
+              eq(trainingAssessments.subjectId, subject.id)
+            )
+          )
+          .orderBy(asc(trainingExamAssignments.dueAt)),
       ]);
+      const visibleAssignedExams = enrollment[0] ? assignedExams : [];
+      const visibleAssignmentStudentIds = visibleAssignedExams.map(
+        assignment => assignment.assignmentStudentId
+      );
+      const assignedAttempts = visibleAssignmentStudentIds.length
+        ? await db
+            .select({
+              id: trainingAttempts.id,
+              assignmentStudentId: trainingAttempts.assignmentStudentId,
+              status: trainingAttempts.status,
+              score: trainingAttempts.score,
+              startedAt: trainingAttempts.startedAt,
+              completedAt: trainingAttempts.completedAt,
+            })
+            .from(trainingAttempts)
+            .where(
+              inArray(
+                trainingAttempts.assignmentStudentId,
+                visibleAssignmentStudentIds
+              )
+            )
+            .orderBy(desc(trainingAttempts.startedAt))
+        : [];
       return {
         ...subject,
         sector,
@@ -563,6 +633,18 @@ export const treinamentoRouter = router({
         assessments,
         isEnrolled: Boolean(enrollment[0]),
         enrolledAt: enrollment[0]?.enrolledAt ?? null,
+        assignedExams: visibleAssignedExams.map(assignment => ({
+          ...assignment,
+          attempts: assignedAttempts
+            .filter(
+              attempt =>
+                attempt.assignmentStudentId ===
+                assignment.assignmentStudentId
+            )
+            .map(({ assignmentStudentId: _assignmentStudentId, ...attempt }) =>
+              attempt
+            ),
+        })),
       };
     }),
 
@@ -600,6 +682,221 @@ export const treinamentoRouter = router({
           target: [trainingEnrollments.userId, trainingEnrollments.subjectId],
         });
       return { ok: true };
+    }),
+
+  enrolledStudents: trainingEditorProcedure
+    .input(z.object({ subjectId: z.number().int().positive() }))
+    .query(async ({ input }) => {
+      const db = await getDatabase();
+      return db
+        .select({
+          userId: trainingEnrollments.userId,
+          name: userTable.name,
+          enrolledAt: trainingEnrollments.enrolledAt,
+        })
+        .from(trainingEnrollments)
+        .innerJoin(userTable, eq(trainingEnrollments.userId, userTable.id))
+        .where(eq(trainingEnrollments.subjectId, input.subjectId))
+        .orderBy(asc(userTable.name));
+    }),
+
+  createExamAssignment: trainingEditorProcedure
+    .input(
+      z.object({
+        assessmentId: z.number().int().positive(),
+        dueAt: z.date(),
+        maxAttempts: z.number().int().min(1).max(20),
+        userIds: z
+          .array(z.string().min(1).max(128))
+          .min(1)
+          .max(200)
+          .refine(ids => new Set(ids).size === ids.length, {
+            message: "Selecione cada aluno uma única vez.",
+          }),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      if (input.dueAt.getTime() <= Date.now())
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "O prazo da prova precisa estar no futuro.",
+        });
+      const db = await getDatabase();
+      return db.transaction(async tx => {
+        const [assessment] = await tx
+          .select({
+            id: trainingAssessments.id,
+            subjectId: trainingAssessments.subjectId,
+            allowFormal: trainingAssessments.allowFormal,
+          })
+          .from(trainingAssessments)
+          .where(
+            and(
+              eq(trainingAssessments.id, input.assessmentId),
+              eq(trainingAssessments.isPublished, true),
+              isNull(trainingAssessments.archivedAt)
+            )
+          )
+          .limit(1);
+        if (!assessment || !assessment.allowFormal)
+          throw new TRPCError({
+            code: "PRECONDITION_FAILED",
+            message: "Publique uma avaliação formal antes de aplicá-la.",
+          });
+
+        const [subject] = await tx
+          .select({ id: trainingSubjects.id })
+          .from(trainingSubjects)
+          .innerJoin(
+            trainingSectors,
+            eq(trainingSubjects.sectorId, trainingSectors.id)
+          )
+          .where(
+            and(
+              eq(trainingSubjects.id, assessment.subjectId),
+              eq(trainingSubjects.isPublished, true),
+              isNull(trainingSubjects.archivedAt),
+              eq(trainingSectors.isPublished, true),
+              isNull(trainingSectors.archivedAt)
+            )
+          )
+          .limit(1);
+        if (!subject)
+          throw new TRPCError({
+            code: "PRECONDITION_FAILED",
+            message: "A matéria da avaliação não está publicada.",
+          });
+
+        const enrolled = await tx
+          .select({ userId: trainingEnrollments.userId })
+          .from(trainingEnrollments)
+          .where(
+            and(
+              eq(trainingEnrollments.subjectId, subject.id),
+              inArray(trainingEnrollments.userId, input.userIds)
+            )
+          );
+        if (enrolled.length !== input.userIds.length)
+          throw new TRPCError({
+            code: "PRECONDITION_FAILED",
+            message:
+              "Todos os alunos selecionados precisam estar matriculados nesta matéria.",
+          });
+
+        const [assignment] = await tx
+          .insert(trainingExamAssignments)
+          .values({
+            assessmentId: assessment.id,
+            dueAt: input.dueAt,
+            maxAttempts: input.maxAttempts,
+            createdBy: ctx.user.id,
+          })
+          .returning({ id: trainingExamAssignments.id });
+        await tx.insert(trainingExamAssignmentStudents).values(
+          enrolled.map(student => ({
+            assignmentId: assignment.id,
+            userId: student.userId,
+          }))
+        );
+        return { ok: true, assignmentId: assignment.id, assigned: enrolled.length };
+      });
+    }),
+
+  assignmentReport: trainingEditorProcedure
+    .input(
+      z.object({ subjectId: z.number().int().positive().optional() }).optional()
+    )
+    .query(async ({ input }) => {
+      const db = await getDatabase();
+      const assignmentRows = await db
+        .select({
+          id: trainingExamAssignments.id,
+          assessmentId: trainingAssessments.id,
+          assessmentTitle: trainingAssessments.title,
+          subjectId: trainingSubjects.id,
+          subjectTitle: trainingSubjects.title,
+          dueAt: trainingExamAssignments.dueAt,
+          maxAttempts: trainingExamAssignments.maxAttempts,
+          createdAt: trainingExamAssignments.createdAt,
+        })
+        .from(trainingExamAssignments)
+        .innerJoin(
+          trainingAssessments,
+          eq(trainingExamAssignments.assessmentId, trainingAssessments.id)
+        )
+        .innerJoin(
+          trainingSubjects,
+          eq(trainingAssessments.subjectId, trainingSubjects.id)
+        )
+        .where(
+          input?.subjectId
+            ? eq(trainingSubjects.id, input.subjectId)
+            : undefined
+        )
+        .orderBy(desc(trainingExamAssignments.createdAt));
+      if (!assignmentRows.length) return [];
+
+      const assignmentIds = assignmentRows.map(assignment => assignment.id);
+      const students = await db
+        .select({
+          id: trainingExamAssignmentStudents.id,
+          assignmentId: trainingExamAssignmentStudents.assignmentId,
+          userId: trainingExamAssignmentStudents.userId,
+          name: userTable.name,
+          assignedAt: trainingExamAssignmentStudents.assignedAt,
+        })
+        .from(trainingExamAssignmentStudents)
+        .innerJoin(
+          userTable,
+          eq(trainingExamAssignmentStudents.userId, userTable.id)
+        )
+        .where(
+          inArray(trainingExamAssignmentStudents.assignmentId, assignmentIds)
+        )
+        .orderBy(asc(userTable.name));
+      const studentById = new Map<number, AssignmentStudentReport>(
+        students.map(student => [student.id, { ...student, attempts: [] }])
+      );
+      const studentIds = students.map(student => student.id);
+      if (studentIds.length) {
+        const attempts = await db
+          .select({
+            id: trainingAttempts.id,
+            assignmentStudentId: trainingAttempts.assignmentStudentId,
+            mode: trainingAttempts.mode,
+            status: trainingAttempts.status,
+            score: trainingAttempts.score,
+            startedAt: trainingAttempts.startedAt,
+            completedAt: trainingAttempts.completedAt,
+          })
+          .from(trainingAttempts)
+          .where(inArray(trainingAttempts.assignmentStudentId, studentIds))
+          .orderBy(desc(trainingAttempts.startedAt));
+        for (const attempt of attempts) {
+          if (attempt.assignmentStudentId == null) continue;
+          studentById.get(attempt.assignmentStudentId)?.attempts.push({
+            id: attempt.id,
+            mode: attempt.mode,
+            status: attempt.status,
+            score: attempt.score,
+            startedAt: attempt.startedAt,
+            completedAt: attempt.completedAt,
+          });
+        }
+      }
+      const studentsByAssignment = new Map<number, AssignmentStudentReport[]>();
+      for (const student of studentById.values()) {
+        const assignmentStudents =
+          studentsByAssignment.get(student.assignmentId) ?? [];
+        assignmentStudents.push(student);
+        studentsByAssignment.set(student.assignmentId, assignmentStudents);
+      }
+      return assignmentRows.map(assignment => ({
+        ...assignment,
+        students: (studentsByAssignment.get(assignment.id) ?? []).map(
+          student => studentById.get(student.id)
+        ),
+      }));
     }),
 
   markLessonComplete: trainingProcedure
@@ -884,9 +1181,20 @@ export const treinamentoRouter = router({
       z.object({
         assessmentId: z.number().int().positive(),
         mode: z.enum(MODE),
+        assignmentStudentId: z.number().int().positive().optional(),
       })
     )
     .mutation(async ({ ctx, input }) => {
+      if (input.mode === "formal" && !input.assignmentStudentId)
+        throw new TRPCError({
+          code: "FORBIDDEN",
+          message: "Esta prova formal precisa ser aplicada pelo instrutor.",
+        });
+      if (input.mode === "practice" && input.assignmentStudentId)
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "A matrícula em uma prova vale somente para o modo formal.",
+        });
       const db = await getDatabase();
       const [assessment] = await db
         .select()
@@ -965,23 +1273,149 @@ export const treinamentoRouter = router({
           position: question.position,
         })),
       };
-      const [attempt] = await db
-        .insert(trainingAttempts)
-        .values({
-          userId: ctx.user.id,
-          assessmentId: assessment.id,
-          mode: input.mode,
-          assessmentVersion: assessment.version,
-          snapshot,
-        })
-        .returning({ id: trainingAttempts.id });
+      const attemptState = await db.transaction(async tx => {
+        let assignmentStudentId: number | null = null;
+        if (input.mode === "formal") {
+          const [recipient] = await tx
+            .select()
+            .from(trainingExamAssignmentStudents)
+            .where(
+              and(
+                eq(
+                  trainingExamAssignmentStudents.id,
+                  input.assignmentStudentId!
+                ),
+                eq(trainingExamAssignmentStudents.userId, ctx.user.id)
+              )
+            )
+            .for("update")
+            .limit(1);
+          if (!recipient)
+            throw new TRPCError({
+              code: "FORBIDDEN",
+              message: "Esta prova não foi aplicada para você.",
+            });
+          const [assignment] = await tx
+            .select()
+            .from(trainingExamAssignments)
+            .where(eq(trainingExamAssignments.id, recipient.assignmentId))
+            .limit(1);
+          if (!assignment || assignment.assessmentId !== assessment.id)
+            throw new TRPCError({
+              code: "FORBIDDEN",
+              message: "A atribuição não corresponde a esta avaliação.",
+            });
+          assignmentStudentId = recipient.id;
+
+          const existingAttempts = await tx
+            .select()
+            .from(trainingAttempts)
+            .where(
+              eq(trainingAttempts.assignmentStudentId, recipient.id)
+            )
+            .orderBy(desc(trainingAttempts.startedAt));
+          const activeAttempt = existingAttempts.find(
+            attempt => attempt.status === "in_progress"
+          );
+          if (activeAttempt)
+            return {
+              attempt: activeAttempt,
+              assignmentStudentId,
+              resumed: true,
+            };
+          if (assignment.dueAt.getTime() < Date.now())
+            throw new TRPCError({
+              code: "FORBIDDEN",
+              message: "O prazo desta prova terminou.",
+            });
+          if (existingAttempts.length >= assignment.maxAttempts)
+            throw new TRPCError({
+              code: "FORBIDDEN",
+              message: "Você já usou todas as tentativas desta prova.",
+            });
+        }
+
+        const [createdAttempt] = await tx
+          .insert(trainingAttempts)
+          .values({
+            userId: ctx.user.id,
+            assessmentId: assessment.id,
+            assignmentStudentId,
+            mode: input.mode,
+            assessmentVersion: assessment.version,
+            snapshot,
+          })
+          .returning();
+        return {
+          attempt: createdAttempt,
+          assignmentStudentId,
+          resumed: false,
+        };
+      });
+      const attemptSnapshot = attemptState.resumed
+        ? (attemptState.attempt.snapshot as unknown as AssessmentSnapshot)
+        : snapshot;
+      let initialQuestionIndex = 0;
+      let currentQuestionAnswered = false;
+      let activeNegotiationNodeId: string | undefined;
+      if (attemptState.resumed) {
+        const answers = await db
+          .select()
+          .from(trainingAttemptAnswers)
+          .where(eq(trainingAttemptAnswers.attemptId, attemptState.attempt.id))
+          .orderBy(
+            asc(trainingAttemptAnswers.createdAt),
+            asc(trainingAttemptAnswers.id)
+          );
+        const firstUnanswered = attemptSnapshot.questions.findIndex(question => {
+          const questionAnswers = answers.filter(
+            answer => answer.questionKey === question.key
+          );
+          return question.type === "negotiation"
+            ? !questionAnswers.some(answer => answer.isTerminal)
+            : questionAnswers.length === 0;
+        });
+        if (firstUnanswered === -1) {
+          initialQuestionIndex = Math.max(0, attemptSnapshot.questions.length - 1);
+          currentQuestionAnswered = true;
+        } else {
+          initialQuestionIndex = firstUnanswered;
+          const currentQuestion =
+            attemptSnapshot.questions[initialQuestionIndex];
+          if (currentQuestion.type === "negotiation") {
+            const previousSteps = answers.filter(
+              answer => answer.questionKey === currentQuestion.key
+            );
+            const previousStep = previousSteps.at(-1);
+            if (previousStep) {
+              const response = previousStep.response as {
+                nodeId: string;
+                optionId: string;
+              };
+              activeNegotiationNodeId = getNegotiationOption(
+                currentQuestion,
+                response.nodeId,
+                response.optionId
+              ).option.nextNodeId ?? undefined;
+            }
+          }
+        }
+      }
       return {
         assessmentId: assessment.id,
-        attemptId: attempt.id,
-        mode: input.mode,
-        title: assessment.title,
-        version: assessment.version,
-        questions: snapshot.questions.map(question => publicQuestion(question)),
+        attemptId: attemptState.attempt.id,
+        assignmentStudentId: attemptState.assignmentStudentId,
+        initialQuestionIndex,
+        currentQuestionAnswered,
+        mode: attemptState.attempt.mode as Mode,
+        title: attemptSnapshot.title,
+        version: attemptState.attempt.assessmentVersion,
+        questions: attemptSnapshot.questions.map((question, index) =>
+          publicQuestion(
+            question,
+            index === initialQuestionIndex ? activeNegotiationNodeId : undefined
+          )
+        ),
       };
     }),
 

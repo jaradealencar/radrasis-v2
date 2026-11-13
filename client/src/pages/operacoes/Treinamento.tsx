@@ -43,6 +43,9 @@ import { toast } from "sonner";
 type AttemptView = {
   assessmentId: number;
   attemptId: number;
+  assignmentStudentId?: number;
+  initialQuestionIndex?: number;
+  currentQuestionAnswered?: boolean;
   mode: "practice" | "formal";
   title: string;
   version: number;
@@ -113,6 +116,14 @@ function formatDate(value: Date | string | null | undefined) {
     dateStyle: "short",
     timeStyle: "short",
   }).format(new Date(value));
+}
+
+function localDateTimeDaysFromNow(days: number) {
+  const value = new Date();
+  value.setDate(value.getDate() + days);
+  return new Date(value.getTime() - value.getTimezoneOffset() * 60_000)
+    .toISOString()
+    .slice(0, 16);
 }
 
 function slugify(value: string) {
@@ -198,6 +209,16 @@ function TrainingAdmin({ onChanged }: { onChanged: () => void }) {
   const [assessment, setAssessment] = useState<any>(EMPTY_ASSESSMENT);
   const [questionJson, setQuestionJson] = useState("[]");
   const [reportFilter, setReportFilter] = useState<number | undefined>();
+  const [assignmentAssessmentId, setAssignmentAssessmentId] = useState<
+    number | undefined
+  >();
+  const [assignmentDeadline, setAssignmentDeadline] = useState(() =>
+    localDateTimeDaysFromNow(7)
+  );
+  const [assignmentMaxAttempts, setAssignmentMaxAttempts] = useState(1);
+  const [assignmentStudentIds, setAssignmentStudentIds] = useState<string[]>(
+    []
+  );
   const { data: lessonVersions = [] } =
     trpc.treinamento.lessonVersions.useQuery(
       { lessonId: lessonId ?? 0 },
@@ -236,8 +257,31 @@ function TrainingAdmin({ onChanged }: { onChanged: () => void }) {
       onChanged();
     },
   });
+  const createExamAssignment =
+    trpc.treinamento.createExamAssignment.useMutation({
+      onSuccess: async result => {
+        await utils.treinamento.assignmentReport.invalidate();
+        setAssignmentStudentIds([]);
+        toast.success(
+          "Prova aplicada a " +
+            result.assigned +
+            " aluno(s). Prazo e limite de tentativas configurados."
+        );
+      },
+      onError: error => toast.error(error.message),
+    });
   const { data: results = [], isLoading: resultsLoading } =
     trpc.treinamento.resultsReport.useQuery({ subjectId: reportFilter });
+  const assignmentAssessment = data?.assessments.find(
+    item => item.id === assignmentAssessmentId
+  );
+  const { data: enrolledStudents = [], isLoading: enrolledStudentsLoading } =
+    trpc.treinamento.enrolledStudents.useQuery(
+      { subjectId: assignmentAssessment?.subjectId ?? 0 },
+      { enabled: Boolean(assignmentAssessment?.subjectId) }
+    );
+  const { data: examAssignments = [], isLoading: examAssignmentsLoading } =
+    trpc.treinamento.assignmentReport.useQuery({});
   const [simulationStudents, setSimulationStudents] = useState<
     SimulatedStudent[]
   >([]);
@@ -273,6 +317,15 @@ function TrainingAdmin({ onChanged }: { onChanged: () => void }) {
     if (assessmentId === undefined && data.assessments[0])
       setAssessmentId(data.assessments[0].id);
   }, [data, sectorId, subjectId, lessonId, assessmentId]);
+
+  useEffect(() => {
+    if (assignmentAssessmentId !== undefined || !data) return;
+    const firstFormalAssessment = data.assessments.find(
+      item => item.allowFormal && item.isPublished && !item.archivedAt
+    );
+    if (firstFormalAssessment)
+      setAssignmentAssessmentId(firstFormalAssessment.id);
+  }, [data, assignmentAssessmentId]);
 
   useEffect(() => {
     if (!data) return;
@@ -925,6 +978,263 @@ function TrainingAdmin({ onChanged }: { onChanged: () => void }) {
 
       <Card>
         <CardHeader>
+          <CardTitle>Aplicar prova</CardTitle>
+          <CardDescription>
+            Escolha uma avaliação formal publicada, selecione alunos já
+            matriculados e defina o prazo e o limite de tentativas.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-5">
+          <div className="grid gap-4 md:grid-cols-3">
+            <div className="space-y-2">
+              <Label htmlFor="assignment-assessment">Avaliação formal</Label>
+              <select
+                id="assignment-assessment"
+                className="w-full rounded-md border bg-background px-3 py-2 text-sm"
+                value={assignmentAssessmentId ?? ""}
+                onChange={event => {
+                  setAssignmentAssessmentId(Number(event.target.value) || undefined);
+                  setAssignmentStudentIds([]);
+                }}
+              >
+                <option value="">Selecione uma avaliação</option>
+                {data.assessments
+                  .filter(
+                    item =>
+                      item.allowFormal &&
+                      item.isPublished &&
+                      !item.archivedAt
+                  )
+                  .map(item => (
+                    <option key={item.id} value={item.id}>
+                      {item.title}
+                    </option>
+                  ))}
+              </select>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="assignment-deadline">Data limite</Label>
+              <Input
+                id="assignment-deadline"
+                type="datetime-local"
+                value={assignmentDeadline}
+                onChange={event => setAssignmentDeadline(event.target.value)}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="assignment-max-attempts">
+                Tentativas permitidas por aluno
+              </Label>
+              <Input
+                id="assignment-max-attempts"
+                type="number"
+                min={1}
+                max={20}
+                value={assignmentMaxAttempts}
+                onChange={event =>
+                  setAssignmentMaxAttempts(
+                    Math.min(20, Math.max(1, Number(event.target.value) || 1))
+                  )
+                }
+              />
+            </div>
+          </div>
+          {assignmentAssessment && (
+            <section className="space-y-3 rounded-xl border p-4">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div>
+                  <h3 className="font-semibold">Alunos matriculados</h3>
+                  <p className="text-sm text-muted-foreground">
+                    Matéria:{" "}
+                    {data.subjects.find(
+                      item => item.id === assignmentAssessment.subjectId
+                    )?.title ?? "—"}
+                  </p>
+                </div>
+                <div className="flex gap-2">
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    onClick={() =>
+                      setAssignmentStudentIds(
+                        enrolledStudents.map(student => student.userId)
+                      )
+                    }
+                    disabled={
+                      enrolledStudentsLoading || enrolledStudents.length === 0
+                    }
+                  >
+                    Selecionar todos
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    onClick={() => setAssignmentStudentIds([])}
+                    disabled={assignmentStudentIds.length === 0}
+                  >
+                    Limpar seleção
+                  </Button>
+                </div>
+              </div>
+              {enrolledStudentsLoading ? (
+                <p className="text-sm text-muted-foreground">
+                  Carregando alunos matriculados…
+                </p>
+              ) : enrolledStudents.length === 0 ? (
+                <p className="text-sm text-muted-foreground">
+                  Ainda não há alunos matriculados nesta matéria.
+                </p>
+              ) : (
+                <div className="max-h-64 space-y-2 overflow-y-auto">
+                  {enrolledStudents.map(student => (
+                    <label
+                      key={student.userId}
+                      className="flex cursor-pointer items-center gap-3 rounded-md border p-3 text-sm"
+                    >
+                      <input
+                        type="checkbox"
+                        checked={assignmentStudentIds.includes(student.userId)}
+                        onChange={event =>
+                          setAssignmentStudentIds(previous =>
+                            event.target.checked
+                              ? [...previous, student.userId]
+                              : previous.filter(id => id !== student.userId)
+                          )
+                        }
+                      />
+                      <span className="flex-1">{student.name}</span>
+                      <span className="text-muted-foreground">
+                        Matriculado em {formatDate(student.enrolledAt)}
+                      </span>
+                    </label>
+                  ))}
+                </div>
+              )}
+              <div className="flex flex-wrap items-center gap-3">
+                <span className="text-sm text-muted-foreground">
+                  {assignmentStudentIds.length} selecionado(s)
+                </span>
+                <Button
+                  onClick={() =>
+                    createExamAssignment.mutate({
+                      assessmentId: assignmentAssessment.id,
+                      dueAt: new Date(assignmentDeadline),
+                      maxAttempts: assignmentMaxAttempts,
+                      userIds: assignmentStudentIds,
+                    })
+                  }
+                  disabled={
+                    assignmentStudentIds.length === 0 ||
+                    !assignmentDeadline ||
+                    new Date(assignmentDeadline).getTime() <= Date.now() ||
+                    createExamAssignment.isPending
+                  }
+                >
+                  {createExamAssignment.isPending
+                    ? "Aplicando prova…"
+                    : "Aplicar prova"}
+                </Button>
+              </div>
+            </section>
+          )}
+          <section className="space-y-3 border-t pt-5">
+            <h3 className="font-semibold">Provas aplicadas e notas</h3>
+            {examAssignmentsLoading ? (
+              <p className="text-sm text-muted-foreground">
+                Carregando aplicações…
+              </p>
+            ) : examAssignments.length === 0 ? (
+              <p className="text-sm text-muted-foreground">
+                Nenhuma prova formal foi aplicada ainda.
+              </p>
+            ) : (
+              <div className="space-y-4">
+                {examAssignments.map((assignment: any) => (
+                  <div
+                    key={assignment.id}
+                    className="space-y-3 rounded-xl border p-4"
+                  >
+                    <div className="flex flex-wrap justify-between gap-2">
+                      <div>
+                        <p className="font-medium">
+                          {assignment.assessmentTitle} ·{" "}
+                          {assignment.subjectTitle}
+                        </p>
+                        <p className="text-sm text-muted-foreground">
+                          Aplicada em {formatDate(assignment.createdAt)} ·
+                          prazo {formatDate(assignment.dueAt)} ·{" "}
+                          {assignment.maxAttempts} tentativa(s) permitida(s)
+                        </p>
+                      </div>
+                    </div>
+                    <div className="overflow-x-auto">
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead>Aluno</TableHead>
+                            <TableHead>Tentativas usadas</TableHead>
+                            <TableHead>Notas e datas</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {assignment.students.map((student: any) => (
+                            <TableRow key={student.id}>
+                              <TableCell className="font-medium">
+                                {student.name}
+                              </TableCell>
+                              <TableCell>
+                                {student.attempts.length} /{" "}
+                                {assignment.maxAttempts}
+                              </TableCell>
+                              <TableCell>
+                                {student.attempts.length === 0 ? (
+                                  <span className="text-sm text-muted-foreground">
+                                    Ainda não iniciou
+                                  </span>
+                                ) : (
+                                  <div className="space-y-2">
+                                    {student.attempts.map((attempt: any) => (
+                                      <div
+                                        key={attempt.id}
+                                        className="flex flex-wrap items-center gap-2 text-sm"
+                                      >
+                                        <span>
+                                          {formatDate(attempt.startedAt)}
+                                        </span>
+                                        {attempt.status === "completed" ? (
+                                          <Badge variant="secondary">
+                                            {Number(attempt.score ?? 0).toFixed(
+                                              2
+                                            )}
+                                            %
+                                          </Badge>
+                                        ) : (
+                                          <Badge variant="outline">
+                                            Em andamento
+                                          </Badge>
+                                        )}
+                                      </div>
+                                    ))}
+                                  </div>
+                                )}
+                              </TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </section>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
           <div className="flex flex-wrap items-center gap-2">
             <CardTitle>Simulacro do painel de alunos</CardTitle>
             <Badge variant="outline">Fictício · não salva</Badge>
@@ -1315,11 +1625,13 @@ export default function Treinamento() {
     onError: error => toast.error(error.message),
     onSuccess: data => {
       setAttempt(data as AttemptView);
-      setQuestionIndex(0);
+      setQuestionIndex(data.initialQuestionIndex ?? 0);
       setSelected("");
       setOrderedIds([]);
       setScenarioNode(null);
-      setAnswerResult(null);
+      setAnswerResult(
+        data.currentQuestionAnswered ? { questionComplete: true } : null
+      );
       setFinalResult(null);
     },
   });
@@ -1357,14 +1669,22 @@ export default function Treinamento() {
     setScenarioNode(
       currentQuestion?.type === "negotiation" ? currentQuestion.config : null
     );
-    setAnswerResult(null);
+    setAnswerResult(
+      attempt?.currentQuestionAnswered &&
+        attempt.initialQuestionIndex === questionIndex
+        ? { questionComplete: true }
+        : null
+    );
   }, [attempt?.attemptId, questionIndex, currentQuestion?.key]);
 
   const lessonComplete = (id: number) =>
     (currentProgress as any)?.completedLessonIds?.includes(id) ?? false;
 
-  const start = (assessmentId: number, mode: "practice" | "formal") =>
-    startAttempt.mutate({ assessmentId, mode });
+  const start = (
+    assessmentId: number,
+    mode: "practice" | "formal",
+    assignmentStudentId?: number
+  ) => startAttempt.mutate({ assessmentId, mode, assignmentStudentId });
   const sendAnswer = () => {
     if (!attempt || !currentQuestion) return;
     let response: any = selected;
@@ -1507,8 +1827,10 @@ export default function Treinamento() {
                 variant="outline"
                 onClick={() => {
                   const id = attempt.assessmentId;
+                  const assignmentStudentId = attempt.assignmentStudentId;
                   closeAttempt();
-                  if (id) start(id, attempt.mode);
+                  if (id)
+                    start(id, attempt.mode, assignmentStudentId);
                 }}
               >
                 <RotateCcw className="mr-2 h-4 w-4" />
@@ -1890,18 +2212,106 @@ export default function Treinamento() {
                               Praticar
                             </Button>
                           )}
-                          {assessment.allowFormal && (
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              onClick={() => start(assessment.id, "formal")}
-                              disabled={
-                                !subject.isEnrolled || startAttempt.isPending
-                              }
-                            >
-                              <LockKeyhole className="mr-1 h-4 w-4" />
-                              Avaliação formal
-                            </Button>
+                          {assessment.allowFormal &&
+                            subject.assignedExams
+                              .filter(
+                                (item: any) =>
+                                  item.assessmentId === assessment.id
+                              )
+                              .map((assigned: any) => {
+                                const activeAttempt = assigned.attempts.find(
+                                  (item: any) =>
+                                    item.status === "in_progress"
+                                );
+                                const attemptsLeft =
+                                  assigned.maxAttempts -
+                                  assigned.attempts.length;
+                                const deadlinePassed =
+                                  new Date(assigned.deadlineAt).getTime() <
+                                  Date.now();
+                                const canStart =
+                                  subject.isEnrolled &&
+                                  (Boolean(activeAttempt) ||
+                                    (!deadlinePassed && attemptsLeft > 0));
+                                return (
+                                  <div
+                                    key={assigned.assignmentStudentId}
+                                    className="mt-3 w-full rounded-lg bg-muted/40 p-3"
+                                  >
+                                    <div className="flex flex-wrap items-center gap-2">
+                                      <Badge variant="outline">
+                                        Prova formal aplicada
+                                      </Badge>
+                                      <span className="text-sm">
+                                        Prazo: {formatDate(assigned.deadlineAt)}
+                                      </span>
+                                      <span className="text-sm text-muted-foreground">
+                                        Tentativas: {assigned.attempts.length}/
+                                        {assigned.maxAttempts}
+                                      </span>
+                                    </div>
+                                    {assigned.attempts.length > 0 && (
+                                      <div className="mt-2 flex flex-wrap gap-2">
+                                        {assigned.attempts.map(
+                                          (attempt: any, index: number) => (
+                                            <Badge
+                                              key={attempt.id}
+                                              variant={
+                                                attempt.status === "completed"
+                                                  ? "secondary"
+                                                  : "outline"
+                                              }
+                                            >
+                                              Tentativa{" "}
+                                              {assigned.attempts.length - index}
+                                              :{" "}
+                                              {attempt.status === "completed"
+                                                ? Number(
+                                                    attempt.score ?? 0
+                                                  ).toFixed(2) + "%"
+                                                : "Em andamento"}
+                                            </Badge>
+                                          )
+                                        )}
+                                      </div>
+                                    )}
+                                    <Button
+                                      className="mt-3"
+                                      size="sm"
+                                      variant="outline"
+                                      onClick={() =>
+                                        start(
+                                          assessment.id,
+                                          "formal",
+                                          assigned.assignmentStudentId
+                                        )
+                                      }
+                                      disabled={
+                                        !canStart || startAttempt.isPending
+                                      }
+                                    >
+                                      <LockKeyhole className="mr-1 h-4 w-4" />
+                                      {activeAttempt
+                                        ? "Continuar prova"
+                                        : attemptsLeft <= 0
+                                          ? "Tentativas esgotadas"
+                                          : deadlinePassed
+                                            ? "Prazo encerrado"
+                                            : "Iniciar prova formal"}
+                                    </Button>
+                                  </div>
+                                );
+                              })}
+                          {assessment.allowFormal &&
+                            subject.isEnrolled &&
+                            !subject.assignedExams.some(
+                              (item: any) =>
+                                item.assessmentId === assessment.id
+                            ) && (
+                              <p className="mt-3 text-sm text-muted-foreground">
+                                A prova formal será liberada quando o instrutor
+                                aplicá-la a você.
+                              </p>
                           )}
                         </div>
                       </div>

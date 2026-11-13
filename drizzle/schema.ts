@@ -1,6 +1,7 @@
 import { sql } from "drizzle-orm";
 import {
   boolean,
+  check,
   date,
   decimal,
   index,
@@ -5707,6 +5708,61 @@ export const trainingAssessments = pgTable(
 );
 export type TrainingAssessment = typeof trainingAssessments.$inferSelect;
 
+export const trainingExamAssignments = pgTable(
+  "training_exam_assignments",
+  {
+    id: serial("id").primaryKey(),
+    assessmentId: integer("assessment_id")
+      .notNull()
+      .references(() => trainingAssessments.id, { onDelete: "cascade" }),
+    dueAt: timestamp("due_at", { withTimezone: true }).notNull(),
+    maxAttempts: integer("max_attempts").notNull().default(1),
+    createdBy: text("created_by").references(() => user.id, {
+      onDelete: "set null",
+    }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  t => ({
+    assessmentCreatedIdx: index("training_exam_assignments_assessment_created_idx").on(
+      t.assessmentId,
+      t.createdAt
+    ),
+    maxAttemptsCheck: check(
+      "training_exam_assignments_max_attempts_check",
+      sql`${t.maxAttempts} BETWEEN 1 AND 20`
+    ),
+  })
+);
+export type TrainingExamAssignment = typeof trainingExamAssignments.$inferSelect;
+
+export const trainingExamAssignmentStudents = pgTable(
+  "training_exam_assignment_students",
+  {
+    id: serial("id").primaryKey(),
+    assignmentId: integer("assignment_id")
+      .notNull()
+      .references(() => trainingExamAssignments.id, { onDelete: "cascade" }),
+    userId: text("user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    assignedAt: timestamp("assigned_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  t => ({
+    assignmentStudentUnique: uniqueIndex(
+      "training_exam_assignment_students_assignment_user_uq"
+    ).on(t.assignmentId, t.userId),
+    userAssignmentIdx: index(
+      "training_exam_assignment_students_user_assignment_idx"
+    ).on(t.userId, t.assignmentId),
+  })
+);
+export type TrainingExamAssignmentStudent =
+  typeof trainingExamAssignmentStudents.$inferSelect;
+
 export const trainingQuestionTypes = [
   "multiple_choice",
   "multiple_select",
@@ -5777,6 +5833,10 @@ export const trainingAttempts = pgTable(
     assessmentId: integer("assessment_id")
       .notNull()
       .references(() => trainingAssessments.id, { onDelete: "restrict" }),
+    assignmentStudentId: integer("assignment_student_id").references(
+      () => trainingExamAssignmentStudents.id,
+      { onDelete: "set null" }
+    ),
     mode: varchar("mode", { length: 16 }).notNull(),
     status: varchar("status", { length: 16 }).notNull().default("in_progress"),
     assessmentVersion: integer("assessment_version").notNull(),
@@ -5790,6 +5850,10 @@ export const trainingAttempts = pgTable(
   t => ({
     userIdx: index("training_attempts_user_idx").on(t.userId, t.startedAt),
     assessmentIdx: index("training_attempts_assessment_idx").on(t.assessmentId, t.startedAt),
+    assignmentStudentIdx: index("training_attempts_assignment_student_idx").on(
+      t.assignmentStudentId,
+      t.startedAt
+    ),
   })
 );
 export type TrainingAttempt = typeof trainingAttempts.$inferSelect;
