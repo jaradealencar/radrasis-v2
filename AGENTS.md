@@ -278,6 +278,7 @@ assumir que continua certo.
 ```
 client/src/          frontend (Vite root = client/)
   pages/              uma pasta por módulo (logistica/, admin/, comercial/, ...)
+                       operacoes/Treinamento.tsx é a Escola Corporativa em /treinamento
   components/         componentes compartilhados entre páginas
   hooks/               hooks do app, incluindo useAuth.ts (identidade/permissões)
   lib/                 trpc.ts, auth-client.ts (client do Better Auth)
@@ -287,6 +288,7 @@ server/
   routers.ts          appRouter raiz do tRPC — registra todos os sub-routers
                        `price.listModelCatalog`/`price.saveModelMapping` mantêm produtividade de solda e IDs de faixa por modelo nas tabelas antiga/nova (`price_table_model_mappings`).
   routers/             sub-routers por domínio (logistica.ts, admin.ts, ...)
+                       treinamento.ts controla catálogo, autoria, tentativas e resultados da Escola Corporativa
   db/                  acesso a dados (Drizzle + pg puro via getPool()): db.ts, db-connection.ts,
                        db-helpers*.ts, storage.ts
   integrations/        clientes de APIs externas: mubisys-client.ts, mubisys-frete.ts,
@@ -410,6 +412,8 @@ descartável isolado, como o serviço Postgres do workflow de qualidade.
 - `docs/campanhas-whatsapp-ia.md` — respostas inbound, filtro de bot, debounce, qualificação Gemini, métricas e polling de leitura da Helena.
 - `docs/protecao-ambientes-banco-publicacao.md` — separação entre build,
   migrations e testes; confirmações locais e configurações externas de Vercel/GitHub pendentes.
+- `docs/escola-corporativa.md` — modelo de conteúdo, modos de avaliação,
+  pontuação, permissões e formato de questões da Escola Corporativa.
 - `docs/cpq-cores-materiais-pre-nesting.md` — análise, aprovação e custo de cores do CPQ antes do nesting.
 - `docs/webdev-template-guide.md` — guia original do template Manus
   webdev fullstack. Descreve o template genérico (MySQL, só OAuth) — várias

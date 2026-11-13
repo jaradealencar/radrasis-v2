@@ -47,6 +47,7 @@ import {
   FlaskConical,
   Activity,
   Store,
+  GraduationCap,
 } from "lucide-react";
 import { ReactNode, useState, useEffect, useMemo } from "react";
 import { Link, useLocation } from "wouter";
@@ -89,6 +90,7 @@ const navSections: NavSection[] = [
     label: "Operações",
     items: [
       { label: "Visão de Performance", href: "/operacoes/performance", icon: <TrendingUp size={15} />, pageKey: "operacoes-performance" },
+      { label: "Escola Corporativa", href: "/treinamento", icon: <GraduationCap size={15} />, pageKey: "treinamento" },
       { label: "Base de Conhecimento", href: "/conhecimento", icon: <BookOpen size={15} />, pageKey: "conhecimento" },
       { label: "Biblioteca de Arquivos", href: "/biblioteca-arquivos", icon: <FolderOpen size={15} />, pageKey: "biblioteca-arquivos" },
       { label: "Sugestões de Conhecimento", href: "/sugestoes-conhecimento", icon: <Lightbulb size={15} />, pageKey: "sugestoes-conhecimento" },
