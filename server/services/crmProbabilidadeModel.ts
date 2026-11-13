@@ -25,6 +25,8 @@ const FAIXAS_IDADE = ["menos de 1 ano", "1 a 3 anos", "3 a 10 anos", "10+ anos",
 const COORTES = ["sem compra anterior", "até 2022", "2023-2024", "2025+", "coorte desconhecida"];
 const REGIOES = ["Norte", "Nordeste", "Centro-Oeste", "Sudeste", "Sul", "região desconhecida"];
 
+export const CRM_PROBABILITY_MODEL_VERSION = "logit-platt-v1";
+
 const NUMERIC_FEATURES = [
   "ticketLog", "idadeEmpresaLog", "recenciaCompraMesesLog", "frequenciaRfm12mLog",
   "valorRfm12mLog", "comprasHistoricasLog", "tempoClienteMesesLog", "orcamentosAnterioresLog",
@@ -299,6 +301,14 @@ export function preverComLogistica(modelo: ModeloLogisticoCrm, features: number[
   return sigmoide(c.intercepto + c.coeficiente * ((z - c.mediaLogit) / c.escalaLogit));
 }
 
+export function classificarDesfechoExplicito(statusRaw: string | null | undefined): 0 | 1 | null {
+  const normalizarStatus = (value: string) => value.trim().toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+  const status = normalizarStatus(statusRaw ?? "");
+  if ([...STATUS_GANHO].some((value) => normalizarStatus(value) === status)) return 1;
+  if ([...STATUS_PERDIDO].some((value) => normalizarStatus(value) === status)) return 0;
+  return null;
+}
+
 function rotular(r: { status: string | null; dataCadastro: string | null; validade: string | null }, agora: Date): 0 | 1 | null {
   const status = (r.status ?? "").trim().toLowerCase();
   if (STATUS_GANHO.has(status)) return 1;
@@ -421,7 +431,18 @@ export function calcularProbabilidadeCrmAprendida(args: {
   dataProposta?: string | Date | null;
   numeroProposta?: string | null;
   regiaoCliente?: string | null;
-}): { probabilidade: number; explicacao: string[] } {
+}): {
+  probabilidade: number;
+  explicacao: string[];
+  segmentos: {
+    faixaTicket: string;
+    faixaIdadeEmpresa: string;
+    coorteCliente: string;
+    faixaRecenciaCompra: string;
+    comprasUltimos12m: number;
+    valorComprasUltimos12m: number;
+  };
+} {
   const empresaKey = normalizeEmpresaKey(args.nomeCliente);
   const data = lerData(args.dataProposta) ?? new Date();
   const regiao = args.regiaoCliente ? UF_PARA_REGIAO[normalizarUf(args.regiaoCliente) ?? ""] ?? args.regiaoCliente : null;
@@ -438,10 +459,19 @@ export function calcularProbabilidadeCrmAprendida(args: {
   const bruto = preverComLogistica(args.modelo.modelo, features);
   const probabilidade = Math.max(1, Math.min(99, Math.round(bruto * 100)));
   const idadeIndex = FEATURE_NAMES.indexOf("idade:disponivel");
-  const recencia = Math.min(120, mesesEntre(
-    [...(args.modelo.osPorCliente.get(empresaKey) ?? [])].filter((os) => os.data < data && isOsNormalDb(os)).at(-1)?.data ?? data,
-    data,
-  ));
+  const osAnteriores = (args.modelo.osPorCliente.get(empresaKey) ?? []).filter((os) => os.data < data && isOsNormalDb(os));
+  const ultimaCompra = osAnteriores.at(-1)?.data ?? null;
+  const recencia = ultimaCompra ? Math.min(120, mesesEntre(ultimaCompra, data)) : 120;
+  const corte12m = new Date(data.getTime() - DIAS_ANO * 86400000);
+  const compras12m = osAnteriores.filter((os) => os.data >= corte12m);
+  const valorComprasUltimos12m = compras12m.reduce((total, os) => total + os.valor, 0);
+  const primeiraCompra = osAnteriores[0]?.data ?? null;
+  const coorte = faixaCoorte(primeiraCompra);
+  const faixaRecenciaCompra = !ultimaCompra ? "sem compra anterior"
+    : recencia < 3 ? "0-3 meses"
+    : recencia < 6 ? "3-6 meses"
+    : recencia < 12 ? "6-12 meses"
+    : "12+ meses";
   const idadeGrupo = FAIXAS_IDADE.find((faixa) => features[FEATURE_NAMES.indexOf(`idade:${faixa}`)] > 0) ?? "idade desconhecida";
   const calibracao = args.modelo.modelo.calibrador;
   const explicacao = [
@@ -455,7 +485,18 @@ export function calcularProbabilidadeCrmAprendida(args: {
   if (calibracao) explicacao.push(`Calibração temporal: automática, baseada em ${calibracao.n} previsões históricas fora da amostra.`);
   if (args.modelo.ultimaPropostaTreino) explicacao.push(`Desfechos até: ${args.modelo.ultimaPropostaTreino.toLocaleDateString("pt-BR")}.`);
   if (args.modelo.ultimaPropostaHistorico) explicacao.push(`Histórico de propostas: até ${args.modelo.ultimaPropostaHistorico.toLocaleDateString("pt-BR")}; ${args.modelo.propostasHistoricoSemDesfecho} ainda sem desfecho para treino.`);
-  return { probabilidade, explicacao };
+  return {
+    probabilidade,
+    explicacao,
+    segmentos: {
+      faixaTicket: faixaTicketDoValor(args.valorProposta),
+      faixaIdadeEmpresa: idadeGrupo,
+      coorteCliente: coorte,
+      faixaRecenciaCompra,
+      comprasUltimos12m: compras12m.length,
+      valorComprasUltimos12m,
+    },
+  };
 }
 
 export const CRM_PROBABILITY_FEATURE_NAMES = FEATURE_NAMES;

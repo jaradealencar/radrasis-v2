@@ -8,7 +8,7 @@ import {
   MessageCircle, Trophy, XCircle, RefreshCw, Users, Calendar,
   CheckSquare, Square, Clock, ThumbsUp, AlertCircle, AlertTriangle,
   ChevronDown, ChevronUp, Star,
-  Activity, CheckCircle2, Target, Trash2, TrendingUp, Zap, Info,
+  Activity, BarChart3, CheckCircle2, Target, Trash2, TrendingUp, Zap, Info,
   ChevronLeft, ChevronRight, Search, SlidersHorizontal, ListTodo
 } from "lucide-react";
 import {
@@ -33,6 +33,7 @@ import { BibliotecaMidias } from "@/components/BibliotecaMidias";
 import { faixaSugerida } from "@/lib/faixasCrm";
 import { urlOrcamentoMubiSys } from "@/lib/mubisys";
 import { primeiroNome } from "@/lib/mensagensCrm";
+import { CrmProbabilityPerformance } from "./CrmProbabilityPerformance";
 import type { FaixaConfig } from "@/components/FaixaDiasConfigForm";
 import { gerarDatasUteis } from "@shared/dias-uteis";
 import {
@@ -1281,7 +1282,7 @@ export default function CRM() {
 
       {/* Sub-abas do CRM */}
       <Tabs value={abaAtiva} onValueChange={setAbaAtiva} className="w-full">
-        <TabsList className="grid w-full grid-cols-2 md:grid-cols-6 mb-4 h-auto">
+        <TabsList className="grid w-full grid-cols-2 md:grid-cols-4 xl:grid-cols-7 mb-4 h-auto">
           <TabsTrigger value="fila" className="gap-1.5">
             <ListTodo className="w-3.5 h-3.5" /> Fila de trabalho
             <Badge variant="secondary" className="text-[10px] px-1.5 py-0">{filaCounts.todas}</Badge>
@@ -1289,6 +1290,9 @@ export default function CRM() {
           <TabsTrigger value="propostas" className="gap-1.5">
             Propostas
             <Badge variant="secondary" className="text-[10px] px-1.5 py-0">{propostasAtivas.length}</Badge>
+          </TabsTrigger>
+          <TabsTrigger value="desempenho" className="gap-1.5">
+            <BarChart3 className="w-3.5 h-3.5" /> Desempenho
           </TabsTrigger>
           <TabsTrigger value="agenda" className="gap-1.5">
             Agenda de Hoje
@@ -1310,6 +1314,10 @@ export default function CRM() {
             Auditoria
           </TabsTrigger>
         </TabsList>
+
+        <TabsContent value="desempenho" className="mt-0">
+          <CrmProbabilityPerformance active={abaAtiva === "desempenho"} />
+        </TabsContent>
 
         {/* ABA: Fila de trabalho */}
         <TabsContent value="fila" className="space-y-4 mt-0">

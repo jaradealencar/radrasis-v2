@@ -3,7 +3,7 @@ import { TRPCError } from "@trpc/server";
 import { protectedProcedure, requireRole, router } from "../_core/trpc";
 import { invokeLLM } from "../_core/llm";
 import { getDb } from "../db/db";
-import { crmMetas, crmContatos, historicoOs, clienteOverrides, crmScripts, crmFaixaEtiquetas, crmAtividadeLog, inteligenciaAcoesClientes } from "../../drizzle/schema";
+import { crmMetas, crmContatos, historicoOs, historicoOrcamentos, crmProbabilidadePrevisoes, clienteOverrides, crmScripts, crmFaixaEtiquetas, crmAtividadeLog, inteligenciaAcoesClientes } from "../../drizzle/schema";
 import type { CrmContato } from "../../drizzle/schema";
 import {
   CACHE_KEY_ABERTOS_PADRAO,
@@ -20,7 +20,14 @@ import {
 import {
   construirModeloProbabilidadeCrm,
   calcularProbabilidadeCrmAprendida,
+  CRM_PROBABILITY_MODEL_VERSION,
+  classificarDesfechoExplicito,
 } from "../services/crmProbabilidadeModel";
+import {
+  construirPainelProbabilidade,
+  CRM_PROBABILITY_BACKTEST_BASELINE,
+} from "../services/crmProbabilidadePerformance";
+import { safeErrorType } from "../db/db-connection";
 import { UF_PARA_REGIAO, normalizarUf } from "../utils/regioesBrasil";
 import { diasUteisEntre } from "../../shared/dias-uteis";
 
@@ -433,6 +440,7 @@ export const crmRouter = router({
       }
 
       // Enriquecer com telefone e clienteNovo
+      const segmentosProbabilidadePorProposta = new Map<string, ReturnType<typeof calcularProbabilidadeCrmAprendida>["segmentos"]>();
       const propostasComTelefone = propostasFiltradas.map(p => {
         const telefone = telefonesMap[p.id] ?? null;
         const orc = propostasAbertas.find((o: any) => String(o.id) === p.id);
@@ -457,7 +465,7 @@ export const crmRouter = router({
           ? normalizarUf((orc as any).cliente_endereco[0]?.estado)
           : null;
         const regiaoCliente = estadoCliente ? (UF_PARA_REGIAO[estadoCliente] ?? null) : null;
-        const { probabilidade: probabilidadeCompra, explicacao: probabilidadeExplicacao } = modeloProbabilidade
+        const { probabilidade: probabilidadeCompra, explicacao: probabilidadeExplicacao, segmentos: segmentosProbabilidade } = modeloProbabilidade
           ? calcularProbabilidadeCrmAprendida({
               modelo: modeloProbabilidade,
               nomeCliente,
@@ -466,7 +474,8 @@ export const crmRouter = router({
               numeroProposta: p.sequencial,
               regiaoCliente: estadoCliente,
             })
-          : { probabilidade: null as number | null, explicacao: [] as string[] };
+          : { probabilidade: null as number | null, explicacao: [] as string[], segmentos: null };
+        if (segmentosProbabilidade) segmentosProbabilidadePorProposta.set(p.id, segmentosProbabilidade);
         const chaveCliente = normalizeEmpresaKey(nomeCliente);
         const conversaoCliente = mapaConversao?.porCliente.get(chaveCliente);
         const qtdComprasCliente = conversaoCliente?.qtdCompras ?? 0;
@@ -491,6 +500,39 @@ export const crmRouter = router({
 
         return { ...p, telefone, nomeCliente, nomeContato: p.nomeContato ?? "", clienteNovo, probabilidadeCompra, probabilidadeExplicacao, qtdComprasCliente, totalCompras: qtdComprasCliente, diasSemComprar, ultimaCompraEm, totalCotacoes, orcamentosFechados, taxaConversao, orcamentosDesde: mapaConversao?.orcamentosDesde ?? null, estadoCliente, regiaoCliente };
       });
+
+      // Primeira probabilidade entregue ao CRM por proposta. Snapshot imutável:
+      // permite medir depois contra ganho/perda sincronizado, sem guardar nome ou CNPJ.
+      // A falha de gravação não pode impedir a tela operacional de abrir.
+      if (modeloProbabilidade) {
+        try {
+          const snapshots = propostasComTelefone.flatMap((proposta) => {
+            const orcNumero = String(proposta.sequencial ?? "").trim();
+            const segmentos = segmentosProbabilidadePorProposta.get(proposta.id);
+            if (!orcNumero || proposta.probabilidadeCompra == null || !segmentos) return [];
+            const dataProposta = parseDate(proposta.dataCriacao);
+            return [{
+              orcNumero,
+              dataProposta,
+              probabilidadePct: proposta.probabilidadeCompra,
+              modeloVersao: CRM_PROBABILITY_MODEL_VERSION,
+              valorProposta: String(proposta.valor ?? 0),
+              faixaTicket: segmentos.faixaTicket,
+              faixaIdadeEmpresa: segmentos.faixaIdadeEmpresa,
+              coorteCliente: segmentos.coorteCliente,
+              faixaRecenciaCompra: segmentos.faixaRecenciaCompra,
+              comprasUltimos12m: segmentos.comprasUltimos12m,
+              valorComprasUltimos12m: String(segmentos.valorComprasUltimos12m),
+              vendedor: proposta.vendedor || null,
+            }];
+          });
+          if (snapshots.length) {
+            await db.insert(crmProbabilidadePrevisoes).values(snapshots).onConflictDoNothing();
+          }
+        } catch (error) {
+          console.error("[CRM-PROBABILIDADE] Snapshot não registrado:", safeErrorType(error));
+        }
+      }
       return {
         propostas: propostasComTelefone.sort((a, b) => a.qtdContatos - b.qtdContatos || b.diasAberto - a.diasAberto),
         abertosAtualizadoEm,
@@ -522,6 +564,86 @@ export const crmRouter = router({
           risco: propostasComTelefone.filter(p => p.janela === "risco").length,
           critico: propostasComTelefone.filter(p => p.janela === "critico").length,
         },
+      };
+    }),
+
+  getDesempenhoProbabilidade: protectedProcedure
+    .input(z.object({ dias: z.enum(["30", "60", "90", "180", "365"]).default("90") }))
+    .query(async ({ input }) => {
+      const db = (await getDb())!;
+      const dias = Number(input.dias);
+      const corte = new Date(Date.now() - dias * 2 * 24 * 60 * 60 * 1000);
+      let trackingDisponivel = true;
+      let rows: Array<{
+        orcNumero: string;
+        exibidaEm: Date;
+        probabilidadePct: number;
+        modeloVersao: string;
+        vendedor: string | null;
+        faixaTicket: string;
+        faixaIdadeEmpresa: string;
+        coorteCliente: string;
+        faixaRecenciaCompra: string;
+        comprasUltimos12m: number;
+        valorComprasUltimos12m: string;
+        statusNoHistorico: string | null;
+        existeNoHistorico: string | null;
+      }> = [];
+      try {
+        rows = await db.select({
+          orcNumero: crmProbabilidadePrevisoes.orcNumero,
+          exibidaEm: crmProbabilidadePrevisoes.exibidaEm,
+          probabilidadePct: crmProbabilidadePrevisoes.probabilidadePct,
+          modeloVersao: crmProbabilidadePrevisoes.modeloVersao,
+          vendedor: crmProbabilidadePrevisoes.vendedor,
+          faixaTicket: crmProbabilidadePrevisoes.faixaTicket,
+          faixaIdadeEmpresa: crmProbabilidadePrevisoes.faixaIdadeEmpresa,
+          coorteCliente: crmProbabilidadePrevisoes.coorteCliente,
+          faixaRecenciaCompra: crmProbabilidadePrevisoes.faixaRecenciaCompra,
+          comprasUltimos12m: crmProbabilidadePrevisoes.comprasUltimos12m,
+          valorComprasUltimos12m: crmProbabilidadePrevisoes.valorComprasUltimos12m,
+          statusNoHistorico: historicoOrcamentos.status,
+          existeNoHistorico: historicoOrcamentos.orcNumero,
+        }).from(crmProbabilidadePrevisoes)
+          .leftJoin(historicoOrcamentos, eq(crmProbabilidadePrevisoes.orcNumero, historicoOrcamentos.orcNumero))
+          .where(gte(crmProbabilidadePrevisoes.exibidaEm, corte))
+          .orderBy(desc(crmProbabilidadePrevisoes.exibidaEm));
+      } catch (error) {
+        trackingDisponivel = false;
+        console.error("[CRM-PROBABILIDADE] Histórico de previsões indisponível:", safeErrorType(error));
+      }
+
+      const previsoes = rows.map((row) => ({
+        orcNumero: row.orcNumero,
+        exibidaEm: row.exibidaEm,
+        probabilidadePct: row.probabilidadePct,
+        modeloVersao: row.modeloVersao,
+        vendedor: row.vendedor,
+        faixaTicket: row.faixaTicket,
+        faixaIdadeEmpresa: row.faixaIdadeEmpresa,
+        coorteCliente: row.coorteCliente,
+        faixaRecenciaCompra: row.faixaRecenciaCompra,
+        comprasUltimos12m: row.comprasUltimos12m,
+        valorComprasUltimos12m: Number(row.valorComprasUltimos12m) || 0,
+        desfecho: classificarDesfechoExplicito(row.statusNoHistorico),
+        statusNoHistorico: row.statusNoHistorico,
+        existeNoHistorico: row.existeNoHistorico !== null,
+      }));
+      const modelo = await construirModeloProbabilidadeCrm(db).catch(() => null);
+      const modeloAtual = modelo ? {
+        versao: CRM_PROBABILITY_MODEL_VERSION,
+        propostasTreino: modelo.nTreino,
+        ultimaPropostaTreino: modelo.ultimaPropostaTreino?.toISOString() ?? null,
+        ultimaPropostaHistorico: modelo.ultimaPropostaHistorico?.toISOString() ?? null,
+        propostasHistoricoSemDesfecho: modelo.propostasHistoricoSemDesfecho,
+        taxaGeralPct: modelo.taxaGeral * 100,
+        coberturaIdade: modelo.coberturaIdadeEmpresarial,
+      } : null;
+      return {
+        painel: construirPainelProbabilidade({ previsoes, dias }),
+        modelo: modeloAtual,
+        benchmarkHistorico: CRM_PROBABILITY_BACKTEST_BASELINE,
+        trackingDisponivel,
       };
     }),
   // Desfazer contato registrado
