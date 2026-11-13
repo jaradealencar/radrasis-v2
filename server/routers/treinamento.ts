@@ -532,77 +532,78 @@ export const treinamentoRouter = router({
           code: "NOT_FOUND",
           message: "Setor não encontrado.",
         });
-      const [lessons, assessments, enrollment, assignedExams] = await Promise.all([
-        db
-          .select()
-          .from(trainingLessons)
-          .where(
-            and(
-              eq(trainingLessons.subjectId, subject.id),
-              eq(trainingLessons.isPublished, true),
-              isNull(trainingLessons.archivedAt)
+      const [lessons, assessments, enrollment, assignedExams] =
+        await Promise.all([
+          db
+            .select()
+            .from(trainingLessons)
+            .where(
+              and(
+                eq(trainingLessons.subjectId, subject.id),
+                eq(trainingLessons.isPublished, true),
+                isNull(trainingLessons.archivedAt)
+              )
             )
-          )
-          .orderBy(asc(trainingLessons.position)),
-        db
-          .select({
-            id: trainingAssessments.id,
-            title: trainingAssessments.title,
-            description: trainingAssessments.description,
-            allowPractice: trainingAssessments.allowPractice,
-            allowFormal: trainingAssessments.allowFormal,
-            version: trainingAssessments.version,
-            position: trainingAssessments.position,
-          })
-          .from(trainingAssessments)
-          .where(
-            and(
-              eq(trainingAssessments.subjectId, subject.id),
-              eq(trainingAssessments.isPublished, true),
-              isNull(trainingAssessments.archivedAt)
+            .orderBy(asc(trainingLessons.position)),
+          db
+            .select({
+              id: trainingAssessments.id,
+              title: trainingAssessments.title,
+              description: trainingAssessments.description,
+              allowPractice: trainingAssessments.allowPractice,
+              allowFormal: trainingAssessments.allowFormal,
+              version: trainingAssessments.version,
+              position: trainingAssessments.position,
+            })
+            .from(trainingAssessments)
+            .where(
+              and(
+                eq(trainingAssessments.subjectId, subject.id),
+                eq(trainingAssessments.isPublished, true),
+                isNull(trainingAssessments.archivedAt)
+              )
             )
-          )
-          .orderBy(asc(trainingAssessments.position)),
-        db
-          .select({ enrolledAt: trainingEnrollments.enrolledAt })
-          .from(trainingEnrollments)
-          .where(
-            and(
-              eq(trainingEnrollments.userId, ctx.user.id),
-              eq(trainingEnrollments.subjectId, subject.id)
+            .orderBy(asc(trainingAssessments.position)),
+          db
+            .select({ enrolledAt: trainingEnrollments.enrolledAt })
+            .from(trainingEnrollments)
+            .where(
+              and(
+                eq(trainingEnrollments.userId, ctx.user.id),
+                eq(trainingEnrollments.subjectId, subject.id)
+              )
             )
-          )
-          .limit(1),
-        db
-          .select({
-            assignmentStudentId: trainingExamAssignmentStudents.id,
-            assignmentId: trainingExamAssignments.id,
-            assessmentId: trainingAssessments.id,
-            title: trainingAssessments.title,
-            deadlineAt: trainingExamAssignments.dueAt,
-            maxAttempts: trainingExamAssignments.maxAttempts,
-            assignedAt: trainingExamAssignmentStudents.assignedAt,
-          })
-          .from(trainingExamAssignmentStudents)
-          .innerJoin(
-            trainingExamAssignments,
-            eq(
-              trainingExamAssignmentStudents.assignmentId,
-              trainingExamAssignments.id
+            .limit(1),
+          db
+            .select({
+              assignmentStudentId: trainingExamAssignmentStudents.id,
+              assignmentId: trainingExamAssignments.id,
+              assessmentId: trainingAssessments.id,
+              title: trainingAssessments.title,
+              deadlineAt: trainingExamAssignments.dueAt,
+              maxAttempts: trainingExamAssignments.maxAttempts,
+              assignedAt: trainingExamAssignmentStudents.assignedAt,
+            })
+            .from(trainingExamAssignmentStudents)
+            .innerJoin(
+              trainingExamAssignments,
+              eq(
+                trainingExamAssignmentStudents.assignmentId,
+                trainingExamAssignments.id
+              )
             )
-          )
-          .innerJoin(
-            trainingAssessments,
-            eq(trainingExamAssignments.assessmentId, trainingAssessments.id)
-          )
-          .where(
-            and(
-              eq(trainingExamAssignmentStudents.userId, ctx.user.id),
-              eq(trainingAssessments.subjectId, subject.id)
+            .innerJoin(
+              trainingAssessments,
+              eq(trainingExamAssignments.assessmentId, trainingAssessments.id)
             )
-          )
-          .orderBy(asc(trainingExamAssignments.dueAt)),
-      ]);
+            .where(
+              and(
+                eq(trainingExamAssignmentStudents.userId, ctx.user.id),
+                eq(trainingAssessments.subjectId, subject.id)
+              )
+            )
+            .orderBy(asc(trainingExamAssignments.dueAt)),
+        ]);
       const visibleAssignedExams = enrollment[0] ? assignedExams : [];
       const visibleAssignmentStudentIds = visibleAssignedExams.map(
         assignment => assignment.assignmentStudentId
@@ -638,11 +639,11 @@ export const treinamentoRouter = router({
           attempts: assignedAttempts
             .filter(
               attempt =>
-                attempt.assignmentStudentId ===
-                assignment.assignmentStudentId
+                attempt.assignmentStudentId === assignment.assignmentStudentId
             )
-            .map(({ assignmentStudentId: _assignmentStudentId, ...attempt }) =>
-              attempt
+            .map(
+              ({ assignmentStudentId: _assignmentStudentId, ...attempt }) =>
+                attempt
             ),
         })),
       };
@@ -798,7 +799,11 @@ export const treinamentoRouter = router({
             userId: student.userId,
           }))
         );
-        return { ok: true, assignmentId: assignment.id, assigned: enrolled.length };
+        return {
+          ok: true,
+          assignmentId: assignment.id,
+          assigned: enrolled.length,
+        };
       });
     }),
 
@@ -893,10 +898,140 @@ export const treinamentoRouter = router({
       }
       return assignmentRows.map(assignment => ({
         ...assignment,
-        students: (studentsByAssignment.get(assignment.id) ?? []).map(
-          student => studentById.get(student.id)
+        students: (studentsByAssignment.get(assignment.id) ?? []).map(student =>
+          studentById.get(student.id)
         ),
       }));
+    }),
+
+  leaderboardReport: trainingEditorProcedure
+    .input(
+      z.object({ subjectId: z.number().int().positive().optional() }).optional()
+    )
+    .query(async ({ input }) => {
+      const db = await getDatabase();
+      const conditions = [
+        eq(trainingAttempts.mode, "formal"),
+        eq(trainingAttempts.status, "completed"),
+      ];
+      if (input?.subjectId)
+        conditions.push(eq(trainingSubjects.id, input.subjectId));
+
+      const rows = await db
+        .select({
+          userId: trainingAttempts.userId,
+          userName: userTable.name,
+          assessmentId: trainingAssessments.id,
+          assessment: trainingAssessments.title,
+          subject: trainingSubjects.title,
+          sector: trainingSectors.name,
+          score: trainingAttempts.score,
+          startedAt: trainingAttempts.startedAt,
+          completedAt: trainingAttempts.completedAt,
+        })
+        .from(trainingAttempts)
+        .innerJoin(userTable, eq(trainingAttempts.userId, userTable.id))
+        .innerJoin(
+          trainingAssessments,
+          eq(trainingAttempts.assessmentId, trainingAssessments.id)
+        )
+        .innerJoin(
+          trainingSubjects,
+          eq(trainingAssessments.subjectId, trainingSubjects.id)
+        )
+        .innerJoin(
+          trainingSectors,
+          eq(trainingSubjects.sectorId, trainingSectors.id)
+        )
+        .where(and(...conditions))
+        .orderBy(asc(trainingAssessments.title), asc(userTable.name));
+
+      const exams = new Map<
+        number,
+        {
+          assessmentId: number;
+          assessment: string;
+          subject: string;
+          sector: string;
+          students: Map<
+            string,
+            {
+              userId: string;
+              userName: string;
+              score: number;
+              completedAt: Date | null;
+              startedAt: Date;
+              completedAttempts: number;
+            }
+          >;
+        }
+      >();
+
+      for (const row of rows) {
+        let exam = exams.get(row.assessmentId);
+        if (!exam) {
+          exam = {
+            assessmentId: row.assessmentId,
+            assessment: row.assessment,
+            subject: row.subject,
+            sector: row.sector,
+            students: new Map(),
+          };
+          exams.set(row.assessmentId, exam);
+        }
+
+        const score = Number(row.score ?? 0);
+        const current = exam.students.get(row.userId);
+        if (!current) {
+          exam.students.set(row.userId, {
+            userId: row.userId,
+            userName: row.userName,
+            score,
+            completedAt: row.completedAt,
+            startedAt: row.startedAt,
+            completedAttempts: 1,
+          });
+          continue;
+        }
+
+        current.completedAttempts += 1;
+        const candidateTime = (row.completedAt ?? row.startedAt).getTime();
+        const currentBestTime = (
+          current.completedAt ?? current.startedAt
+        ).getTime();
+        if (
+          score > current.score ||
+          (score === current.score && candidateTime < currentBestTime)
+        ) {
+          current.score = score;
+          current.completedAt = row.completedAt;
+          current.startedAt = row.startedAt;
+        }
+      }
+
+      return [...exams.values()].map(exam => {
+        const rankedStudents = [...exam.students.values()].sort(
+          (a, b) =>
+            b.score - a.score ||
+            (a.completedAt ?? a.startedAt).getTime() -
+              (b.completedAt ?? b.startedAt).getTime() ||
+            a.userName.localeCompare(b.userName, "pt-BR")
+        );
+        let rank = 0;
+        let previousScore: number | undefined;
+        const students = rankedStudents.map((student, index) => {
+          if (student.score !== previousScore) rank = index + 1;
+          previousScore = student.score;
+          return { ...student, rank };
+        });
+        return {
+          assessmentId: exam.assessmentId,
+          assessment: exam.assessment,
+          subject: exam.subject,
+          sector: exam.sector,
+          students,
+        };
+      });
     }),
 
   markLessonComplete: trainingProcedure
@@ -1310,9 +1445,7 @@ export const treinamentoRouter = router({
           const existingAttempts = await tx
             .select()
             .from(trainingAttempts)
-            .where(
-              eq(trainingAttempts.assignmentStudentId, recipient.id)
-            )
+            .where(eq(trainingAttempts.assignmentStudentId, recipient.id))
             .orderBy(desc(trainingAttempts.startedAt));
           const activeAttempt = existingAttempts.find(
             attempt => attempt.status === "in_progress"
@@ -1367,16 +1500,21 @@ export const treinamentoRouter = router({
             asc(trainingAttemptAnswers.createdAt),
             asc(trainingAttemptAnswers.id)
           );
-        const firstUnanswered = attemptSnapshot.questions.findIndex(question => {
-          const questionAnswers = answers.filter(
-            answer => answer.questionKey === question.key
-          );
-          return question.type === "negotiation"
-            ? !questionAnswers.some(answer => answer.isTerminal)
-            : questionAnswers.length === 0;
-        });
+        const firstUnanswered = attemptSnapshot.questions.findIndex(
+          question => {
+            const questionAnswers = answers.filter(
+              answer => answer.questionKey === question.key
+            );
+            return question.type === "negotiation"
+              ? !questionAnswers.some(answer => answer.isTerminal)
+              : questionAnswers.length === 0;
+          }
+        );
         if (firstUnanswered === -1) {
-          initialQuestionIndex = Math.max(0, attemptSnapshot.questions.length - 1);
+          initialQuestionIndex = Math.max(
+            0,
+            attemptSnapshot.questions.length - 1
+          );
           currentQuestionAnswered = true;
         } else {
           initialQuestionIndex = firstUnanswered;
@@ -1392,11 +1530,12 @@ export const treinamentoRouter = router({
                 nodeId: string;
                 optionId: string;
               };
-              activeNegotiationNodeId = getNegotiationOption(
-                currentQuestion,
-                response.nodeId,
-                response.optionId
-              ).option.nextNodeId ?? undefined;
+              activeNegotiationNodeId =
+                getNegotiationOption(
+                  currentQuestion,
+                  response.nodeId,
+                  response.optionId
+                ).option.nextNodeId ?? undefined;
             }
           }
         }

@@ -272,6 +272,8 @@ function TrainingAdmin({ onChanged }: { onChanged: () => void }) {
     });
   const { data: results = [], isLoading: resultsLoading } =
     trpc.treinamento.resultsReport.useQuery({ subjectId: reportFilter });
+  const { data: leaderboards = [], isLoading: leaderboardsLoading } =
+    trpc.treinamento.leaderboardReport.useQuery({ subjectId: reportFilter });
   const assignmentAssessment = data?.assessments.find(
     item => item.id === assignmentAssessmentId
   );
@@ -993,7 +995,9 @@ function TrainingAdmin({ onChanged }: { onChanged: () => void }) {
                 className="w-full rounded-md border bg-background px-3 py-2 text-sm"
                 value={assignmentAssessmentId ?? ""}
                 onChange={event => {
-                  setAssignmentAssessmentId(Number(event.target.value) || undefined);
+                  setAssignmentAssessmentId(
+                    Number(event.target.value) || undefined
+                  );
                   setAssignmentStudentIds([]);
                 }}
               >
@@ -1001,9 +1005,7 @@ function TrainingAdmin({ onChanged }: { onChanged: () => void }) {
                 {data.assessments
                   .filter(
                     item =>
-                      item.allowFormal &&
-                      item.isPublished &&
-                      !item.archivedAt
+                      item.allowFormal && item.isPublished && !item.archivedAt
                   )
                   .map(item => (
                     <option key={item.id} value={item.id}>
@@ -1163,8 +1165,8 @@ function TrainingAdmin({ onChanged }: { onChanged: () => void }) {
                           {assignment.subjectTitle}
                         </p>
                         <p className="text-sm text-muted-foreground">
-                          Aplicada em {formatDate(assignment.createdAt)} ·
-                          prazo {formatDate(assignment.dueAt)} ·{" "}
+                          Aplicada em {formatDate(assignment.createdAt)} · prazo{" "}
+                          {formatDate(assignment.dueAt)} ·{" "}
                           {assignment.maxAttempts} tentativa(s) permitida(s)
                         </p>
                       </div>
@@ -1426,6 +1428,79 @@ function TrainingAdmin({ onChanged }: { onChanged: () => void }) {
 
       <Card>
         <CardHeader>
+          <CardTitle>Ranking das provas formais</CardTitle>
+          <CardDescription>
+            Cada aluno aparece pela sua melhor nota concluída em cada avaliação.
+            Empates recebem a mesma posição; a data desempata a ordem visual.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-5">
+          {leaderboardsLoading ? (
+            <p className="text-sm text-slate-500">Carregando rankings…</p>
+          ) : leaderboards.length === 0 ? (
+            <p className="text-sm text-slate-500">
+              Ainda não há provas formais concluídas para classificar.
+            </p>
+          ) : (
+            leaderboards.map(exam => (
+              <section
+                key={exam.assessmentId}
+                className="space-y-3 rounded-xl border p-4"
+              >
+                <div>
+                  <h3 className="font-semibold">{exam.assessment}</h3>
+                  <p className="text-sm text-muted-foreground">
+                    {exam.sector} · {exam.subject}
+                  </p>
+                </div>
+                <div className="overflow-x-auto">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Posição</TableHead>
+                        <TableHead>Aluno</TableHead>
+                        <TableHead>Melhor nota</TableHead>
+                        <TableHead>Data da nota</TableHead>
+                        <TableHead>Tentativas concluídas</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {exam.students.map(student => (
+                        <TableRow key={student.userId}>
+                          <TableCell>
+                            <Badge
+                              variant={
+                                student.rank <= 3 ? "secondary" : "outline"
+                              }
+                            >
+                              {student.rank}º
+                            </Badge>
+                          </TableCell>
+                          <TableCell className="font-medium">
+                            {student.userName}
+                          </TableCell>
+                          <TableCell>
+                            <Badge variant="secondary">
+                              {student.score.toFixed(2)}%
+                            </Badge>
+                          </TableCell>
+                          <TableCell>
+                            {formatDate(student.completedAt)}
+                          </TableCell>
+                          <TableCell>{student.completedAttempts}</TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+              </section>
+            ))
+          )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
           <CardTitle>Painel dos alunos</CardTitle>
           <CardDescription>
             Resumo das avaliações reais: quantidade de provas, atividade mais
@@ -1647,6 +1722,10 @@ export default function Treinamento() {
       await Promise.all([
         utils.treinamento.history.invalidate(),
         utils.treinamento.myProgress.invalidate(),
+        utils.treinamento.subject.invalidate({ id: subjectId ?? 0 }),
+        utils.treinamento.resultsReport.invalidate(),
+        utils.treinamento.assignmentReport.invalidate(),
+        utils.treinamento.leaderboardReport.invalidate(),
       ]);
     },
   });
@@ -1829,8 +1908,7 @@ export default function Treinamento() {
                   const id = attempt.assessmentId;
                   const assignmentStudentId = attempt.assignmentStudentId;
                   closeAttempt();
-                  if (id)
-                    start(id, attempt.mode, assignmentStudentId);
+                  if (id) start(id, attempt.mode, assignmentStudentId);
                 }}
               >
                 <RotateCcw className="mr-2 h-4 w-4" />
@@ -2220,8 +2298,7 @@ export default function Treinamento() {
                               )
                               .map((assigned: any) => {
                                 const activeAttempt = assigned.attempts.find(
-                                  (item: any) =>
-                                    item.status === "in_progress"
+                                  (item: any) => item.status === "in_progress"
                                 );
                                 const attemptsLeft =
                                   assigned.maxAttempts -
@@ -2305,14 +2382,13 @@ export default function Treinamento() {
                           {assessment.allowFormal &&
                             subject.isEnrolled &&
                             !subject.assignedExams.some(
-                              (item: any) =>
-                                item.assessmentId === assessment.id
+                              (item: any) => item.assessmentId === assessment.id
                             ) && (
                               <p className="mt-3 text-sm text-muted-foreground">
                                 A prova formal será liberada quando o instrutor
                                 aplicá-la a você.
                               </p>
-                          )}
+                            )}
                         </div>
                       </div>
                     ))}
