@@ -15,8 +15,12 @@ import {
 import type { TrpcContext } from "../_core/context";
 import {
   construirMapaConversaoClientes, normalizeEmpresaKey,
-  construirModeloBayesiano, calcularProbabilidadeBayesiana, calcularTaxaConversaoCliente,
+  calcularTaxaConversaoCliente,
 } from "../services/probabilidadeCompra";
+import {
+  construirModeloProbabilidadeCrm,
+  calcularProbabilidadeCrmAprendida,
+} from "../services/crmProbabilidadeModel";
 import { UF_PARA_REGIAO, normalizarUf } from "../utils/regioesBrasil";
 import { diasUteisEntre } from "../../shared/dias-uteis";
 
@@ -394,23 +398,20 @@ export const crmRouter = router({
       } catch {
         // Se falhar, clientesComCompra fica vazio — nenhuma estrela será exibida (evita falso positivo)
       }
-      // Score de Probabilidade de Compra — modelo bayesiano (Beta-Binomial por
-      // segmento + combinação em log-odds), validado em 13/09/2026 contra
-      // 5.587 orçamentos decididos (ver
-      // server/scripts/validar-modelo-bayesiano-probabilidade.ts e o
-      // comentário em server/services/probabilidadeCompra.ts). Consulta local
-      // ao Postgres (historico_orcamentos + historico_os), sem depender do
-      // MubiSys. Se falhar, todas as propostas ficam sem probabilidade em vez
-      // de quebrar a listagem inteira. mapaConversao continua sendo usado só
-      // para qtdComprasCliente (não para o score).
+      // O score é específico de cada proposta e é reajustado a partir dos
+      // desfechos históricos: ticket, idade da empresa (quando vinculada ao
+      // CNPJ), recência/frequência/valor de compras, coorte e região conhecida
+      // até a data da proposta. O modelo é recalibrado em memória a cada 30 min.
+      // Só propostas decididas entram no treino; a lista do CRM continua vindo
+      // exclusivamente do cache de propostas abertas do MubiSys.
       let mapaConversao: Awaited<ReturnType<typeof construirMapaConversaoClientes>> | null = null;
-      let modeloBayesiano: Awaited<ReturnType<typeof construirModeloBayesiano>> | null = null;
+      let modeloProbabilidade: Awaited<ReturnType<typeof construirModeloProbabilidadeCrm>> | null = null;
       try {
         mapaConversao = await construirMapaConversaoClientes(db);
-        modeloBayesiano = await construirModeloBayesiano(db);
+        modeloProbabilidade = await construirModeloProbabilidadeCrm(db);
       } catch {
         mapaConversao = null;
-        modeloBayesiano = null;
+        modeloProbabilidade = null;
       }
       // Mapear números de orçamentos de todos os orçamentos abertos por cliente (para unir com o histórico)
       const orcsAbertosPorCliente = new Map<string, Set<string>>();
@@ -456,8 +457,15 @@ export const crmRouter = router({
           ? normalizarUf((orc as any).cliente_endereco[0]?.estado)
           : null;
         const regiaoCliente = estadoCliente ? (UF_PARA_REGIAO[estadoCliente] ?? null) : null;
-        const { probabilidade: probabilidadeCompra, explicacao: probabilidadeExplicacao } = modeloBayesiano
-          ? calcularProbabilidadeBayesiana({ clienteNovo, nomeCliente, valorProposta: p.valor, modelo: modeloBayesiano, regiaoCliente })
+        const { probabilidade: probabilidadeCompra, explicacao: probabilidadeExplicacao } = modeloProbabilidade
+          ? calcularProbabilidadeCrmAprendida({
+              modelo: modeloProbabilidade,
+              nomeCliente,
+              valorProposta: p.valor,
+              dataProposta: p.dataCriacao,
+              numeroProposta: p.sequencial,
+              regiaoCliente: estadoCliente,
+            })
           : { probabilidade: null as number | null, explicacao: [] as string[] };
         const chaveCliente = normalizeEmpresaKey(nomeCliente);
         const conversaoCliente = mapaConversao?.porCliente.get(chaveCliente);
@@ -487,6 +495,18 @@ export const crmRouter = router({
         propostas: propostasComTelefone.sort((a, b) => a.qtdContatos - b.qtdContatos || b.diasAberto - a.diasAberto),
         abertosAtualizadoEm,
         abertosSyncStatus,
+        modeloProbabilidade: modeloProbabilidade ? {
+          metodo: "regressão logística com calibração temporal e sinais RFM/coorte",
+          propostasTreinoAte: modeloProbabilidade.ultimaPropostaTreino?.toISOString() ?? null,
+          propostasHistoricoAte: modeloProbabilidade.ultimaPropostaHistorico?.toISOString() ?? null,
+          propostasTreino: modeloProbabilidade.nTreino,
+          propostasHistoricoSemDesfecho: modeloProbabilidade.propostasHistoricoSemDesfecho,
+          taxaGeral: modeloProbabilidade.taxaGeral,
+          clientesComIdadeCnpj: modeloProbabilidade.coberturaIdadeEmpresarial.clientesComIdade,
+          clientesHistoricos: modeloProbabilidade.coberturaIdadeEmpresarial.clientesHistoricos,
+          propostasComIdadeCnpj: modeloProbabilidade.coberturaIdadeEmpresarial.propostasComIdade,
+          previsoesUsadasNaCalibracao: modeloProbabilidade.modelo.calibrador?.n ?? 0,
+        } : null,
         stats: {
           totalAberto: propostasComTelefone.length,
           totalFechado: qtdFechadas,
