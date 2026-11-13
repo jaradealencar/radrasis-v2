@@ -4,7 +4,7 @@
  * server/routers/crm.ts (getPropostas/getVendedores) lê a cada carregamento de
  * página — ver server/sync/crm-abertos-cache.ts e docs/cron-qstash.md.
  *
- * A janela de 21 dias não cabe numa chamada só (estourava o maxDuration de 60s,
+ * A janela de 45 dias não cabe numa chamada só (estourava o maxDuration de 60s,
  * medido em 21/09/2026). Cada execução busca fatias de 2 dias, começando pela mais
  * recente, e grava o cache a cada fatia — então um 504 ou uma falha no meio não
  * perde o que já foi feito. Só parte para a próxima fatia se, pelo tempo da anterior,

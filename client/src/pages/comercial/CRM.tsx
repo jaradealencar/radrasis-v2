@@ -9,7 +9,7 @@ import {
   CheckSquare, Square, Clock, ThumbsUp, AlertCircle, AlertTriangle,
   ChevronDown, ChevronUp, Star,
   Activity, CheckCircle2, Target, Trash2, TrendingUp, Zap, Info,
-  ChevronLeft, ChevronRight
+  ChevronLeft, ChevronRight, Search, SlidersHorizontal, ListTodo
 } from "lucide-react";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue
@@ -250,6 +250,31 @@ function toDateKey(d: Date) {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
 
+type TipoProximaAcao = "atrasada" | "hoje" | "sem_contato" | "aguardando" | "acompanhar";
+
+function obterProximaAcao(p: Proposta, faixasConfig: Record<1 | 2 | 3, FaixaConfig>, agora = new Date()) {
+  const hojeKey = toDateKey(agora);
+  const dates = getDates(p.dataCriacao, faixasConfig[3].diasFim);
+  const contatos = [p.contato1, p.contato2].filter(Boolean) as NonNullable<Proposta["contato1"]>[];
+  const datasContatadas = new Set(contatos.map(c => toDateKey(new Date(c.data))));
+  const atrasada = dates.find(d => toDateKey(d) < hojeKey && !datasContatadas.has(toDateKey(d)));
+  if (atrasada) return { tipo: "atrasada" as TipoProximaAcao, data: atrasada, prioridade: 0, rotulo: "Atrasada" };
+  const hoje = dates.find(d => toDateKey(d) === hojeKey && !datasContatadas.has(toDateKey(d)));
+  if (hoje) return { tipo: "hoje" as TipoProximaAcao, data: hoje, prioridade: 1, rotulo: "Contatar hoje" };
+  if (p.qtdContatos === 0) return { tipo: "sem_contato" as TipoProximaAcao, data: null, prioridade: 2, rotulo: "Sem contato" };
+  const aguardando = contatos.some(c => c.canal === "aguardando_resposta" || c.canal === "esperando_cliente");
+  if (aguardando) return { tipo: "aguardando" as TipoProximaAcao, data: null, prioridade: 3, rotulo: "Aguardando retorno" };
+  const futura = dates.find(d => toDateKey(d) >= hojeKey && !datasContatadas.has(toDateKey(d)));
+  return { tipo: "acompanhar" as TipoProximaAcao, data: futura ?? null, prioridade: 4, rotulo: "Acompanhar" };
+}
+
+function propostaCombinaBusca(p: Proposta, busca: string): boolean {
+  const termo = busca.trim().toLocaleLowerCase("pt-BR");
+  if (!termo) return true;
+  return [p.nomeCliente, p.nomeContato, p.telefone, String(p.sequencial ?? ""), p.id, p.vendedor]
+    .some(valor => String(valor ?? "").toLocaleLowerCase("pt-BR").includes(termo));
+}
+
 function buildWaLink(tel: string | null | undefined) {
   if (!tel) return null;
   const digits = tel.replace(/\D/g, "");
@@ -353,6 +378,14 @@ function PropostaRow({ p, vendedor, onRefresh, showVendedor, faixasConfig }: {
 
   const dates = getDates(p.dataCriacao, faixasConfig[3].diasFim);
   const waLink = buildWaLink(p.telefone);
+  const ultimoContato = !p.contato1 ? p.contato2 : !p.contato2 ? p.contato1
+    : new Date(p.contato1.data).getTime() >= new Date(p.contato2.data).getTime() ? p.contato1 : p.contato2;
+  const proximaAcao = obterProximaAcao(p, faixasConfig);
+  const acaoCor = proximaAcao.tipo === "atrasada" ? "text-red-700 bg-red-50 border-red-200"
+    : proximaAcao.tipo === "hoje" ? "text-blue-700 bg-blue-50 border-blue-200"
+    : proximaAcao.tipo === "sem_contato" ? "text-amber-700 bg-amber-50 border-amber-200"
+    : proximaAcao.tipo === "aguardando" ? "text-violet-700 bg-violet-50 border-violet-200"
+    : "text-slate-700 bg-slate-50 border-slate-200";
   // Grupo de mensagens que o botão de WhatsApp abre selecionado: a faixa em que a proposta está hoje
   const grupoSugerido = faixaSugerida(dates, [faixasConfig[1], faixasConfig[2], faixasConfig[3]]);
 
@@ -605,6 +638,34 @@ function PropostaRow({ p, vendedor, onRefresh, showVendedor, faixasConfig }: {
           )}
         </TableCell>
 
+        <TableCell className="min-w-[125px]">
+          {ultimoContato ? (
+            <>
+              <div className="text-xs font-medium">{fmtDate(ultimoContato.data)}</div>
+              <div className="text-[10px] text-muted-foreground">{getCanalInfo(ultimoContato.canal)?.label ?? "Contato registrado"}</div>
+            </>
+          ) : <span className="text-xs text-amber-700 font-medium">Ainda não contatado</span>}
+        </TableCell>
+
+        <TableCell className="min-w-[145px]">
+          <span className={`inline-flex rounded-full border px-2 py-0.5 text-[10px] font-semibold ${acaoCor}`}>{proximaAcao.rotulo}</span>
+          {proximaAcao.data && <div className="mt-1 text-[10px] text-muted-foreground">{fmtShort(proximaAcao.data)}</div>}
+          <button
+            type="button"
+            onClick={() => {
+              // O registro representa o contato realizado agora, mesmo quando a
+              // data sugerida de acompanhamento já venceu.
+              setModalContato({ date: new Date() });
+              setPedindoRemocao(false);
+              setRespostaSelecionada(null);
+              setObs("");
+            }}
+            className="mt-1 text-[10px] font-semibold text-blue-700 hover:text-blue-900 underline underline-offset-2"
+          >
+            {proximaAcao.tipo === "aguardando" ? "Registrar retorno" : "Registrar contato"}
+          </button>
+        </TableCell>
+
         {/* Vendedor (quando "todos") */}
         {showVendedor && (
           <TableCell>
@@ -779,7 +840,8 @@ function SugestaoContatoCard({ s, vendedor, showVendedor, onRefresh }: {
             {tipoLabel}
           </span>
           {diasSemComprar != null && (
-            <span className="text-[10px] font-medium text-red-600 bg-red-50 border border-red-200 rounded-full px-1.5 py-0.5">
+            <span className="inline-flex items-center text-[10px] font-medium text-red-600 bg-red-50 border border-red-200 rounded-full px-1.5 py-0.5">
+              {diasSemComprar >= MESES_REATIVACAO_DIAS && <Star className="w-3 h-3 mr-0.5 fill-red-500" />}
               há {diasSemComprar}d sem comprar
             </span>
           )}
@@ -818,8 +880,11 @@ export default function CRM() {
       setVendedor(user.name ?? "");
     }
   }, [user, isAdmin]);
-  const [dataInicio, setDataInicio] = useState(`${anoAtual}-${pad(mesAtual)}-01`);
-  const [dataFim, setDataFim] = useState(`${anoAtual}-${pad(mesAtual)}-${pad(lastDay)}`);
+  const [dataInicio, setDataInicio] = useState(() => {
+    const d = new Date(); d.setDate(d.getDate() - 44);
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+  });
+  const [dataFim, setDataFim] = useState(`${anoAtual}-${pad(mesAtual)}-${pad(now.getDate())}`);
   const [verHistorico, setVerHistorico] = useState(false);
   const [apenasNovos, setApenasNovos] = useState(false);
   const [apenasSemCompra6Meses, setApenasSemCompra6Meses] = useState(false);
@@ -829,9 +894,11 @@ export default function CRM() {
   const [ordenarPorProbabilidade, setOrdenarPorProbabilidade] = useState(false);
   const [filtroResposta, setFiltroResposta] = useState<string>("todos");
   const [filtroFaixa, setFiltroFaixa] = useState<string>("todas");
-  const [abaAtiva, setAbaAtiva] = useState<string>("propostas");
-  // Busca padrão cobre 15 dias; ativar para incluir propostas abertas há mais tempo (raro)
-  const [buscarAntigas, setBuscarAntigas] = useState(false);
+  const [abaAtiva, setAbaAtiva] = useState<string>("fila");
+  const [buscaPropostas, setBuscaPropostas] = useState("");
+  const [filtroFila, setFiltroFila] = useState<"todas" | TipoProximaAcao>("todas");
+  const [filtroSugestoes, setFiltroSugestoes] = useState<"todas" | "reativar">("todas");
+  const [sincronizacaoProgresso, setSincronizacaoProgresso] = useState<{ feito: number; total: number; totalFatias: number; fatiaAtual: number } | null>(null);
 
   // ─── Estados da aba Auditoria ────────────────────────────────────────────────
   const [audVendedor, setAudVendedor] = useState<string>("__todos__");
@@ -852,21 +919,46 @@ export default function CRM() {
   );
 
   const { data, isLoading, isError, error, refetch } = trpc.crm.getPropostas.useQuery(
-    { vendedor: vendedor || undefined, preset: "personalizado", dataInicio, dataFim, buscarAntigas },
+    { vendedor: vendedor || undefined, preset: "personalizado", dataInicio, dataFim },
     // retry: 1 (em vez do padrão 3 do React Query) — consulta ao MubiSys pode ser lenta;
     // se falhar, falha rápido em vez de travar minutos em retries exponenciais
     { refetchOnWindowFocus: false, retry: 1 }
   );
 
-  const sincronizarPropostasRecentes = trpc.crm.sincronizarPropostasRecentes.useMutation({
-    onSuccess: async (resultado) => {
+  const sincronizarPropostasFatia = trpc.crm.sincronizarPropostasFatia.useMutation();
+
+  const sincronizarJanelaCompleta = async () => {
+    const status = (data as any)?.abertosSyncStatus as { totalFatias?: number; completo?: boolean; fatiasDesatualizadas?: number[] } | undefined;
+    const totalFatias = status?.totalFatias ?? 23;
+    const todasAsFatias = Array.from({ length: totalFatias }, (_, fatia) => fatia);
+    const fatiasPendentes = !status?.completo && status?.fatiasDesatualizadas?.length
+      ? status.fatiasDesatualizadas
+      : todasAsFatias;
+    const total = fatiasPendentes.length;
+    setSincronizacaoProgresso({ feito: 0, total, totalFatias, fatiaAtual: fatiasPendentes[0] ?? 0 });
+    let totalNoCache = 0;
+    let fatiaEmAndamento = fatiasPendentes[0] ?? 0;
+    try {
+      // O MubiSys é serializado; as fatias são chamadas uma por vez para não
+      // multiplicar o tempo de resposta nem perder o cache em caso de falha.
+      for (let etapa = 0; etapa < fatiasPendentes.length; etapa++) {
+        const fatia = fatiasPendentes[etapa];
+        fatiaEmAndamento = fatia;
+        setSincronizacaoProgresso({ feito: etapa, total, totalFatias, fatiaAtual: fatia });
+        const resultado = await sincronizarPropostasFatia.mutateAsync({ fatia });
+        totalNoCache = resultado.totalNoCache;
+        setSincronizacaoProgresso({ feito: etapa + 1, total, totalFatias, fatiaAtual: fatiaEmAndamento });
+      }
       await refetch();
-      toast.success(
-        `Propostas sincronizadas: ${resultado.quantidade} encontradas entre ${resultado.di} e ${resultado.df}.`,
-      );
-    },
-    onError: (erro) => toast.error(erro.message),
-  });
+      toast.success(`Sincronização concluída: ${totalNoCache} propostas ainda abertas; ${total} partes atualizadas.`);
+    } catch (erro) {
+      await refetch();
+      const detalhe = erro instanceof Error ? erro.message : "Falha inesperada";
+      toast.error(`Falha na fatia ${fatiaEmAndamento + 1} de ${totalFatias}. O cache anterior foi preservado nessa parte. ${detalhe}`);
+    } finally {
+      setSincronizacaoProgresso(null);
+    }
+  };
 
   const { data: vendedoresData } = trpc.crm.getVendedores.useQuery(undefined, { refetchOnWindowFocus: false, retry: 1 });
   const { data: sugestoesData, isLoading: sugestoesLoading, refetch: refetchSugestoes } = trpc.crm.getSugestoesContato.useQuery(
@@ -881,15 +973,17 @@ export default function CRM() {
   const stats = data?.stats;
   const abertosAtualizadoEmIso = (data as any)?.abertosAtualizadoEm as string | undefined;
   const abertosAtualizadoEm = fmtTempoRelativo(abertosAtualizadoEmIso);
-  // Cron de sincronização roda a cada 10 min (ver docs/cron-qstash.md) — 60 min de
-  // folga cobre algumas falhas seguidas sem alarme falso, mas ainda pega o caso real
-  // de cron travado por horas/dias (já aconteceu: 3 dias parado sem ninguém notar).
-  const abertosCacheDesatualizado = !!abertosAtualizadoEmIso &&
-    (Date.now() - new Date(abertosAtualizadoEmIso).getTime()) > 60 * 60 * 1000;
+  const abertosSyncStatus = (data as any)?.abertosSyncStatus as {
+    totalDias: number; totalFatias: number; diasAtualizados: number;
+    diasDesatualizados: number; fatiasDesatualizadas: number[];
+    ultimaSincronizacaoEm: string | null; completo: boolean;
+  } | null | undefined;
+  const abertosCacheDesatualizado = !!abertosSyncStatus && !abertosSyncStatus.completo;
 
   // Filtros
   const propostasAtivas = useMemo(() => {
     let list = propostas.filter(p => !p.meta2Contatos);
+    if (buscaPropostas.trim()) list = list.filter(p => propostaCombinaBusca(p, buscaPropostas));
     if (apenasNovos) list = list.filter(p => p.clienteNovo);
     if (apenasSemCompra6Meses) list = list.filter(isClienteReativacao);
     if (filtroResposta !== "todos") {
@@ -934,10 +1028,42 @@ export default function CRM() {
     if (apenasMS) list = list.filter(p => p.estadoCliente === "MS");
     if (ordenarPorProbabilidade) list = [...list].sort((a, b) => (b.probabilidadeCompra ?? -1) - (a.probabilidadeCompra ?? -1));
     return list;
-  }, [propostas, apenasNovos, apenasSemCompra6Meses, apenasHoje, filtroResposta, filtroFaixa, filtroProbabilidade, apenasMS, ordenarPorProbabilidade, faixasConfig]);
+  }, [propostas, buscaPropostas, apenasNovos, apenasSemCompra6Meses, apenasHoje, filtroResposta, filtroFaixa, filtroProbabilidade, apenasMS, ordenarPorProbabilidade, faixasConfig]);
 
   const propostasHistorico = useMemo(() => propostas.filter(p => p.meta2Contatos), [propostas]);
   const showVendedor = !vendedor;
+
+  const propostasFilaClassificadas = useMemo(() => propostas
+    .filter(p => !p.meta2Contatos && propostaCombinaBusca(p, buscaPropostas))
+    .map(p => ({ proposta: p, acao: obterProximaAcao(p, faixasConfig) }))
+    .sort((a, b) => a.acao.prioridade - b.acao.prioridade || b.proposta.diasAberto - a.proposta.diasAberto || b.proposta.valor - a.proposta.valor),
+  [propostas, buscaPropostas, faixasConfig]);
+  const filaCounts = useMemo(() => ({
+    todas: propostasFilaClassificadas.length,
+    atrasadas: propostasFilaClassificadas.filter(x => x.acao.tipo === "atrasada").length,
+    hoje: propostasFilaClassificadas.filter(x => x.acao.tipo === "hoje").length,
+    semContato: propostasFilaClassificadas.filter(x => x.proposta.qtdContatos === 0).length,
+    aguardando: propostasFilaClassificadas.filter(x => x.acao.tipo === "aguardando").length,
+  }), [propostasFilaClassificadas]);
+  const propostasFila = useMemo(() => propostasFilaClassificadas
+    .filter(x => filtroFila === "todas" || (filtroFila === "sem_contato"
+      ? x.proposta.qtdContatos === 0
+      : x.acao.tipo === filtroFila))
+    .map(x => x.proposta), [propostasFilaClassificadas, filtroFila]);
+
+  const sugestoesVisiveis = useMemo(() => {
+    const sugestoes = sugestoesData?.sugestoes ?? [];
+    return sugestoes.filter(s => {
+      const dias = typeof s.evidencia.diasDesdeUltima === "number" ? s.evidencia.diasDesdeUltima : null;
+      const reativacao = dias != null && dias >= MESES_REATIVACAO_DIAS;
+      const bateFiltro = filtroSugestoes === "todas" || reativacao;
+      const bateBusca = !buscaPropostas.trim() || [s.empresa, s.vendedor].some(v => String(v ?? "").toLocaleLowerCase("pt-BR").includes(buscaPropostas.trim().toLocaleLowerCase("pt-BR")));
+      return bateFiltro && bateBusca;
+    });
+  }, [sugestoesData, filtroSugestoes, buscaPropostas]);
+  const sugestoesReativacaoCount = useMemo(() => (sugestoesData?.sugestoes ?? []).filter(s =>
+    typeof s.evidencia.diasDesdeUltima === "number" && s.evidencia.diasDesdeUltima >= MESES_REATIVACAO_DIAS
+  ).length, [sugestoesData]);
 
   // Alerta de acompanhamento atrasado
   const propostasAtrasadas = useMemo(() => {
@@ -992,27 +1118,25 @@ export default function CRM() {
           <h1 className="text-xl font-bold">CRM de Propostas</h1>
           <p className="text-sm text-muted-foreground">
             Propostas em aberto · {vendedorAtual}
-            {abertosAtualizadoEm && !buscarAntigas && (
-              <span className="ml-2 text-xs text-gray-400" title="Lista de propostas abertas atualizada em segundo plano, não em tempo real">
-                · atualizado {abertosAtualizadoEm}
-              </span>
-            )}
+            <span className="ml-2 text-xs text-gray-400" title="Somente propostas que ainda não viraram vendas no MubiSys">
+              · sincronizado {fmtTempoRelativo(abertosSyncStatus?.ultimaSincronizacaoEm) ?? abertosAtualizadoEm ?? "aguardando"}
+            </span>
           </p>
         </div>
         {isAdmin ? (
           <Button
             variant="outline"
             size="sm"
-            onClick={() => sincronizarPropostasRecentes.mutate()}
-            disabled={sincronizarPropostasRecentes.isPending}
+            onClick={sincronizarJanelaCompleta}
+            disabled={!!sincronizacaoProgresso || isLoading}
             className="gap-2 self-start sm:self-auto"
           >
-            {sincronizarPropostasRecentes.isPending
-              ? <><Spinner /> Sincronizando...</>
-              : <><RefreshCw className="w-4 h-4" /> Sincronizar recentes</>}
+            {sincronizacaoProgresso
+              ? <><Spinner /> Fatia {sincronizacaoProgresso.fatiaAtual + 1}/{sincronizacaoProgresso.totalFatias} · {sincronizacaoProgresso.feito}/{sincronizacaoProgresso.total} etapas</>
+              : <><RefreshCw className="w-4 h-4" /> {abertosCacheDesatualizado ? `Sincronizar pendentes (${abertosSyncStatus?.fatiasDesatualizadas?.length ?? 23})` : "Sincronizar janela completa"}</>}
           </Button>
         ) : (
-          <Button variant="outline" size="sm" onClick={() => refetch()} className="gap-2 self-start sm:self-auto">
+          <Button variant="outline" size="sm" onClick={() => refetch()} disabled={isLoading} className="gap-2 self-start sm:self-auto">
             <RefreshCw className="w-4 h-4" /> Atualizar
           </Button>
         )}
@@ -1024,17 +1148,22 @@ export default function CRM() {
       {/* Alerta de cache desatualizado — a lista de abertos não é ao vivo (ver nota
           acima de abertosAtualizadoEmIso); se o cron parar, isso é o único sinal visível
           de que propostas recentes podem estar faltando na tela. */}
-      {abertosCacheDesatualizado && !buscarAntigas && (
+      {abertosCacheDesatualizado && (
         <div className="flex items-start gap-3 bg-red-50 border border-red-300 rounded-xl p-4 shadow-sm">
           <AlertTriangle className="w-5 h-5 text-red-500 flex-shrink-0 mt-0.5" />
           <div className="flex-1 min-w-0">
             <p className="text-sm font-semibold text-red-700">
-              Lista de propostas desatualizada — atualizada {abertosAtualizadoEm}.
+              Sincronização incompleta — {abertosSyncStatus?.diasAtualizados ?? 0} de {abertosSyncStatus?.totalDias ?? 46} dias cobertos recentemente.
             </p>
             <p className="text-xs text-red-600 mt-0.5">
-              A sincronização automática com o MubiSys pode estar parada. Propostas criadas recentemente podem não aparecer ainda. Avise o time técnico se isso persistir.
+              O CRM pode não mostrar todas as propostas em aberto do período. A atualização automática continua em segundo plano; administradores podem sincronizar a janela completa agora.
             </p>
           </div>
+          {isAdmin && (
+            <Button size="sm" variant="outline" className="shrink-0 border-red-300 text-red-700 hover:bg-red-100" onClick={sincronizarJanelaCompleta} disabled={!!sincronizacaoProgresso || isLoading}>
+              Sincronizar agora
+            </Button>
+          )}
         </div>
       )}
 
@@ -1067,7 +1196,11 @@ export default function CRM() {
 
       {/* Sub-abas do CRM */}
       <Tabs value={abaAtiva} onValueChange={setAbaAtiva} className="w-full">
-        <TabsList className="grid w-full grid-cols-5 mb-4">
+        <TabsList className="grid w-full grid-cols-2 md:grid-cols-6 mb-4 h-auto">
+          <TabsTrigger value="fila" className="gap-1.5">
+            <ListTodo className="w-3.5 h-3.5" /> Fila de trabalho
+            <Badge variant="secondary" className="text-[10px] px-1.5 py-0">{filaCounts.todas}</Badge>
+          </TabsTrigger>
           <TabsTrigger value="propostas" className="gap-1.5">
             Propostas
             <Badge variant="secondary" className="text-[10px] px-1.5 py-0">{propostasAtivas.length}</Badge>
@@ -1078,9 +1211,9 @@ export default function CRM() {
           </TabsTrigger>
           <TabsTrigger value="sugestoes" className="gap-1.5">
             <Target className="w-3.5 h-3.5" />
-            Sugestões de Contato
-            {sugestoesData && sugestoesData.sugestoes.length > 0 && (
-              <Badge variant="secondary" className="text-[10px] px-1.5 py-0 bg-indigo-100 text-indigo-700">{sugestoesData.sugestoes.length}</Badge>
+            Reativar clientes
+            {sugestoesData && sugestoesReativacaoCount > 0 && (
+              <Badge variant="secondary" className="text-[10px] px-1.5 py-0 bg-red-100 text-red-700">{sugestoesReativacaoCount}</Badge>
             )}
           </TabsTrigger>
           <TabsTrigger value="historico" className="gap-1.5">
@@ -1093,8 +1226,79 @@ export default function CRM() {
           </TabsTrigger>
         </TabsList>
 
+        {/* ABA: Fila de trabalho */}
+        <TabsContent value="fila" className="space-y-4 mt-0">
+          <div className="rounded-xl border border-blue-200 bg-gradient-to-r from-blue-50 to-white p-4 shadow-sm">
+            <div className="flex items-start gap-3">
+              <div className="rounded-lg bg-blue-600 p-2 text-white"><ListTodo className="h-5 w-5" /></div>
+              <div>
+                <h2 className="font-bold text-blue-950">Seu próximo contato</h2>
+                <p className="mt-0.5 text-xs text-blue-800">A fila prioriza acompanhamentos atrasados, contatos de hoje e propostas ainda sem contato. Mostra apenas propostas que continuam abertas no MubiSys.</p>
+              </div>
+            </div>
+          </div>
+
+          <div className="flex flex-col gap-3 rounded-xl border bg-white p-3 shadow-sm">
+            <label className="relative block flex-1">
+              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+              <input value={buscaPropostas} onChange={e => setBuscaPropostas(e.target.value)}
+                placeholder="Buscar cliente, telefone, vendedor ou número da proposta"
+                className="h-10 w-full rounded-md border bg-white pl-9 pr-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+            </label>
+            <div className="flex flex-wrap gap-2">
+              {([
+                ["todas", "Todas", filaCounts.todas],
+                ["atrasada", "Atrasadas", filaCounts.atrasadas],
+                ["hoje", "Contatar hoje", filaCounts.hoje],
+                ["sem_contato", "Sem contato", filaCounts.semContato],
+                ["aguardando", "Aguardando retorno", filaCounts.aguardando],
+              ] as const).map(([value, label, count]) => (
+                <button key={value} type="button" onClick={() => setFiltroFila(value)}
+                  className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-semibold transition-colors ${filtroFila === value ? "border-blue-700 bg-blue-700 text-white" : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50"}`}>
+                  {label}<span className={`rounded-full px-1.5 py-0.5 text-[10px] ${filtroFila === value ? "bg-white/20" : "bg-slate-100"}`}>{count}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="overflow-hidden rounded-xl border bg-white shadow-sm">
+            <div className="flex items-center justify-between border-b px-5 py-3">
+              <h2 className="flex items-center gap-2 text-sm font-bold">Prioridade de contato <Badge variant="secondary">{propostasFila.length}</Badge></h2>
+              <span className="hidden text-xs text-muted-foreground sm:block">Use “Registrar contato” para salvar o resultado no CRM.</span>
+            </div>
+            {isLoading ? (
+              <div className="flex items-center justify-center gap-2 py-16 text-muted-foreground"><Spinner className="size-5" /><span className="text-sm">Carregando a fila...</span></div>
+            ) : isError ? (
+              <div className="flex flex-col items-center gap-2 px-4 py-12 text-center"><AlertTriangle className="h-6 w-6 text-red-500" /><span className="text-sm font-semibold text-red-700">Não foi possível carregar a fila.</span><Button variant="outline" size="sm" onClick={() => refetch()}><RefreshCw className="mr-2 h-3.5 w-3.5" />Tentar novamente</Button></div>
+            ) : propostasFila.length === 0 ? (
+              <Empty><EmptyHeader><EmptyMedia variant="icon"><CheckCircle2 className="text-green-500" /></EmptyMedia><EmptyTitle>Nenhuma proposta nesta fila</EmptyTitle><EmptyDescription>Troque o filtro ou ajuste a busca. A lista contém apenas propostas ainda abertas no MubiSys.</EmptyDescription></EmptyHeader></Empty>
+            ) : (
+              <Table>
+                <TableHeader><TableRow>
+                  <TableHead>Nº proposta</TableHead><TableHead>Cliente</TableHead><TableHead>Contato</TableHead><TableHead>Último contato</TableHead><TableHead>Próxima ação</TableHead>
+                  {showVendedor && <TableHead>Vendedor</TableHead>}<TableHead>Agenda</TableHead><TableHead className="text-center">Perdida</TableHead><TableHead className="text-center">Ganha</TableHead>
+                </TableRow></TableHeader>
+                <TableBody>{propostasFila.map(p => <PropostaRow key={p.id} p={p} vendedor={vendedor || user?.name || ""} onRefresh={refetch} showVendedor={showVendedor} faixasConfig={faixasConfig} />)}</TableBody>
+              </Table>
+            )}
+          </div>
+        </TabsContent>
+
         {/* ABA: Propostas */}
         <TabsContent value="propostas" className="space-y-4 mt-0">
+      <label className="relative block">
+        <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+        <input value={buscaPropostas} onChange={e => setBuscaPropostas(e.target.value)}
+          placeholder="Buscar cliente, telefone, vendedor ou número da proposta"
+          className="h-10 w-full rounded-xl border bg-white pl-9 pr-3 text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+      </label>
+      <details className="group rounded-xl border bg-white shadow-sm">
+        <summary className="flex cursor-pointer list-none items-center gap-2 px-4 py-3 text-sm font-semibold text-slate-700">
+          <SlidersHorizontal className="h-4 w-4" /> Filtros avançados
+          <span className="text-xs font-normal text-muted-foreground">vendedor, datas, perfil de cliente, acompanhamento</span>
+          <ChevronDown className="ml-auto h-4 w-4 transition-transform group-open:rotate-180" />
+        </summary>
+        <div className="space-y-4 border-t p-4">
       {/* Filtros */}
       <div className="flex flex-wrap items-end gap-3 bg-white border rounded-xl p-4 shadow-sm">
         <div className="flex flex-col gap-1">
@@ -1189,27 +1393,6 @@ export default function CRM() {
             </SelectContent>
           </Select>
         </div>
-        {/* Buscar propostas mais antigas (raro: proposta aberta há mais de 15 dias) */}
-        <div className="flex flex-col gap-1">
-          <label className="text-xs font-semibold text-transparent select-none">.</label>
-          <TooltipProvider>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <button onClick={() => setBuscarAntigas(v => !v)}
-                  className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-full border transition-all h-9 ${
-                    buscarAntigas ? "bg-slate-700 text-white border-slate-700 shadow-sm" : "bg-white text-gray-600 border-gray-300 hover:border-slate-500"
-                  }`}>
-                  <Clock className="w-3.5 h-3.5" />
-                  {buscarAntigas ? "Buscando até 30 dias ✕" : "Buscar mais antigas"}
-                  {isLoading && buscarAntigas && <Spinner className="size-3" />}
-                </button>
-              </TooltipTrigger>
-              <TooltipContent side="top" className="text-xs max-w-[220px]">
-                Por padrão, o CRM busca propostas abertas nos últimos 15 dias. Ative para incluir até 30 dias — a busca pode demorar mais.
-              </TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
-        </div>
         {/* Score de Probabilidade de Compra (Fase 1) */}
         <div className="flex flex-col gap-1">
           <label className="text-xs font-semibold text-muted-foreground flex items-center gap-1">
@@ -1281,6 +1464,9 @@ export default function CRM() {
         ))}
       </div>
 
+        </div>
+      </details>
+
       {/* Cards de estatísticas */}
       {stats && (
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
@@ -1323,9 +1509,7 @@ export default function CRM() {
             <AlertTriangle className="w-6 h-6 text-red-500" />
             <span className="text-sm font-semibold text-red-700">Não foi possível carregar as propostas.</span>
             <span className="text-xs text-muted-foreground max-w-md">
-              {buscarAntigas
-                ? "A busca de propostas mais antigas pode demorar e falhar em horários de lentidão do ERP. Tente novamente em alguns minutos."
-                : (error?.message || "Tente novamente em instantes.")}
+              {error?.message || "Tente novamente em instantes."}
             </span>
             <Button variant="outline" size="sm" onClick={() => refetch()} className="mt-1 gap-2">
               <RefreshCw className="w-3.5 h-3.5" /> Tentar de novo
@@ -1346,6 +1530,8 @@ export default function CRM() {
                   <TableHead>Nº OS</TableHead>
                   <TableHead>Miniatura / Razão Social</TableHead>
                   <TableHead>Nome do Cliente</TableHead>
+                  <TableHead>Último contato</TableHead>
+                  <TableHead>Próxima ação</TableHead>
                   {showVendedor && <TableHead>Vendedor</TableHead>}
                   <TableHead>Faixas de Acompanhamento</TableHead>
                   <TableHead className="text-center">Perdida</TableHead>
@@ -1480,36 +1666,54 @@ export default function CRM() {
           </div>
         </TabsContent>
 
-        {/* ABA: Sugestões de Contato */}
+        {/* ABA: Reativar clientes */}
         <TabsContent value="sugestoes" className="space-y-4 mt-0">
           <div className="bg-indigo-50 border border-indigo-200 rounded-xl p-4 shadow-sm">
             <div className="flex items-center gap-2 mb-1">
               <Target className="w-4 h-4 text-indigo-600" />
-              <h3 className="text-sm font-bold text-indigo-800">Sugestões de Contato — Reengajamento da Carteira</h3>
+              <h3 className="text-sm font-bold text-indigo-800">Clientes para reativar</h3>
             </div>
             <p className="text-xs text-indigo-700">
-              Clientes que pararam de comprar, ordenados pelo score interno de potencial de recompra. Ligue e confirme o contato — a lista se renova mensalmente.
+              Esta fila usa o histórico de compras e fica separada das propostas abertas. A lista de propostas continua mostrando apenas o que ainda não virou venda.
             </p>
             <div className="flex items-center gap-2 mt-2 text-xs text-indigo-700">
-              <span className="font-semibold">{sugestoesData?.sugestoes.length ?? 0} pendente{(sugestoesData?.sugestoes.length ?? 0) !== 1 ? "s" : ""}</span>
+              <span className="font-semibold">{sugestoesReativacaoCount} clientes sem compra há 6+ meses</span>
               <span>·</span>
               <span>{sugestoesData?.contatadasEsteMes ?? 0} contatado{(sugestoesData?.contatadasEsteMes ?? 0) !== 1 ? "s" : ""} este mês</span>
             </div>
           </div>
 
+          <label className="relative block">
+            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+            <input value={buscaPropostas} onChange={e => setBuscaPropostas(e.target.value)}
+              placeholder="Buscar cliente ou vendedor"
+              className="h-10 w-full rounded-xl border bg-white pl-9 pr-3 text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+          </label>
+
+          <div className="flex flex-wrap gap-2">
+            <button type="button" onClick={() => setFiltroSugestoes("reativar")}
+              className={`rounded-full border px-3 py-1.5 text-xs font-semibold ${filtroSugestoes === "reativar" ? "border-red-600 bg-red-600 text-white" : "border-red-200 bg-red-50 text-red-700"}`}>
+              <Star className="mr-1 inline h-3.5 w-3.5 fill-current" /> Sem compra 6+ meses ({sugestoesReativacaoCount})
+            </button>
+            <button type="button" onClick={() => setFiltroSugestoes("todas")}
+              className={`rounded-full border px-3 py-1.5 text-xs font-semibold ${filtroSugestoes === "todas" ? "border-slate-700 bg-slate-700 text-white" : "border-slate-200 bg-white text-slate-700"}`}>
+              Todas as sugestões ({sugestoesData?.sugestoes.length ?? 0})
+            </button>
+          </div>
+
           {sugestoesLoading ? (
             <div className="flex justify-center py-10"><Spinner /></div>
-          ) : (sugestoesData?.sugestoes.length ?? 0) === 0 ? (
+          ) : sugestoesVisiveis.length === 0 ? (
             <Empty>
               <EmptyHeader>
                 <EmptyMedia variant="icon"><Target className="text-indigo-400" /></EmptyMedia>
-                <EmptyTitle>Nenhuma sugestão pendente</EmptyTitle>
-                <EmptyDescription>Todos os clientes com atraso na recompra já foram contatados neste ciclo.</EmptyDescription>
+                <EmptyTitle>Nenhum cliente nesta lista</EmptyTitle>
+                <EmptyDescription>Altere o filtro ou a busca. A fila não mistura clientes para reativação com propostas abertas.</EmptyDescription>
               </EmptyHeader>
             </Empty>
           ) : (
             <div className="space-y-2">
-              {sugestoesData!.sugestoes.map(s => (
+              {sugestoesVisiveis.map(s => (
                 <SugestaoContatoCard key={s.id} s={s} vendedor={vendedor} showVendedor={!vendedor} onRefresh={refetchSugestoes} />
               ))}
             </div>
@@ -1534,6 +1738,8 @@ export default function CRM() {
                     <TableHead>Nº OS</TableHead>
                     <TableHead>Miniatura / Razão Social</TableHead>
                     <TableHead>Nome do Cliente</TableHead>
+                    <TableHead>Último contato</TableHead>
+                    <TableHead>Próxima ação</TableHead>
                     {showVendedor && <TableHead>Vendedor</TableHead>}
                     <TableHead>Faixas</TableHead>
                     <TableHead className="text-center">Perdida</TableHead>

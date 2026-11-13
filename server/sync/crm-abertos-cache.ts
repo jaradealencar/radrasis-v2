@@ -39,25 +39,13 @@ import { listarOrcamentosMubiSys } from "../integrations/mubisys-client";
 // para uma eventual UI que sinalize "desatualizado" quando muito velho.
 export const CRM_CACHE_TTL_MS = 20 * 60 * 1000;
 
-// 21 dias por padrão (setembro/2026: subiu de 15 para 21 junto da redefinição
-// das faixas de follow-up do CRM — ver crm_faixa_etiquetas/getFaixaEtiquetas
-// em server/routers/crm.ts). A Faixa 3 hoje termina em D+10 dias ÚTEIS, que no
-// pior caso (início numa sexta ou segunda) corresponde a até 14 dias CORRIDOS
-// — 21 dá folga confortável mesmo assim, e ainda mantém o volume por chamada
-// bem menor que os 30 dias do modo "buscar mais antigas". IMPORTANTE: esta
-// constante não é lida dinamicamente da config de faixas (que é editável via
-// CRMConfig/Inteligência de Clientes sem deploy) — se o gestor alargar a
-// Faixa 3 para muito além de D+10 dias úteis, revisar este valor também.
-// Quanto ao tamanho em si: dado que o tempo de resposta do MubiSys varia
-// muito (25s a 117s medidos para a mesma janela em 12/09/2026), aumentar a
-// janela reduz o risco médio de não cobrir uma proposta ainda aberta, mas não
-// elimina o risco de timeout — é por isso que a leitura nunca depende de
-// terminar a tempo dentro do request do usuário (ver nota de topo do arquivo).
-export const JANELA_ABERTOS_DIAS_PADRAO = 21;
-export const JANELA_ABERTOS_DIAS_MAX = 30;
+// 45 dias cobrem o mês vigente inteiro, mesmo no fim do mês, e preservam uma
+// margem para propostas abertas recentes do mês anterior. A janela é dividida
+// em chamadas sequenciais de dois dias para respeitar o limite da Vercel.
+export const JANELA_ABERTOS_DIAS_PADRAO = 45;
 
+// Mantemos a chave antiga para reaproveitar o cache existente sem migration ou limpeza.
 export const CACHE_KEY_ABERTOS_PADRAO = "crm_abertos_15d";
-export const CACHE_KEY_ABERTOS_ESTENDIDO = "crm_abertos_30d";
 
 // Cache rolante para as propostas "fechadas" (usado nas estatísticas do período
 // selecionado na tela). Mesmo problema do "abertos": buscar ao vivo o período
@@ -68,6 +56,122 @@ export const CACHE_KEY_ABERTOS_ESTENDIDO = "crm_abertos_30d";
 export const JANELA_FECHADOS_DIAS = 45;
 export const CACHE_KEY_FECHADOS = "crm_fechados_45d";
 
+const CRM_SYNC_STATUS_SUFFIX = "_sync_status";
+const CRM_SYNC_STATUS_MAX_AGE_MS = 5 * 60 * 60 * 1000;
+
+export interface CrmAbertosSyncStatus {
+  totalDias: number;
+  totalFatias: number;
+  diasAtualizados: number;
+  diasDesatualizados: number;
+  fatiasDesatualizadas: number[];
+  ultimaSincronizacaoEm: string | null;
+  completo: boolean;
+}
+
+function diasEntre(inicio: string, fim: string): string[] {
+  const dias: string[] = [];
+  const cursor = new Date(`${inicio}T00:00:00.000Z`);
+  const limite = new Date(`${fim}T00:00:00.000Z`);
+  while (cursor <= limite) {
+    dias.push(cursor.toISOString().slice(0, 10));
+    cursor.setUTCDate(cursor.getUTCDate() + 1);
+  }
+  return dias;
+}
+
+async function lerStatusFatias(cacheKey: string): Promise<Record<string, string>> {
+  try {
+    const db = (await getDb())!;
+    const rows = await db.select({ orcData: mubisysApiCache.orcData })
+      .from(mubisysApiCache)
+      .where(eq(mubisysApiCache.cacheKey, `${cacheKey}${CRM_SYNC_STATUS_SUFFIX}`))
+      .limit(1);
+    const json = rows[0]?.orcData;
+    if (!json) return {};
+    const parsed = JSON.parse(json);
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+async function gravarStatusFatias(cacheKey: string, diasSincronizados: string[]): Promise<void> {
+  try {
+    const db = (await getDb())!;
+    const statusKey = `${cacheKey}${CRM_SYNC_STATUS_SUFFIX}`;
+    const anterior = await lerStatusFatias(cacheKey);
+    const agora = new Date();
+    const mapa = { ...anterior };
+    for (const dia of diasSincronizados) mapa[dia] = agora.toISOString();
+    const corte = new Date(agora.getTime() - 60 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+    for (const dia of Object.keys(mapa)) if (dia < corte) delete mapa[dia];
+    const existente = await db.select({ id: mubisysApiCache.id }).from(mubisysApiCache)
+      .where(eq(mubisysApiCache.cacheKey, statusKey)).limit(1);
+    const dados = {
+      orcData: JSON.stringify(mapa),
+      fetchedAt: agora,
+      expiresAt: new Date(agora.getTime() + 60 * 24 * 60 * 60 * 1000),
+      updatedAt: agora,
+    };
+    if (existente.length > 0) {
+      await db.update(mubisysApiCache).set(dados).where(eq(mubisysApiCache.cacheKey, statusKey));
+    } else {
+      await db.insert(mubisysApiCache).values({
+        cacheKey: statusKey,
+        mes: agora.getMonth() + 1,
+        ano: agora.getFullYear(),
+        osData: null,
+        ...dados,
+      });
+    }
+  } catch {
+    // O status de cobertura é diagnóstico: uma falha não deve interromper a lista do CRM.
+  }
+}
+
+export async function getCrmAbertosSyncStatus(
+  cacheKey: string,
+  janelaDias: number,
+  agora = new Date(),
+): Promise<CrmAbertosSyncStatus> {
+  const total = janelaDias + 1;
+  const inicio = fmtDate(new Date(agora.getTime() - janelaDias * DIA_MS));
+  const fim = fmtDate(agora);
+  const diasEsperados = diasEntre(inicio, fim);
+  const mapa = await lerStatusFatias(cacheKey);
+  const atualizadoRecentemente = (dia: string) => {
+    const registro = mapa[dia];
+    if (!registro) return false;
+    const sincronizadoEm = Date.parse(registro);
+    return Number.isFinite(sincronizadoEm) && agora.getTime() - sincronizadoEm <= CRM_SYNC_STATUS_MAX_AGE_MS;
+  };
+  let diasAtualizados = 0;
+  let ultima: string | null = null;
+  for (const dia of diasEsperados) {
+    const registro = mapa[dia];
+    if (!registro) continue;
+    if (!ultima || registro > ultima) ultima = registro;
+    if (atualizadoRecentemente(dia)) diasAtualizados++;
+  }
+  const diasDesatualizados = Math.max(0, total - diasAtualizados);
+  const totalFatias = numFatias(janelaDias);
+  const fatiasDesatualizadas = Array.from({ length: totalFatias }, (_, fatia) => fatia)
+    .filter(fatia => {
+      const intervalo = intervaloDaFatia(janelaDias, fatia, agora);
+      return diasEntre(intervalo.di, intervalo.df).some(dia => !atualizadoRecentemente(dia));
+    });
+  return {
+    totalDias: total,
+    totalFatias,
+    diasAtualizados,
+    diasDesatualizados,
+    fatiasDesatualizadas,
+    ultimaSincronizacaoEm: ultima,
+    completo: diasDesatualizados === 0,
+  };
+}
+
 export interface CrmAbertosCacheHit {
   itens: any[];
   fetchedAt: Date;
@@ -77,8 +181,7 @@ export interface CrmAbertosCacheHit {
  * Lê o cache SEM checar idade/expiração — serve o que houver, por mais velho
  * que esteja (ver nota de topo do arquivo). Só devolve `null` quando nunca
  * houve gravação para essa chave (bootstrap: primeiro deploy antes do cron
- * rodar pela primeira vez, ou o modo "buscar mais antigas" antes do primeiro
- * clique).
+ * rodar pela primeira vez).
  */
 export async function getCrmAbertosCache(cacheKey: string): Promise<CrmAbertosCacheHit | null> {
   try {
@@ -219,6 +322,7 @@ export async function refreshCrmAbertosFatia(
   const inicioJanela = intervaloDaFatia(janelaDias, numFatias(janelaDias) - 1).di;
   const mesclado = mesclarFatia(existente?.itens ?? [], itens, di, df, inicioJanela);
   await setCrmAbertosCache(cacheKey, mesclado);
+  await gravarStatusFatias(cacheKey, diasEntre(di, df));
   return { di, df, naFatia: itens.length, totalEmCache: mesclado.length };
 }
 

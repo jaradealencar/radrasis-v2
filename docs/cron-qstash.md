@@ -8,7 +8,7 @@ Cron); nenhum agendador vive dentro do repositório:
 | `POST /api/scheduled/sincronizarOS` | `erp_os_cache` + estoque de perfis | janela rolante curta (~32 dias), dados quentes e baixas idempotentes de perfis calculadas pela BOM espelhada; O.S. sem BOM/medidas ficam como pendência no painel |
 | `POST /api/scheduled/sincronizarHistorico` | `historico_os` + `historico_orcamentos` | base histórica permanente, usada pela regra de cliente novo/reativado/recorrente e por todo relatório comercial mensal |
 | `POST /api/scheduled/completarTelefones?di=&df=` | `historico_os.telefone` | uso manual/pontual: preenche o telefone (só onde está NULL) das O.S. aprovadas numa janela de até 7 dias, dentro dos últimos 24 meses (ver `MESES_BACKFILL_PADRAO`, aumentado de 13 em 28/09/2026 para as fontes ERP de Campanhas WhatsApp). Completa o histórico antigo para o Guia de Fornecedores e para as Campanhas WhatsApp; o cron diário só cobre mês corrente + anterior |
-| `POST /api/scheduled/sincronizarCrmAbertos` | `mubisys_api_cache` (chave `crm_abertos_15d`) | orçamentos "em aberto" (15 dias) que o CRM de Propostas mostra — ver seção "Sincronização de abertos do CRM" mais abaixo |
+| `POST /api/scheduled/sincronizarCrmAbertos` | `mubisys_api_cache` (chave legada `crm_abertos_15d`) | propostas ainda abertas no MubiSys (janela móvel de 45 dias) — ver seção "Sincronização de abertos do CRM" mais abaixo |
 | `POST /api/scheduled/sincronizarCrmFechados` | `mubisys_api_cache` (chave `crm_fechados_45d`) | orçamentos "fechados" (45 dias) usados nas estatísticas do período selecionado no CRM — mesma seção |
 | `POST /api/scheduled/sincronizarPerfilCnpj` | `clientes_perfil_cnpj` | enriquece automaticamente o CNPJ de clientes novos que aparecem em `historico_os` (porte, idade, sócios) — ver seção "Sincronização do Perfil de Clientes por CNPJ" mais abaixo |
 | `POST /api/scheduled/sincronizarPerfisMubiSys` | espelho de matérias-primas + estoque de perfis | consulta o catálogo MubiSys, adiciona perfis novos e marca inativos/ausentes como descontinuados, preservando saldos e movimentos |
@@ -184,7 +184,7 @@ npx tsx server/scripts/backfill-historico-orcamentos.ts --gravar --confirmo-alvo
 
 Gravar em produção exige autorização explícita (ver AGENTS.md).
 
-## Sincronização de abertos do CRM (`mubisys_api_cache`, chave `crm_abertos_15d`)
+## Sincronização de abertos do CRM (`mubisys_api_cache`, chave legada `crm_abertos_15d`)
 
 Criado em 12/09/2026 para corrigir o CRM de Propostas (`client/src/pages/comercial/CRM.tsx`
 + `server/routers/crm.ts`), que travava buscando **12 meses** inteiros de orçamentos ao vivo
@@ -193,17 +193,24 @@ completo.
 
 - **Endpoint:** `POST /api/scheduled/sincronizarCrmAbertos`
 - **Autenticação:** nenhuma — ver "Sem autenticação por segredo" acima.
-- **Fatias de 2 dias.** A janela padrão (21 dias, `status=ABERTO`) é dividida em 11 fatias
-  contíguas (0 = hoje e ontem, 10 = a mais antiga). Medido em 21/09/2026: a janela inteira
+- **Somente propostas ainda abertas.** A consulta ao MubiSys usa `status=ABERTO`, e a rota
+  do CRM mantém apenas os status locais "em aberto", "em andamento" e "pendente". Propostas
+  aprovadas, faturadas ou concluídas não entram na lista de trabalho.
+- **Fatias de 2 dias.** A janela padrão (45 dias, `status=ABERTO`) é dividida em 23 fatias
+  contíguas (0 = hoje e ontem, 22 = a mais antiga). Medido em 21/09/2026: a janela inteira
   numa chamada só estoura o `maxDuration` de 60s ("Task timed out after 60 seconds"), e
   até fatias de 8 dias estouraram (a API chegou a ~13s por página de 50). Sem a
   regravação, o cache ficava parado e o CRM passava a mostrar dados velhos.
   - Cada execução atualiza a fatia 0 primeiro e segue pelas mais antigas (rodízio pelo
-    relógio a cada 10 min) **enquanto a previsão de tempo couber nos 60s**. O cache é
-    gravado a cada fatia, então um 504 ou erro no meio não perde o que já foi feito.
+    relógio a cada 10 min) **enquanto a previsão de tempo couber nos 60s**. Com 23 fatias,
+    uma volta completa pode levar até cerca de 4 horas se cada execução só conseguir gravar
+    uma fatia; o CRM monitora a cobertura diária e sinaliza quando houver dias pendentes.
+    O cache é gravado a cada fatia, então um 504 ou erro no meio não perde o que já foi feito.
     **Um único schedule a cada 10 min continua sendo suficiente.**
-  - `?fatia=N` (0 a 10) atualiza só aquela fatia. Para repopular o cache na mão (ex.: cron
-    parado por dias), chame as 11 em sequência — nunca em paralelo.
+  - `?fatia=N` (0 a 22) atualiza só aquela fatia. Para repopular o cache na mão (ex.: cron
+    parado por dias), chame as 23 em sequência — nunca em paralelo. No CRM, administradores
+    podem sincronizar as fatias pendentes; a tela mostra o avanço e avisa quando a cobertura
+    recente estiver incompleta.
 - **Upsert idempotente:** troca só o trecho da janela buscado na linha de `mubisys_api_cache`
   (chave `crm_abertos_15d`) — chamadas repetidas ou fora de hora não corrompem nada. Se a
   busca de uma fatia falhar ou vier incompleta, o cache dela fica como estava.
@@ -224,10 +231,9 @@ Retries:    2
 > deploy). Se este cron falhar ou atrasar algumas vezes seguidas, o único
 > efeito é a tela ficar mais desatualizada — nunca lenta ou quebrada.
 >
-> Pelo mesmo motivo, **não crie um segundo schedule para a janela estendida**
-> (30 dias, botão "Buscar mais antigas" na tela) — ela é usada sob demanda,
-> raramente, e aceita o risco de eventualmente demorar ou falhar num clique
-> isolado. Não vale manter mais um job rodando de fundo para isso.
+> A tela também verifica a cobertura recente dos 46 dias consultados. Se a sincronização
+> agendada deixar lacunas, mostra os dias cobertos e oferece a administradores uma sincronização
+> sequencial completa. O cache anterior continua disponível se uma fatia falhar.
 
 ## Sincronização de fechados do CRM (`mubisys_api_cache`, chave `crm_fechados_45d`)
 
