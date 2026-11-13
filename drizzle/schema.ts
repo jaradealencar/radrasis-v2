@@ -1,5 +1,7 @@
+import { sql } from "drizzle-orm";
 import {
   boolean,
+  check,
   date,
   decimal,
   index,
@@ -1093,6 +1095,7 @@ export const PAGE_KEYS = [
   "qualidade-planos", "qualidade-desempenho",
   "logistica-cte", "logistica-insights-ia",
   "metricas",
+  "treinamento",
 ] as const;
 export type PageKey = typeof PAGE_KEYS[number];
 
@@ -3826,6 +3829,7 @@ export type InsertCampanhaWhatsappDisparoItem = typeof campanhasWhatsappDisparoI
 // nem qualquer outro vínculo automático com o log real; é o usuário quem marca "disparado"/"não disparado".
 export const campanhaWhatsappAgendamentoStatusEnum = pgEnum("campanha_whatsapp_agendamento_status", ["planejado", "disparado", "nao_disparado"]);
 
+
 export const campanhasWhatsappAgendamentos = pgTable("campanhas_whatsapp_agendamentos", {
   id: serial("id").primaryKey(),
   campanhaId: integer("campanha_id").notNull().references(() => campanhasWhatsapp.id, { onDelete: "cascade" }),
@@ -3839,3 +3843,383 @@ export const campanhasWhatsappAgendamentos = pgTable("campanhas_whatsapp_agendam
 }));
 export type CampanhaWhatsappAgendamento = typeof campanhasWhatsappAgendamentos.$inferSelect;
 export type InsertCampanhaWhatsappAgendamento = typeof campanhasWhatsappAgendamentos.$inferInsert;
+
+// ─── ESCOLA CORPORATIVA ─────────────────────────────────────────────────────
+// Tentativas guardam um snapshot completo do questionário (incluindo gabarito)
+// para que mudanças futuras no conteúdo não alterem a correção histórica.
+export const trainingSectors = pgTable(
+  "training_sectors",
+  {
+    id: serial("id").primaryKey(),
+    name: varchar("name", { length: 128 }).notNull(),
+    slug: varchar("slug", { length: 160 }).notNull(),
+    description: text("description").notNull().default(""),
+    position: integer("position").notNull().default(0),
+    isPublished: boolean("is_published").notNull().default(false),
+    archivedAt: timestamp("archived_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  t => ({ slugUnique: uniqueIndex("training_sectors_slug_uq").on(t.slug) })
+);
+export type TrainingSector = typeof trainingSectors.$inferSelect;
+
+export const trainingSubjects = pgTable(
+  "training_subjects",
+  {
+    id: serial("id").primaryKey(),
+    sectorId: integer("sector_id")
+      .notNull()
+      .references(() => trainingSectors.id, { onDelete: "restrict" }),
+    title: varchar("title", { length: 180 }).notNull(),
+    slug: varchar("slug", { length: 200 }).notNull(),
+    description: text("description").notNull().default(""),
+    sourceReference: varchar("source_reference", { length: 256 }),
+    version: integer("version").notNull().default(1),
+    position: integer("position").notNull().default(0),
+    isPublished: boolean("is_published").notNull().default(false),
+    archivedAt: timestamp("archived_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  t => ({
+    slugUnique: uniqueIndex("training_subjects_slug_uq").on(t.slug),
+    sectorIdx: index("training_subjects_sector_idx").on(t.sectorId, t.position),
+  })
+);
+export type TrainingSubject = typeof trainingSubjects.$inferSelect;
+
+export const trainingLessons = pgTable(
+  "training_lessons",
+  {
+    id: serial("id").primaryKey(),
+    subjectId: integer("subject_id")
+      .notNull()
+      .references(() => trainingSubjects.id, { onDelete: "restrict" }),
+    title: varchar("title", { length: 180 }).notNull(),
+    summary: text("summary").notNull().default(""),
+    content: text("content").notNull(),
+    version: integer("version").notNull().default(1),
+    position: integer("position").notNull().default(0),
+    isPublished: boolean("is_published").notNull().default(false),
+    archivedAt: timestamp("archived_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  t => ({ subjectIdx: index("training_lessons_subject_idx").on(t.subjectId, t.position) })
+);
+export type TrainingLesson = typeof trainingLessons.$inferSelect;
+
+export const trainingAssessments = pgTable(
+  "training_assessments",
+  {
+    id: serial("id").primaryKey(),
+    subjectId: integer("subject_id")
+      .notNull()
+      .references(() => trainingSubjects.id, { onDelete: "restrict" }),
+    title: varchar("title", { length: 180 }).notNull(),
+    description: text("description").notNull().default(""),
+    allowPractice: boolean("allow_practice").notNull().default(true),
+    allowFormal: boolean("allow_formal").notNull().default(true),
+    version: integer("version").notNull().default(1),
+    position: integer("position").notNull().default(0),
+    isPublished: boolean("is_published").notNull().default(false),
+    archivedAt: timestamp("archived_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  t => ({ subjectIdx: index("training_assessments_subject_idx").on(t.subjectId, t.position) })
+);
+export type TrainingAssessment = typeof trainingAssessments.$inferSelect;
+
+export const trainingAssessmentMaterials = pgTable(
+  "training_assessment_materials",
+  {
+    id: serial("id").primaryKey(),
+    assessmentId: integer("assessment_id")
+      .notNull()
+      .references(() => trainingAssessments.id, { onDelete: "cascade" }),
+    name: varchar("name", { length: 255 }).notNull(),
+    url: text("url").notNull(),
+    fileKey: varchar("file_key", { length: 255 }).notNull(),
+    mimeType: varchar("mime_type", { length: 150 }).notNull(),
+    sizeBytes: integer("size_bytes").notNull(),
+    uploadedBy: text("uploaded_by").references(() => user.id, {
+      onDelete: "set null",
+    }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  t => ({
+    assessmentCreatedIdx: index(
+      "training_assessment_materials_assessment_created_idx"
+    ).on(t.assessmentId, t.createdAt),
+    fileKeyUnique: uniqueIndex("training_assessment_materials_file_key_uq").on(
+      t.fileKey
+    ),
+    sizeBytesCheck: check(
+      "training_assessment_materials_size_check",
+      sql`${t.sizeBytes} BETWEEN 1 AND 33554432`
+    ),
+  })
+);
+export type TrainingAssessmentMaterial =
+  typeof trainingAssessmentMaterials.$inferSelect;
+
+export const trainingExamAssignments = pgTable(
+  "training_exam_assignments",
+  {
+    id: serial("id").primaryKey(),
+    assessmentId: integer("assessment_id")
+      .notNull()
+      .references(() => trainingAssessments.id, { onDelete: "cascade" }),
+    dueAt: timestamp("due_at", { withTimezone: true }).notNull(),
+    maxAttempts: integer("max_attempts").notNull().default(1),
+    createdBy: text("created_by").references(() => user.id, {
+      onDelete: "set null",
+    }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  t => ({
+    assessmentCreatedIdx: index("training_exam_assignments_assessment_created_idx").on(
+      t.assessmentId,
+      t.createdAt
+    ),
+    maxAttemptsCheck: check(
+      "training_exam_assignments_max_attempts_check",
+      sql`${t.maxAttempts} BETWEEN 1 AND 20`
+    ),
+  })
+);
+export type TrainingExamAssignment = typeof trainingExamAssignments.$inferSelect;
+
+export const trainingExamAssignmentStudents = pgTable(
+  "training_exam_assignment_students",
+  {
+    id: serial("id").primaryKey(),
+    assignmentId: integer("assignment_id")
+      .notNull()
+      .references(() => trainingExamAssignments.id, { onDelete: "cascade" }),
+    userId: text("user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    assignedAt: timestamp("assigned_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  t => ({
+    assignmentStudentUnique: uniqueIndex(
+      "training_exam_assignment_students_assignment_user_uq"
+    ).on(t.assignmentId, t.userId),
+    userAssignmentIdx: index(
+      "training_exam_assignment_students_user_assignment_idx"
+    ).on(t.userId, t.assignmentId),
+  })
+);
+export type TrainingExamAssignmentStudent =
+  typeof trainingExamAssignmentStudents.$inferSelect;
+
+export const trainingQuestionTypes = [
+  "multiple_choice",
+  "multiple_select",
+  "matching",
+  "sum",
+  "fill_blank",
+  "ordering",
+  "best_response",
+  "negotiation",
+  "true_false",
+  "short_answer",
+] as const;
+export type TrainingQuestionType = (typeof trainingQuestionTypes)[number];
+
+export type TrainingQuestionOption = {
+  id: string;
+  text: string;
+  correct?: boolean;
+  feedback?: string;
+  score?: number;
+  value?: number;
+  nextNodeId?: string | null;
+  criteriaScores?: Record<string, number>;
+};
+export type TrainingQuestionNode = {
+  id: string;
+  clientText: string;
+  options: TrainingQuestionOption[];
+};
+export type TrainingQuestionConfig = {
+  options?: TrainingQuestionOption[];
+  allowPartialCredit?: boolean;
+  leftItems?: Array<{ id: string; text: string }>;
+  rightItems?: Array<{ id: string; text: string }>;
+  correctPairs?: Array<{ leftId: string; rightId: string }>;
+  blanks?: Array<{ id: string; acceptedAnswers: string[] }>;
+  correctBoolean?: boolean;
+  acceptedAnswers?: string[];
+  steps?: Array<{ id: string; text: string }>;
+  correctOrder?: string[];
+  nodes?: TrainingQuestionNode[];
+  explanation?: string;
+  expectedAnswer?: string;
+  finalFeedback?: string;
+};
+
+export const trainingQuestions = pgTable(
+  "training_questions",
+  {
+    id: serial("id").primaryKey(),
+    assessmentId: integer("assessment_id")
+      .notNull()
+      .references(() => trainingAssessments.id, { onDelete: "cascade" }),
+    questionKey: varchar("question_key", { length: 80 }).notNull(),
+    type: varchar("type", { length: 32 }).$type<TrainingQuestionType>().notNull(),
+    prompt: text("prompt").notNull(),
+    config: jsonb("config").$type<TrainingQuestionConfig>().notNull(),
+    points: integer("points").notNull().default(1),
+    position: integer("position").notNull().default(0),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  t => ({
+    assessmentIdx: index("training_questions_assessment_idx").on(t.assessmentId, t.position),
+    questionKeyUnique: uniqueIndex("training_questions_assessment_key_uq").on(
+      t.assessmentId,
+      t.questionKey
+    ),
+  })
+);
+export type TrainingQuestion = typeof trainingQuestions.$inferSelect;
+
+export const trainingAttempts = pgTable(
+  "training_attempts",
+  {
+    id: serial("id").primaryKey(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    assessmentId: integer("assessment_id")
+      .notNull()
+      .references(() => trainingAssessments.id, { onDelete: "restrict" }),
+    assignmentStudentId: integer("assignment_student_id").references(
+      () => trainingExamAssignmentStudents.id,
+      { onDelete: "set null" }
+    ),
+    mode: varchar("mode", { length: 16 }).notNull(),
+    status: varchar("status", { length: 16 }).notNull().default("in_progress"),
+    assessmentVersion: integer("assessment_version").notNull(),
+    snapshot: jsonb("snapshot").$type<Record<string, unknown>>().notNull(),
+    score: decimal("score", { precision: 7, scale: 2 }),
+    pointsEarned: decimal("points_earned", { precision: 8, scale: 2 }),
+    pointsPossible: decimal("points_possible", { precision: 8, scale: 2 }),
+    startedAt: timestamp("started_at", { withTimezone: true }).defaultNow().notNull(),
+    completedAt: timestamp("completed_at", { withTimezone: true }),
+  },
+  t => ({
+    userIdx: index("training_attempts_user_idx").on(t.userId, t.startedAt),
+    assessmentIdx: index("training_attempts_assessment_idx").on(t.assessmentId, t.startedAt),
+    assignmentStudentIdx: index("training_attempts_assignment_student_idx").on(
+      t.assignmentStudentId,
+      t.startedAt
+    ),
+  })
+);
+export type TrainingAttempt = typeof trainingAttempts.$inferSelect;
+
+export const trainingAttemptAnswers = pgTable(
+  "training_attempt_answers",
+  {
+    id: serial("id").primaryKey(),
+    attemptId: integer("attempt_id")
+      .notNull()
+      .references(() => trainingAttempts.id, { onDelete: "cascade" }),
+    questionKey: varchar("question_key", { length: 80 }).notNull(),
+    stepKey: varchar("step_key", { length: 80 }),
+    response: jsonb("response").$type<unknown>().notNull(),
+    pointsAwarded: decimal("points_awarded", { precision: 8, scale: 2 }).notNull().default("0"),
+    isCorrect: boolean("is_correct"),
+    isTerminal: boolean("is_terminal").notNull().default(false),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  t => ({
+    attemptQuestionIdx: index("training_answers_attempt_question_idx").on(
+      t.attemptId,
+      t.questionKey,
+      t.createdAt
+    ),
+  })
+);
+export type TrainingAttemptAnswer = typeof trainingAttemptAnswers.$inferSelect;
+
+export const trainingLessonProgress = pgTable(
+  "training_lesson_progress",
+  {
+    id: serial("id").primaryKey(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    lessonId: integer("lesson_id")
+      .notNull()
+      .references(() => trainingLessons.id, { onDelete: "cascade" }),
+    lessonVersion: integer("lesson_version").notNull().default(1),
+    completedAt: timestamp("completed_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  t => ({
+    userLessonUnique: uniqueIndex("training_lesson_progress_user_lesson_uq").on(
+      t.userId,
+      t.lessonId
+    ),
+  })
+);
+
+export const trainingEnrollments = pgTable(
+  "training_enrollments",
+  {
+    id: serial("id").primaryKey(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    subjectId: integer("subject_id")
+      .notNull()
+      .references(() => trainingSubjects.id, { onDelete: "cascade" }),
+    enrolledAt: timestamp("enrolled_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  t => ({
+    userSubjectUnique: uniqueIndex("training_enrollments_user_subject_uq").on(
+      t.userId,
+      t.subjectId
+    ),
+    subjectEnrolledAtIdx: index("training_enrollments_subject_enrolled_at_idx").on(
+      t.subjectId,
+      t.enrolledAt
+    ),
+  })
+);
+
+export const trainingLessonVersions = pgTable(
+  "training_lesson_versions",
+  {
+    id: serial("id").primaryKey(),
+    lessonId: integer("lesson_id")
+      .notNull()
+      .references(() => trainingLessons.id, { onDelete: "cascade" }),
+    version: integer("version").notNull(),
+    title: varchar("title", { length: 180 }).notNull(),
+    summary: text("summary").notNull().default(""),
+    content: text("content").notNull(),
+    createdBy: text("created_by").references(() => user.id, { onDelete: "set null" }),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  t => ({
+    lessonVersionUnique: uniqueIndex("training_lesson_versions_lesson_version_uq").on(
+      t.lessonId,
+      t.version
+    ),
+    lessonIdx: index("training_lesson_versions_lesson_idx").on(t.lessonId, t.createdAt),
+  })
+);

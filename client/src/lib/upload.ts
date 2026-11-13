@@ -23,9 +23,9 @@ export interface ArquivoEnviado {
  * mutation tRPC, que segue gravando no banco como sempre fez.
  */
 export async function enviarArquivos(
-  rota: "imagem" | "documento",
+  rota: "imagem" | "documento" | "materialAvaliacao",
   arquivos: File[],
-  opts?: { onProgress?: (pct: number) => void },
+  opts?: { onProgress?: (pct: number) => void }
 ): Promise<ArquivoEnviado[]> {
   const helpers = generateReactHelpers<UploadRouter>();
   const res = await helpers.uploadFiles(rota, {
@@ -46,9 +46,9 @@ export async function enviarArquivos(
 
 /** Conveniência para os call sites que sobem um arquivo só. */
 export async function enviarArquivo(
-  rota: "imagem" | "documento",
+  rota: "imagem" | "documento" | "materialAvaliacao",
   arquivo: File,
-  opts?: { onProgress?: (pct: number) => void },
+  opts?: { onProgress?: (pct: number) => void }
 ): Promise<ArquivoEnviado> {
   const [enviado] = await enviarArquivos(rota, [arquivo], opts);
   return enviado;
@@ -62,7 +62,7 @@ export async function enviarArquivo(
 export function base64ParaFile(
   base64: string,
   fileName: string,
-  mimeType = "image/png",
+  mimeType = "image/png"
 ): File {
   const limpo = base64.replace(/^data:[^;]+;base64,/, "");
   const bin = atob(limpo);
