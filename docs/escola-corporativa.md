@@ -4,7 +4,9 @@ A Escola Corporativa organiza conteúdo por setor, matéria, aula, avaliação e
 
 ## Conteúdo e manutenção
 
-O conteúdo fica nas tabelas `training_sectors`, `training_subjects`, `training_lessons`, `training_lesson_versions`, `training_assessments` e `training_questions`. Os setores, matérias, aulas e avaliações podem ser criados, publicados, reordenados ou arquivados por usuários com os papéis `admin`, `master` ou `gestor`. O editor de questões permite selecionar um perfil entre dez modelos e insere sua estrutura inicial no JSON para personalização. O servidor valida cada formato antes de salvar. Cada edição da aula grava a versão anterior e a nova no histórico, e a conclusão do aluno fica vinculada à versão estudada.
+O conteúdo fica nas tabelas `training_sectors`, `training_subjects`, `training_lessons`, `training_lesson_versions`, `training_assessments`, `training_questions` e `training_assessment_materials`. Os setores, matérias, aulas e avaliações podem ser criados, publicados, reordenados ou arquivados por usuários com os papéis `admin`, `master` ou `gestor`. O editor de questões permite selecionar um perfil entre dez modelos e insere sua estrutura inicial no JSON para personalização. O servidor valida cada formato antes de salvar. Cada edição da aula grava a versão anterior e a nova no histórico, e a conclusão do aluno fica vinculada à versão estudada.
+
+Cada avaliação pode ter vários materiais de apoio enviados por instrutores. São aceitos PDF, Word, PowerPoint, Excel, TXT e imagens PNG/JPG/WEBP, limitados a 32 MB por arquivo. O aluno matriculado vê a lista na própria avaliação, com ações para consultar online ou baixar; os materiais não são exibidos antes da matrícula. O UploadThing armazena os arquivos, e a migration `0126_stiff_gorgon` cria os registros que os vinculam à avaliação.
 
 Ao salvar uma avaliação existente, a versão aumenta e as questões atuais são substituídas. Cada tentativa guarda um snapshot próprio, incluindo enunciados, alternativas, gabarito e explicações. Assim, a correção e o feedback de uma tentativa antiga continuam vinculados à versão que o aluno respondeu.
 

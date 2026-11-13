@@ -1,10 +1,12 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   BookOpen,
   Check,
   CheckCircle2,
   ChevronDown,
   ChevronUp,
+  Download,
+  FileText,
   GraduationCap,
   LockKeyhole,
   Play,
@@ -12,6 +14,7 @@ import {
   RotateCcw,
   Save,
   ShieldCheck,
+  Upload,
 } from "lucide-react";
 import PageHeader from "@/components/PageHeader";
 import { Badge } from "@/components/ui/badge";
@@ -37,6 +40,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { useAuth } from "@/hooks/useAuth";
+import { enviarArquivo } from "@/lib/upload";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
 
@@ -263,6 +267,29 @@ function formatDate(value: Date | string | null | undefined) {
   }).format(new Date(value));
 }
 
+function formatFileSize(bytes: number) {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
+  return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+}
+
+async function downloadAssessmentMaterial(url: string, name: string) {
+  try {
+    const response = await fetch(url);
+    if (!response.ok) throw new Error("O arquivo não pôde ser acessado.");
+    const objectUrl = URL.createObjectURL(await response.blob());
+    const link = document.createElement("a");
+    link.href = objectUrl;
+    link.download = name;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    window.setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
+  } catch {
+    toast.error("Não foi possível baixar o arquivo. Tente consultá-lo online.");
+  }
+}
+
 function localDateTimeDaysFromNow(days: number) {
   const value = new Date();
   value.setDate(value.getDate() + days);
@@ -357,6 +384,9 @@ function TrainingAdmin({ onChanged }: { onChanged: () => void }) {
     useState<QuestionProfile>("multiple_choice");
   const [newQuestionPrompt, setNewQuestionPrompt] = useState("");
   const [newQuestionPoints, setNewQuestionPoints] = useState(1);
+  const [uploadingMaterial, setUploadingMaterial] = useState(false);
+  const [materialUploadProgress, setMaterialUploadProgress] = useState(0);
+  const materialInputRef = useRef<HTMLInputElement>(null);
   const [reportFilter, setReportFilter] = useState<number | undefined>();
   const [assignmentAssessmentId, setAssignmentAssessmentId] = useState<
     number | undefined
@@ -373,6 +403,13 @@ function TrainingAdmin({ onChanged }: { onChanged: () => void }) {
       { lessonId: lessonId ?? 0 },
       { enabled: Boolean(lessonId) }
     );
+  const {
+    data: assessmentMaterials = [],
+    isLoading: assessmentMaterialsLoading,
+  } = trpc.treinamento.listAssessmentMaterials.useQuery(
+    { assessmentId: assessmentId ?? 0 },
+    { enabled: Boolean(assessmentId) }
+  );
 
   const saveSector = trpc.treinamento.saveSector.useMutation({
     onSuccess: async () => {
@@ -406,6 +443,20 @@ function TrainingAdmin({ onChanged }: { onChanged: () => void }) {
       onChanged();
     },
   });
+  const addAssessmentMaterial =
+    trpc.treinamento.addAssessmentMaterial.useMutation({
+      onSuccess: async () => {
+        if (assessmentId)
+          await utils.treinamento.listAssessmentMaterials.invalidate({
+            assessmentId,
+          });
+        if (assessment?.subjectId)
+          await utils.treinamento.subject.invalidate({
+            id: assessment.subjectId,
+          });
+        toast.success("Material de apoio anexado à avaliação.");
+      },
+    });
   const createExamAssignment =
     trpc.treinamento.createExamAssignment.useMutation({
       onSuccess: async result => {
@@ -589,6 +640,57 @@ function TrainingAdmin({ onChanged }: { onChanged: () => void }) {
       return;
     }
     saveAssessment.mutate({ ...assessment, questions: parsed });
+  };
+
+  const uploadAssessmentMaterial = async (
+    event: React.ChangeEvent<HTMLInputElement>
+  ) => {
+    const file = event.currentTarget.files?.[0];
+    event.currentTarget.value = "";
+    if (!file) return;
+    if (!assessmentId) {
+      toast.error("Salve a avaliação antes de anexar materiais.");
+      return;
+    }
+    if (!/\.(pdf|docx?|pptx?|xlsx?|txt|png|jpe?g|webp)$/i.test(file.name)) {
+      toast.error(
+        "Envie PDF, Word, PowerPoint, Excel, TXT ou uma imagem PNG/JPG/WEBP."
+      );
+      return;
+    }
+    if (file.size > 32 * 1024 * 1024) {
+      toast.error("O arquivo pode ter no máximo 32 MB.");
+      return;
+    }
+
+    setUploadingMaterial(true);
+    setMaterialUploadProgress(0);
+    let uploaded = false;
+    try {
+      const uploadedFile = await enviarArquivo("materialAvaliacao", file, {
+        onProgress: setMaterialUploadProgress,
+      });
+      uploaded = true;
+      await addAssessmentMaterial.mutateAsync({
+        assessmentId,
+        name: uploadedFile.fileName,
+        url: uploadedFile.url,
+        fileKey: uploadedFile.key,
+        mimeType: uploadedFile.mimeType,
+        sizeBytes: uploadedFile.fileSize,
+      });
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Erro desconhecido.";
+      toast.error(
+        uploaded
+          ? `O arquivo foi enviado, mas não foi vinculado à avaliação: ${message}`
+          : `Não foi possível enviar o material: ${message}`
+      );
+    } finally {
+      setUploadingMaterial(false);
+      setMaterialUploadProgress(0);
+    }
   };
 
   const addQuestionProfile = () => {
@@ -1226,6 +1328,95 @@ function TrainingAdmin({ onChanged }: { onChanged: () => void }) {
               <Save className="mr-1 h-4 w-4" />
               Salvar avaliação e nova versão
             </Button>
+            <section className="space-y-3 rounded-lg border p-4">
+              <div>
+                <h3 className="font-semibold">
+                  Material de apoio da avaliação
+                </h3>
+                <p className="text-sm text-muted-foreground">
+                  Envie arquivos para os alunos consultarem online ou baixarem.
+                  Aceita PDF, Word, PowerPoint, Excel, TXT e imagens
+                  PNG/JPG/WEBP de até 32 MB.
+                </p>
+              </div>
+              {!assessmentId ? (
+                <p className="text-sm text-amber-700">
+                  Salve a avaliação primeiro; depois selecione-a para anexar os
+                  materiais.
+                </p>
+              ) : (
+                <>
+                  <input
+                    ref={materialInputRef}
+                    type="file"
+                    className="hidden"
+                    accept=".pdf,.doc,.docx,.ppt,.pptx,.xls,.xlsx,.txt,.png,.jpg,.jpeg,.webp"
+                    onChange={uploadAssessmentMaterial}
+                  />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => materialInputRef.current?.click()}
+                    disabled={
+                      uploadingMaterial || addAssessmentMaterial.isPending
+                    }
+                  >
+                    <Upload className="mr-2 h-4 w-4" />
+                    {uploadingMaterial
+                      ? `Enviando ${Math.round(materialUploadProgress)}%`
+                      : "Enviar material"}
+                  </Button>
+                  {assessmentMaterialsLoading ? (
+                    <p className="text-sm text-muted-foreground">
+                      Carregando materiais...
+                    </p>
+                  ) : assessmentMaterials.length > 0 ? (
+                    <ul className="space-y-2">
+                      {assessmentMaterials.map(material => (
+                        <li
+                          key={material.id}
+                          className="flex flex-wrap items-center gap-2 rounded-md bg-muted/40 p-3 text-sm"
+                        >
+                          <FileText className="h-4 w-4 shrink-0 text-muted-foreground" />
+                          <span className="min-w-0 flex-1 break-all">
+                            {material.name}
+                            <span className="ml-2 text-muted-foreground">
+                              {formatFileSize(material.sizeBytes)}
+                            </span>
+                          </span>
+                          <a
+                            className="inline-flex items-center gap-1 font-medium text-primary hover:underline"
+                            href={material.url}
+                            target="_blank"
+                            rel="noreferrer"
+                          >
+                            <FileText className="h-4 w-4" />
+                            Abrir online
+                          </a>
+                          <button
+                            type="button"
+                            className="inline-flex items-center gap-1 font-medium text-primary hover:underline"
+                            onClick={() =>
+                              downloadAssessmentMaterial(
+                                material.url,
+                                material.name
+                              )
+                            }
+                          >
+                            <Download className="h-4 w-4" />
+                            Baixar
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <p className="text-sm text-muted-foreground">
+                      Nenhum material anexado a esta avaliação.
+                    </p>
+                  )}
+                </>
+              )}
+            </section>
           </section>
         </CardContent>
       </Card>
@@ -2677,6 +2868,57 @@ export default function Treinamento() {
                         <p className="mt-1 text-sm text-muted-foreground">
                           {assessment.description}
                         </p>
+                        {subject.isEnrolled && (
+                          <div className="mt-3 space-y-2 rounded-lg bg-muted/40 p-3">
+                            <p className="flex items-center gap-2 text-sm font-medium">
+                              <FileText className="h-4 w-4" />
+                              Material de apoio
+                            </p>
+                            {assessment.materials?.length ? (
+                              <ul className="space-y-2">
+                                {assessment.materials.map((material: any) => (
+                                  <li
+                                    key={material.id}
+                                    className="flex flex-wrap items-center gap-2 text-sm"
+                                  >
+                                    <span className="min-w-0 flex-1 break-all">
+                                      {material.name}
+                                      <span className="ml-2 text-muted-foreground">
+                                        {formatFileSize(material.sizeBytes)}
+                                      </span>
+                                    </span>
+                                    <a
+                                      className="inline-flex items-center gap-1 font-medium text-primary hover:underline"
+                                      href={material.url}
+                                      target="_blank"
+                                      rel="noreferrer"
+                                    >
+                                      <FileText className="h-4 w-4" />
+                                      Consultar online
+                                    </a>
+                                    <button
+                                      type="button"
+                                      className="inline-flex items-center gap-1 font-medium text-primary hover:underline"
+                                      onClick={() =>
+                                        downloadAssessmentMaterial(
+                                          material.url,
+                                          material.name
+                                        )
+                                      }
+                                    >
+                                      <Download className="h-4 w-4" />
+                                      Baixar
+                                    </button>
+                                  </li>
+                                ))}
+                              </ul>
+                            ) : (
+                              <p className="text-sm text-muted-foreground">
+                                Nenhum material de apoio disponível.
+                              </p>
+                            )}
+                          </div>
+                        )}
                         <div className="mt-3 flex flex-wrap gap-2">
                           {assessment.allowPractice && (
                             <Button

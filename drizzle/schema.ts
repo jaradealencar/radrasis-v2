@@ -5708,6 +5708,41 @@ export const trainingAssessments = pgTable(
 );
 export type TrainingAssessment = typeof trainingAssessments.$inferSelect;
 
+export const trainingAssessmentMaterials = pgTable(
+  "training_assessment_materials",
+  {
+    id: serial("id").primaryKey(),
+    assessmentId: integer("assessment_id")
+      .notNull()
+      .references(() => trainingAssessments.id, { onDelete: "cascade" }),
+    name: varchar("name", { length: 255 }).notNull(),
+    url: text("url").notNull(),
+    fileKey: varchar("file_key", { length: 255 }).notNull(),
+    mimeType: varchar("mime_type", { length: 150 }).notNull(),
+    sizeBytes: integer("size_bytes").notNull(),
+    uploadedBy: text("uploaded_by").references(() => user.id, {
+      onDelete: "set null",
+    }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  t => ({
+    assessmentCreatedIdx: index(
+      "training_assessment_materials_assessment_created_idx"
+    ).on(t.assessmentId, t.createdAt),
+    fileKeyUnique: uniqueIndex("training_assessment_materials_file_key_uq").on(
+      t.fileKey
+    ),
+    sizeBytesCheck: check(
+      "training_assessment_materials_size_check",
+      sql`${t.sizeBytes} BETWEEN 1 AND 33554432`
+    ),
+  })
+);
+export type TrainingAssessmentMaterial =
+  typeof trainingAssessmentMaterials.$inferSelect;
+
 export const trainingExamAssignments = pgTable(
   "training_exam_assignments",
   {

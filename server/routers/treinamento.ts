@@ -3,6 +3,7 @@ import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import {
   trainingAssessments,
+  trainingAssessmentMaterials,
   trainingAttemptAnswers,
   trainingAttempts,
   trainingExamAssignmentStudents,
@@ -24,6 +25,9 @@ import { protectedProcedure, requireRole, router } from "../_core/trpc";
 
 const MODE = ["practice", "formal"] as const;
 type Mode = (typeof MODE)[number];
+const TRAINING_MATERIAL_MAX_BYTES = 32 * 1024 * 1024;
+const TRAINING_MATERIAL_EXTENSIONS =
+  /\.(pdf|docx?|pptx?|xlsx?|txt|png|jpe?g|webp)$/i;
 
 const questionOptionSchema = z.object({
   id: z.string().min(1).max(80),
@@ -163,6 +167,23 @@ async function requireEnrollment(
       code: "FORBIDDEN",
       message: "Matricule-se nesta matéria antes de acessar as provas.",
     });
+}
+
+function isUploadThingFileUrl(value: string) {
+  try {
+    const url = new URL(value);
+    const host = url.hostname.toLowerCase();
+    const allowedHost = ["ufs.sh", "utfs.io", "uploadthing.com"].some(
+      domain => host === domain || host.endsWith(`.${domain}`)
+    );
+    return (
+      url.protocol === "https:" &&
+      allowedHost &&
+      /^\/f\/[^/]+\/?$/.test(url.pathname)
+    );
+  } catch {
+    return false;
+  }
 }
 
 const trainingProcedure = protectedProcedure.use(async ({ ctx, next }) => {
@@ -883,6 +904,31 @@ export const treinamentoRouter = router({
             .orderBy(asc(trainingExamAssignments.dueAt)),
         ]);
       const visibleAssignedExams = enrollment[0] ? assignedExams : [];
+      const assessmentIds = assessments.map(assessment => assessment.id);
+      const subjectMaterials =
+        enrollment[0] && assessmentIds.length
+          ? await db
+              .select({
+                id: trainingAssessmentMaterials.id,
+                assessmentId: trainingAssessmentMaterials.assessmentId,
+                name: trainingAssessmentMaterials.name,
+                url: trainingAssessmentMaterials.url,
+                mimeType: trainingAssessmentMaterials.mimeType,
+                sizeBytes: trainingAssessmentMaterials.sizeBytes,
+                createdAt: trainingAssessmentMaterials.createdAt,
+              })
+              .from(trainingAssessmentMaterials)
+              .where(
+                inArray(trainingAssessmentMaterials.assessmentId, assessmentIds)
+              )
+              .orderBy(asc(trainingAssessmentMaterials.createdAt))
+          : [];
+      const materialsByAssessment = new Map<number, typeof subjectMaterials>();
+      for (const material of subjectMaterials) {
+        const current = materialsByAssessment.get(material.assessmentId) ?? [];
+        current.push(material);
+        materialsByAssessment.set(material.assessmentId, current);
+      }
       const visibleAssignmentStudentIds = visibleAssignedExams.map(
         assignment => assignment.assignmentStudentId
       );
@@ -909,7 +955,10 @@ export const treinamentoRouter = router({
         ...subject,
         sector,
         lessons,
-        assessments,
+        assessments: assessments.map(assessment => ({
+          ...assessment,
+          materials: materialsByAssessment.get(assessment.id) ?? [],
+        })),
         isEnrolled: Boolean(enrollment[0]),
         enrolledAt: enrollment[0]?.enrolledAt ?? null,
         assignedExams: visibleAssignedExams.map(assignment => ({
@@ -977,6 +1026,68 @@ export const treinamentoRouter = router({
         .innerJoin(userTable, eq(trainingEnrollments.userId, userTable.id))
         .where(eq(trainingEnrollments.subjectId, input.subjectId))
         .orderBy(asc(userTable.name));
+    }),
+
+  listAssessmentMaterials: trainingEditorProcedure
+    .input(z.object({ assessmentId: z.number().int().positive() }))
+    .query(async ({ input }) => {
+      const db = await getDatabase();
+      return db
+        .select({
+          id: trainingAssessmentMaterials.id,
+          assessmentId: trainingAssessmentMaterials.assessmentId,
+          name: trainingAssessmentMaterials.name,
+          url: trainingAssessmentMaterials.url,
+          mimeType: trainingAssessmentMaterials.mimeType,
+          sizeBytes: trainingAssessmentMaterials.sizeBytes,
+          createdAt: trainingAssessmentMaterials.createdAt,
+        })
+        .from(trainingAssessmentMaterials)
+        .where(eq(trainingAssessmentMaterials.assessmentId, input.assessmentId))
+        .orderBy(asc(trainingAssessmentMaterials.createdAt));
+    }),
+
+  addAssessmentMaterial: trainingEditorProcedure
+    .input(
+      z.object({
+        assessmentId: z.number().int().positive(),
+        name: z.string().trim().min(1).max(255),
+        url: z.string().url().max(2000),
+        fileKey: z.string().min(1).max(255),
+        mimeType: z.string().min(1).max(150),
+        sizeBytes: z.number().int().min(1).max(TRAINING_MATERIAL_MAX_BYTES),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      if (!TRAINING_MATERIAL_EXTENSIONS.test(input.name))
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message:
+            "Envie PDF, Word, PowerPoint, Excel, TXT ou uma imagem PNG/JPG/WEBP.",
+        });
+      if (!isUploadThingFileUrl(input.url))
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "O material precisa estar armazenado no UploadThing.",
+        });
+
+      const db = await getDatabase();
+      const [assessment] = await db
+        .select({ id: trainingAssessments.id })
+        .from(trainingAssessments)
+        .where(eq(trainingAssessments.id, input.assessmentId))
+        .limit(1);
+      if (!assessment)
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "Avaliação não encontrada.",
+        });
+
+      const [material] = await db
+        .insert(trainingAssessmentMaterials)
+        .values({ ...input, uploadedBy: ctx.user.id })
+        .returning({ id: trainingAssessmentMaterials.id });
+      return { ok: true, materialId: material.id };
     }),
 
   createExamAssignment: trainingEditorProcedure
