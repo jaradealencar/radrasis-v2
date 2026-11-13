@@ -161,15 +161,16 @@ function probabilidadeCor(p: number) {
   return { text: "text-red-700", bg: "bg-red-100 border-red-200" };
 }
 
-// Ícone por tipo de sinal da explicação bayesiana (ver server/services/probabilidadeCompra.ts,
-// calcularProbabilidadeBayesiana) — identificado pelo rótulo antes dos ":" de cada linha.
+// Ícone por sinal do modelo por proposta (ver server/services/crmProbabilidadeModel.ts),
+// identificado pelo rótulo antes dos ":" de cada linha.
 function iconeExplicacao(label: string): string {
   const key = label.toLowerCase().trim();
-  if (key.startsWith("base")) return "📊";
-  if (key.startsWith("cliente novo")) return "🆕";
-  if (key.startsWith("histórico do cliente")) return "👤";
-  if (key.startsWith("faixa de tíquete")) return "💰";
-  if (key.startsWith("região")) return "📍";
+  if (key.startsWith("modelo")) return "📊";
+  if (key.startsWith("ticket da proposta")) return "💰";
+  if (key.startsWith("perfil")) return "👤";
+  if (key.startsWith("idade da empresa")) return "🏢";
+  if (key.startsWith("desfechos até")) return "🗓️";
+  if (key.startsWith("calibração temporal")) return "⚙️";
   if (key.startsWith("ajuste")) return "⚙️";
   return "•";
 }
@@ -183,7 +184,7 @@ function destacarNumeros(texto: string) {
   );
 }
 
-// Cada linha vem como "Rótulo: descrição" (ver calcularProbabilidadeBayesiana) — aqui
+// Cada linha vem como "Rótulo: descrição" (ver calcularProbabilidadeCrmAprendida) — aqui
 // separamos rótulo (negrito) da descrição (cinza) e destacamos os números, em vez de
 // mostrar o texto corrido puro.
 function ExplicacaoLinha({ linha }: { linha: string }) {
@@ -1026,6 +1027,20 @@ export default function CRM() {
   const stats = data?.stats;
   const abertosAtualizadoEmIso = (data as any)?.abertosAtualizadoEm as string | undefined;
   const abertosAtualizadoEm = fmtTempoRelativo(abertosAtualizadoEmIso);
+  const modeloProbabilidade = (data as any)?.modeloProbabilidade as {
+    propostasTreinoAte?: string | null;
+    propostasHistoricoAte?: string | null;
+    propostasTreino?: number;
+    propostasHistoricoSemDesfecho?: number;
+    clientesComIdadeCnpj?: number;
+    clientesHistoricos?: number;
+  } | null | undefined;
+  const propostasTreinoAteDate = modeloProbabilidade?.propostasTreinoAte ? new Date(modeloProbabilidade.propostasTreinoAte) : null;
+  const propostasHistoricoAteDate = modeloProbabilidade?.propostasHistoricoAte ? new Date(modeloProbabilidade.propostasHistoricoAte) : null;
+  const diasDefasagemHistorico = propostasHistoricoAteDate && Number.isFinite(propostasHistoricoAteDate.getTime())
+    ? Math.floor((Date.now() - propostasHistoricoAteDate.getTime()) / 86400000)
+    : null;
+  const historicoProbabilidadeDesatualizado = diasDefasagemHistorico !== null && diasDefasagemHistorico > 30;
   const abertosSyncStatus = (data as any)?.abertosSyncStatus as {
     totalDias: number; totalFatias: number; diasAtualizados: number;
     diasDesatualizados: number; fatiasDesatualizadas: number[];
@@ -1177,6 +1192,11 @@ export default function CRM() {
             <span className="ml-2 text-xs text-gray-400" title="Somente propostas que ainda não viraram vendas no MubiSys">
               · sincronizado {fmtTempoRelativo(abertosSyncStatus?.ultimaSincronizacaoEm) ?? abertosAtualizadoEm ?? "aguardando"}
             </span>
+            {propostasTreinoAteDate && (
+              <span className={`ml-2 text-xs ${historicoProbabilidadeDesatualizado ? "text-amber-700" : "text-gray-400"}`} title={`Modelo recalibrado com ${modeloProbabilidade?.propostasTreino ?? 0} propostas decididas com data até ${fmtDate(propostasTreinoAteDate)}. Espelho de propostas até ${fmtDate(propostasHistoricoAteDate)}, ${modeloProbabilidade?.propostasHistoricoSemDesfecho ?? 0} ainda sem desfecho; idade CNPJ disponível para ${modeloProbabilidade?.clientesComIdadeCnpj ?? 0} de ${modeloProbabilidade?.clientesHistoricos ?? 0} clientes históricos.`}>
+                · modelo treinado com propostas até {fmtDate(propostasTreinoAteDate)}
+              </span>
+            )}
           </p>
         </div>
         {isAdmin ? (
@@ -1197,6 +1217,15 @@ export default function CRM() {
           </Button>
         )}
       </div>
+
+      {historicoProbabilidadeDesatualizado && propostasHistoricoAteDate && (
+        <div className="flex items-start gap-3 bg-amber-50 border border-amber-300 rounded-xl p-3 shadow-sm">
+          <AlertTriangle className="w-4 h-4 text-amber-600 flex-shrink-0 mt-0.5" />
+          <p className="text-xs text-amber-800">
+            O espelho histórico de propostas vai até {fmtDate(propostasHistoricoAteDate)} ({diasDefasagemHistorico} dias atrás). O score continua sendo calculado por proposta, mas pode não refletir propostas, vendas e perdas mais recentes do MubiSys.
+          </p>
+        </div>
+      )}
 
       {/* Biblioteca de mídias: arsenal de imagens para copiar e colar nas conversas */}
       <BibliotecaMidias />

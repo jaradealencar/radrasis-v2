@@ -291,7 +291,12 @@ server/
   services/            lógica de domínio reutilizada por routers; manter funções
                        puras quando não precisarem de I/O:
                        inteligenciaClientes.ts (RFM/classificação/funil/previsão
-                       comercial), qualificacaoLeadCnpj.ts (score de lead por CNPJ)
+                       comercial), crmProbabilidadeModel.ts (score por proposta
+                       com regressão logística, calibração temporal, RFM, coorte e
+                       idade CNPJ; auditoria somente agregada em
+                       server/scripts/auditar-probabilidade-crm.ts, ver
+                       docs/crm-probabilidade-auto-calibracao.md),
+                       qualificacaoLeadCnpj.ts (score de lead por CNPJ)
                        (telefones das campanhas: `server/sync/clientes-mubisys.ts` espelha o cadastro
                        de clientes do MubiSys em `mubisys_clientes_cache`, atualizado sozinho ao abrir
                        o painel de Campanhas; 429 da API tem retentativa e o lote tem orçamento de 40s),

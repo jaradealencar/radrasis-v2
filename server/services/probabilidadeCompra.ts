@@ -1,10 +1,10 @@
 /**
  * Score de Probabilidade de Compra.
  *
- * Usado por server/routers/crm.ts (cada proposta) e por
- * server/routers/performanceComercial.ts (listarClientesInteligencia, cada
- * cliente) para que os dois módulos mostrem o mesmo número para o mesmo
- * cliente.
+ * Usado por server/routers/performanceComercial.ts (listarClientesInteligencia,
+ * cada cliente). O CRM de propostas usa o modelo treinado por proposta em
+ * crmProbabilidadeModel.ts, pois ticket, RFM, coorte e idade do CNPJ mudam a
+ * chance entre propostas do mesmo cliente.
  *
  * Fórmula:
  *   - Cliente novo: base = taxa de conversão dos clientes novos nos últimos
@@ -19,8 +19,9 @@
  *     (construirMapaFaixaTicket) e região geográfica do cliente
  *     (construirMapaConversaoPorRegiao).
  *
- * Fora de escopo: cruzamento com CNPJ (idade da empresa, sócios). A chave de
- * agrupamento é sempre normalizeEmpresaKey — mesma chave usada em
+ * Esta heurística não cruza CNPJ; idade da empresa é tratada pelo modelo do
+ * CRM quando existe perfil vinculado. A chave de agrupamento é sempre
+ * normalizeEmpresaKey — mesma chave usada em
  * performanceComercial.ts/inteligenciaClientes.ts, para que o CRM e a
  * Inteligência de Clientes concordem sobre o mesmo cliente.
  */
@@ -633,9 +634,10 @@ export function calcularProbabilidade(opts: {
 // não, subestimando a taxa individual de quem tem orçamentos recentes ainda
 // em aberto.
 //
-// Em uso só no CRM (server/routers/crm.ts) por decisão do usuário — a
-// Performance Comercial continua com calcularProbabilidade (heurística)
-// enquanto não houver decisão de estender.
+// A inferência segmentada permanece aqui como comparador e para compatibilidade
+// interna. O CRM usa regressão logística calibrada por tempo, com features por
+// proposta, em crmProbabilidadeModel.ts. A Performance Comercial continua com
+// calcularProbabilidade até uma validação específica justificar a troca.
 
 /** Pseudo-contagem do prior Beta — quanto maior, mais um segmento com pouca
  * amostra fica puxado pra taxa geral da carteira antes de confiar na taxa
