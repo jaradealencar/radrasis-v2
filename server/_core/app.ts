@@ -193,6 +193,10 @@ export async function createApp(): Promise<Express> {
     await import("../routes/campanhas-whatsapp-inbound");
   registrarRotasCampanhasWhatsappInbound(app);
 
+  const { registrarRotasCampanhasWhatsappCadencia } =
+    await import("../routes/campanhas-whatsapp-cadencia");
+  registrarRotasCampanhasWhatsappCadencia(app);
+
   // ─── Tabela de Preços: export REST (GET /api/v1/price-table/export) para o precificador
   // automatizado externo, protegido por PRICE_TABLE_API_KEY. Ver server/routes/price-table-api.ts.
   const { registrarRotasPriceTableApi } =

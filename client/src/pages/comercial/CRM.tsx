@@ -99,6 +99,10 @@ const LIMIAR_PARCELAMENTO = 3;
 // nenhum cálculo de negócio.
 const MESES_REATIVACAO_DIAS = 180;
 
+function isClienteReativacao(p: Pick<Proposta, "clienteNovo" | "diasSemComprar">): boolean {
+  return !p.clienteNovo && p.diasSemComprar != null && p.diasSemComprar >= MESES_REATIVACAO_DIAS;
+}
+
 // ─── Score de Probabilidade de Compra (Fase 1) ────────────────────────────────
 function probabilidadeCor(p: number) {
   if (p >= 50) return { text: "text-green-700", bg: "bg-green-100 border-green-200" };
@@ -479,6 +483,20 @@ function PropostaRow({ p, vendedor, onRefresh, showVendedor, faixasConfig }: {
                     </Tooltip>
                   </TooltipProvider>
                 )}
+                {isClienteReativacao(p) && (
+                  <TooltipProvider>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <span className="flex-shrink-0 cursor-default">
+                          <Star className="w-3.5 h-3.5 text-red-600 fill-red-500" />
+                        </span>
+                      </TooltipTrigger>
+                      <TooltipContent side="top" className="text-xs">
+                        Cliente sem comprar há 6 meses ou mais ({p.diasSemComprar} dias)
+                      </TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
+                )}
                 {p.estadoCliente && (
                   <span className="flex-shrink-0 text-[10px] font-bold text-slate-500 bg-slate-100 border border-slate-200 rounded px-1" title={`Cliente em ${p.estadoCliente}`}>
                     {p.estadoCliente}
@@ -544,7 +562,7 @@ function PropostaRow({ p, vendedor, onRefresh, showVendedor, faixasConfig }: {
                     <Tooltip>
                       <TooltipTrigger asChild>
                         <span className={`inline-flex items-center px-1.5 py-0.5 rounded-full border text-[10px] cursor-default ${
-                          p.diasSemComprar > MESES_REATIVACAO_DIAS
+                          p.diasSemComprar >= MESES_REATIVACAO_DIAS
                             ? "font-bold bg-red-100 text-red-700 border-red-200"
                             : "text-gray-500 bg-gray-50 border-gray-200"
                         }`}>
@@ -552,8 +570,8 @@ function PropostaRow({ p, vendedor, onRefresh, showVendedor, faixasConfig }: {
                         </span>
                       </TooltipTrigger>
                       <TooltipContent side="top" className="text-xs max-w-[220px]">
-                        {p.diasSemComprar > MESES_REATIVACAO_DIAS
-                          ? `Mais de ${MESES_REATIVACAO_DIAS} dias sem comprar — se fechar, conta como cliente reativado.`
+                        {p.diasSemComprar >= MESES_REATIVACAO_DIAS
+                          ? "6 meses ou mais sem comprar — se fechar, conta como cliente reativado."
                           : "Dias desde a última compra registrada no histórico local."}
                       </TooltipContent>
                     </Tooltip>
@@ -804,6 +822,7 @@ export default function CRM() {
   const [dataFim, setDataFim] = useState(`${anoAtual}-${pad(mesAtual)}-${pad(lastDay)}`);
   const [verHistorico, setVerHistorico] = useState(false);
   const [apenasNovos, setApenasNovos] = useState(false);
+  const [apenasSemCompra6Meses, setApenasSemCompra6Meses] = useState(false);
   const [apenasHoje, setApenasHoje] = useState(false);
   const [filtroProbabilidade, setFiltroProbabilidade] = useState<"todas" | "alta" | "media" | "baixa">("todas");
   const [apenasMS, setApenasMS] = useState(false);
@@ -872,6 +891,7 @@ export default function CRM() {
   const propostasAtivas = useMemo(() => {
     let list = propostas.filter(p => !p.meta2Contatos);
     if (apenasNovos) list = list.filter(p => p.clienteNovo);
+    if (apenasSemCompra6Meses) list = list.filter(isClienteReativacao);
     if (filtroResposta !== "todos") {
       if (filtroResposta === "sem_contato") {
         list = list.filter(p => p.qtdContatos === 0);
@@ -914,7 +934,7 @@ export default function CRM() {
     if (apenasMS) list = list.filter(p => p.estadoCliente === "MS");
     if (ordenarPorProbabilidade) list = [...list].sort((a, b) => (b.probabilidadeCompra ?? -1) - (a.probabilidadeCompra ?? -1));
     return list;
-  }, [propostas, apenasNovos, apenasHoje, filtroResposta, filtroFaixa, filtroProbabilidade, apenasMS, ordenarPorProbabilidade, faixasConfig]);
+  }, [propostas, apenasNovos, apenasSemCompra6Meses, apenasHoje, filtroResposta, filtroFaixa, filtroProbabilidade, apenasMS, ordenarPorProbabilidade, faixasConfig]);
 
   const propostasHistorico = useMemo(() => propostas.filter(p => p.meta2Contatos), [propostas]);
   const showVendedor = !vendedor;
@@ -1138,9 +1158,23 @@ export default function CRM() {
           );
         })()}
         {/* Filtro clientes novos */}
-        <button onClick={() => setApenasNovos(!apenasNovos)}
+        <button
+          onClick={() => {
+            if (!apenasNovos) setApenasSemCompra6Meses(false);
+            setApenasNovos(!apenasNovos);
+          }}
           className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-full border transition-all ${apenasNovos ? "bg-amber-400 text-white border-amber-400 shadow-sm" : "bg-white text-gray-600 border-gray-300 hover:border-amber-400 hover:text-amber-600"}`}>
           <Star className="w-3.5 h-3.5" /> {apenasNovos ? "Apenas novos ✕" : "Clientes novos"}
+        </button>
+        {/* Filtro clientes sem compra há 6 meses ou mais */}
+        <button
+          onClick={() => {
+            if (!apenasSemCompra6Meses) setApenasNovos(false);
+            setApenasSemCompra6Meses(!apenasSemCompra6Meses);
+          }}
+          className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-full border transition-all ${apenasSemCompra6Meses ? "bg-red-500 text-white border-red-500 shadow-sm" : "bg-white text-gray-600 border-gray-300 hover:border-red-400 hover:text-red-600"}`}>
+          <Star className={`w-3.5 h-3.5 ${apenasSemCompra6Meses ? "fill-white" : "text-red-500 fill-red-200"}`} />
+          {apenasSemCompra6Meses ? "Apenas 6+ meses ✕" : "Sem compra 6+ meses"}
         </button>
         {/* Filtro por faixa */}
         <div className="flex flex-col gap-1">

@@ -79,6 +79,7 @@ import LocalLogin from "./pages/LocalLogin";
 import PropostaPublica from "./pages/PropostaPublica";
 import QuestionarioFornecedorPublico from "./pages/QuestionarioFornecedorPublico";
 import CargoseFuncoes from "./pages/operacoes/CargoseFuncoes";
+import Treinamento from "./pages/operacoes/Treinamento";
 import ProtectedRoute from "./components/ProtectedRoute";
 import IdleTimeoutWarning from "./components/IdleTimeoutWarning";
 // Qualidade
@@ -122,6 +123,11 @@ function Router() {
       <Route path="/cargos-funcoes">
         <ProtectedRoute pageKey="cargos-funcoes">
           <L><CargoseFuncoes /></L>
+        </ProtectedRoute>
+      </Route>
+      <Route path="/treinamento">
+        <ProtectedRoute pageKey="treinamento">
+          <L><Treinamento /></L>
         </ProtectedRoute>
       </Route>
       {/* Financeiro */}

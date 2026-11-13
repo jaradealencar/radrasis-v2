@@ -834,6 +834,76 @@
       "when": 1793644975447,
       "tag": "0118_campanhas_whatsapp_inbound_polling_cursor",
       "breakpoints": true
+    },
+    {
+      "idx": 119,
+      "version": "7",
+      "when": 1793646226425,
+      "tag": "0119_whatsapp_cadence_engine",
+      "breakpoints": true
+    },
+    {
+      "idx": 120,
+      "version": "7",
+      "when": 1793646236186,
+      "tag": "0120_seed_whatsapp_cadence_erp_sources",
+      "breakpoints": true
+    },
+    {
+      "idx": 121,
+      "version": "7",
+      "when": 1794534660956,
+      "tag": "0121_conscious_white_tiger",
+      "breakpoints": true
+    },
+    {
+      "idx": 122,
+      "version": "7",
+      "when": 1794535174234,
+      "tag": "0122_nifty_toro",
+      "breakpoints": true
+    },
+    {
+      "idx": 123,
+      "version": "7",
+      "when": 1794537196347,
+      "tag": "0123_easy_blacklash",
+      "breakpoints": true
+    },
+    {
+      "idx": 124,
+      "version": "7",
+      "when": 1794538043213,
+      "tag": "0124_concerned_nebula",
+      "breakpoints": true
+    },
+    {
+      "idx": 125,
+      "version": "7",
+      "when": 1794539175668,
+      "tag": "0125_rename_closer_subject",
+      "breakpoints": true
+    },
+    {
+      "idx": 126,
+      "version": "7",
+      "when": 1794540155197,
+      "tag": "0126_stiff_gorgon",
+      "breakpoints": true
+    },
+    {
+      "idx": 127,
+      "version": "7",
+      "when": 1794570181597,
+      "tag": "0127_closer_full_coverage",
+      "breakpoints": true
+    },
+    {
+      "idx": 128,
+      "version": "7",
+      "when": 1794570824038,
+      "tag": "0128_score_scale_0_10",
+      "breakpoints": true
     }
   ]
 }

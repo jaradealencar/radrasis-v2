@@ -70,6 +70,7 @@ export async function sincronizarClientesLote(paginaInicial = 1, maxPaginas = MA
         id: c.id as number,
         nomeFantasia: c.nome_fantasia ? String(c.nome_fantasia).slice(0, 256) : null,
         razaoSocial: c.razao_social ? String(c.razao_social).slice(0, 256) : null,
+        cnpj: c.cnpj_cpf ? String(c.cnpj_cpf).replace(/\D/g, "").slice(0, 20) : null,
         telefone: escolherTelefoneCliente(c),
       }));
     if (linhas.length > 0) {
@@ -77,7 +78,7 @@ export async function sincronizarClientesLote(paginaInicial = 1, maxPaginas = MA
         target: mubisysClientesCache.id,
         set: {
           nomeFantasia: sql`excluded.nome_fantasia`, razaoSocial: sql`excluded.razao_social`,
-          telefone: sql`excluded.telefone`, atualizadoEm: sql`now()`,
+          cnpj: sql`excluded.cnpj`, telefone: sql`excluded.telefone`, atualizadoEm: sql`now()`,
         },
       });
     }
