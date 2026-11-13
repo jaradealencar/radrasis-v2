@@ -5766,9 +5766,14 @@ export type TrainingExamAssignmentStudent =
 export const trainingQuestionTypes = [
   "multiple_choice",
   "multiple_select",
+  "matching",
+  "sum",
+  "fill_blank",
   "ordering",
   "best_response",
   "negotiation",
+  "true_false",
+  "short_answer",
 ] as const;
 export type TrainingQuestionType = (typeof trainingQuestionTypes)[number];
 
@@ -5778,6 +5783,7 @@ export type TrainingQuestionOption = {
   correct?: boolean;
   feedback?: string;
   score?: number;
+  value?: number;
   nextNodeId?: string | null;
   criteriaScores?: Record<string, number>;
 };
@@ -5789,6 +5795,12 @@ export type TrainingQuestionNode = {
 export type TrainingQuestionConfig = {
   options?: TrainingQuestionOption[];
   allowPartialCredit?: boolean;
+  leftItems?: Array<{ id: string; text: string }>;
+  rightItems?: Array<{ id: string; text: string }>;
+  correctPairs?: Array<{ leftId: string; rightId: string }>;
+  blanks?: Array<{ id: string; acceptedAnswers: string[] }>;
+  correctBoolean?: boolean;
+  acceptedAnswers?: string[];
   steps?: Array<{ id: string; text: string }>;
   correctOrder?: string[];
   nodes?: TrainingQuestionNode[];

@@ -110,6 +110,151 @@ const EMPTY_ASSESSMENT = {
   archived: false,
 };
 
+const QUESTION_PROFILES = [
+  { type: "multiple_choice", label: "Múltipla escolha" },
+  { type: "multiple_select", label: "Múltipla seleção" },
+  { type: "matching", label: "Conectar elementos" },
+  { type: "sum", label: "Somatório" },
+  { type: "fill_blank", label: "Completar palavras" },
+  { type: "ordering", label: "Ordenar etapas" },
+  { type: "best_response", label: "Melhor resposta" },
+  { type: "negotiation", label: "Simulação de negociação" },
+  { type: "true_false", label: "Verdadeiro ou falso" },
+  { type: "short_answer", label: "Resposta curta" },
+] as const;
+type QuestionProfile = (typeof QUESTION_PROFILES)[number]["type"];
+
+function questionProfileTemplate(type: QuestionProfile) {
+  const templates: Record<
+    QuestionProfile,
+    { label: string; prompt: string; config: Record<string, unknown> }
+  > = {
+    multiple_choice: {
+      label: "Múltipla escolha",
+      prompt: "Escreva a pergunta de múltipla escolha.",
+      config: {
+        options: [
+          { id: "a", text: "Alternativa correta", correct: true },
+          { id: "b", text: "Outra alternativa", correct: false },
+        ],
+        explanation: "Explique por que essa é a resposta esperada.",
+      },
+    },
+    multiple_select: {
+      label: "Múltipla seleção",
+      prompt: "Selecione todas as alternativas corretas.",
+      config: {
+        allowPartialCredit: true,
+        options: [
+          { id: "a", text: "Alternativa correta", correct: true },
+          { id: "b", text: "Alternativa incorreta", correct: false },
+          { id: "c", text: "Outra alternativa correta", correct: true },
+        ],
+        explanation: "Explique o critério de seleção.",
+      },
+    },
+    matching: {
+      label: "Conectar elementos",
+      prompt: "Relacione cada etapa à sua descrição correspondente.",
+      config: {
+        allowPartialCredit: true,
+        leftItems: [
+          { id: "etapa-1", text: "Etapa 1" },
+          { id: "etapa-2", text: "Etapa 2" },
+        ],
+        rightItems: [
+          { id: "descricao-1", text: "Descrição 1" },
+          { id: "descricao-2", text: "Descrição 2" },
+        ],
+        correctPairs: [
+          { leftId: "etapa-1", rightId: "descricao-1" },
+          { leftId: "etapa-2", rightId: "descricao-2" },
+        ],
+      },
+    },
+    sum: {
+      label: "Somatório",
+      prompt: "Selecione os itens corretos e some os valores indicados.",
+      config: {
+        options: [
+          { id: "1", text: "Afirmação 1", value: 1, correct: true },
+          { id: "2", text: "Afirmação 2", value: 2, correct: false },
+          { id: "4", text: "Afirmação 3", value: 4, correct: true },
+        ],
+      },
+    },
+    fill_blank: {
+      label: "Completar palavras",
+      prompt: "Complete: O closer primeiro {{1}} o cliente.",
+      config: {
+        allowPartialCredit: true,
+        blanks: [{ id: "1", acceptedAnswers: ["escuta"] }],
+      },
+    },
+    ordering: {
+      label: "Ordenar etapas",
+      prompt: "Organize as etapas na ordem correta.",
+      config: {
+        steps: [
+          { id: "etapa-1", text: "Primeira etapa" },
+          { id: "etapa-2", text: "Segunda etapa" },
+          { id: "etapa-3", text: "Terceira etapa" },
+        ],
+        correctOrder: ["etapa-1", "etapa-2", "etapa-3"],
+      },
+    },
+    best_response: {
+      label: "Melhor resposta",
+      prompt: "Qual é a melhor resposta para a situação apresentada?",
+      config: {
+        options: [
+          { id: "a", text: "Resposta mais adequada", correct: true },
+          { id: "b", text: "Resposta menos adequada", correct: false },
+        ],
+        explanation: "Explique o que torna essa resposta mais adequada.",
+      },
+    },
+    negotiation: {
+      label: "Simulação de negociação",
+      prompt: "Como você conduziria esta conversa com o cliente?",
+      config: {
+        nodes: [
+          {
+            id: "inicio",
+            clientText: "O cliente apresenta uma situação para você conduzir.",
+            options: [
+              {
+                id: "adequada",
+                text: "Resposta adequada",
+                score: 100,
+                feedback: "Explique por que essa condução funciona.",
+              },
+              {
+                id: "inadequada",
+                text: "Resposta a revisar",
+                score: 0,
+                feedback: "Explique o que pode ser melhorado.",
+              },
+            ],
+          },
+        ],
+        finalFeedback: "Descreva os critérios gerais da simulação.",
+      },
+    },
+    true_false: {
+      label: "Verdadeiro ou falso",
+      prompt: "A afirmação apresentada está correta?",
+      config: { correctBoolean: true },
+    },
+    short_answer: {
+      label: "Resposta curta",
+      prompt: "Responda com uma frase curta.",
+      config: { acceptedAnswers: ["resposta aceita"] },
+    },
+  };
+  return templates[type];
+}
+
 function formatDate(value: Date | string | null | undefined) {
   if (!value) return "—";
   return new Intl.DateTimeFormat("pt-BR", {
@@ -208,6 +353,10 @@ function TrainingAdmin({ onChanged }: { onChanged: () => void }) {
   const [lesson, setLesson] = useState<any>(EMPTY_LESSON);
   const [assessment, setAssessment] = useState<any>(EMPTY_ASSESSMENT);
   const [questionJson, setQuestionJson] = useState("[]");
+  const [questionProfile, setQuestionProfile] =
+    useState<QuestionProfile>("multiple_choice");
+  const [newQuestionPrompt, setNewQuestionPrompt] = useState("");
+  const [newQuestionPoints, setNewQuestionPoints] = useState(1);
   const [reportFilter, setReportFilter] = useState<number | undefined>();
   const [assignmentAssessmentId, setAssignmentAssessmentId] = useState<
     number | undefined
@@ -440,6 +589,38 @@ function TrainingAdmin({ onChanged }: { onChanged: () => void }) {
       return;
     }
     saveAssessment.mutate({ ...assessment, questions: parsed });
+  };
+
+  const addQuestionProfile = () => {
+    let parsed: any[];
+    try {
+      parsed = JSON.parse(questionJson);
+      if (!Array.isArray(parsed))
+        throw new Error("O conteúdo deve ser uma lista JSON.");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "JSON inválido.");
+      return;
+    }
+    const template = questionProfileTemplate(questionProfile);
+    const nextPosition =
+      parsed.reduce(
+        (maximum, question) =>
+          Math.max(maximum, Number(question?.position) || 0),
+        0
+      ) + 10;
+    parsed.push({
+      key: `questao-${Date.now()}-${parsed.length + 1}`,
+      type: questionProfile,
+      prompt: newQuestionPrompt.trim() || template.prompt,
+      points: newQuestionPoints,
+      position: nextPosition,
+      config: template.config,
+    });
+    setQuestionJson(JSON.stringify(parsed, null, 2));
+    setNewQuestionPrompt("");
+    toast.success(
+      `Modelo “${template.label}” adicionado. Revise alternativas, respostas corretas e instruções no JSON.`
+    );
   };
 
   const generateSimulation = () => {
@@ -957,6 +1138,76 @@ function TrainingAdmin({ onChanged }: { onChanged: () => void }) {
               />
             </div>
             <div>
+              <section className="mb-4 space-y-3 rounded-lg border p-4">
+                <div>
+                  <h3 className="font-semibold">
+                    Adicionar questão por perfil
+                  </h3>
+                  <p className="text-sm text-muted-foreground">
+                    Escolha um dos 10 modelos. O sistema insere uma estrutura
+                    inicial para você completar e revisar no editor abaixo.
+                  </p>
+                </div>
+                <div className="grid gap-3 md:grid-cols-[1fr_2fr_120px_auto] md:items-end">
+                  <div className="space-y-2">
+                    <Label htmlFor="question-profile">Perfil da questão</Label>
+                    <select
+                      id="question-profile"
+                      className="w-full rounded-md border bg-background px-3 py-2 text-sm"
+                      value={questionProfile}
+                      onChange={event =>
+                        setQuestionProfile(
+                          event.target.value as QuestionProfile
+                        )
+                      }
+                    >
+                      {QUESTION_PROFILES.map(profile => (
+                        <option key={profile.type} value={profile.type}>
+                          {profile.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="new-question-prompt">Enunciado</Label>
+                    <Input
+                      id="new-question-prompt"
+                      value={newQuestionPrompt}
+                      onChange={event =>
+                        setNewQuestionPrompt(event.target.value)
+                      }
+                      placeholder={
+                        questionProfileTemplate(questionProfile).prompt
+                      }
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="new-question-points">Pontos</Label>
+                    <Input
+                      id="new-question-points"
+                      type="number"
+                      min={1}
+                      max={100}
+                      value={newQuestionPoints}
+                      onChange={event =>
+                        setNewQuestionPoints(
+                          Math.min(
+                            100,
+                            Math.max(
+                              1,
+                              Math.floor(Number(event.target.value) || 1)
+                            )
+                          )
+                        )
+                      }
+                    />
+                  </div>
+                  <Button type="button" onClick={addQuestionProfile}>
+                    <Plus className="mr-1 h-4 w-4" />
+                    Adicionar
+                  </Button>
+                </div>
+              </section>
               <Label>Questões em JSON</Label>
               <Textarea
                 className="min-h-72 font-mono text-xs"
@@ -964,10 +1215,11 @@ function TrainingAdmin({ onChanged }: { onChanged: () => void }) {
                 onChange={e => setQuestionJson(e.target.value)}
               />
               <p className="mt-2 text-xs text-slate-500">
-                Tipos: multiple_choice, multiple_select, ordering, best_response
-                e negotiation. Cada item usa key, type, prompt, points, position
-                e config. A autoria recebe o gabarito; ele não é enviado ao
-                aluno antes da correção.
+                Os modelos cobrem múltipla escolha, múltipla seleção, conectar
+                elementos, somatório, completar palavras, ordenar etapas, melhor
+                resposta, negociação, verdadeiro ou falso e resposta curta. Cada
+                item usa key, type, prompt, points, position e config. O
+                gabarito nunca é enviado ao aluno antes da correção.
               </p>
             </div>
             <Button onClick={saveQuestions} disabled={saveAssessment.isPending}>
@@ -1744,7 +1996,16 @@ export default function Treinamento() {
     if (currentQuestion?.type === "ordering")
       setOrderedIds(currentQuestion.config.steps.map((step: any) => step.id));
     else setOrderedIds([]);
-    setSelected(currentQuestion?.type === "multiple_select" ? [] : "");
+    if (currentQuestion?.type === "matching")
+      setSelected(Array(currentQuestion.config.leftItems.length).fill(""));
+    else if (currentQuestion?.type === "fill_blank")
+      setSelected(Array(currentQuestion.config.blanks.length).fill(""));
+    else if (
+      currentQuestion?.type === "multiple_select" ||
+      currentQuestion?.type === "sum"
+    )
+      setSelected([]);
+    else setSelected("");
     setScenarioNode(
       currentQuestion?.type === "negotiation" ? currentQuestion.config : null
     );
@@ -1770,7 +2031,16 @@ export default function Treinamento() {
     if (currentQuestion.type === "ordering") response = orderedIds;
     if (currentQuestion.type === "negotiation")
       response = { nodeId: activeScenario.nodeId, optionId: selected };
-    if ((Array.isArray(response) && response.length === 0) || response === "") {
+    const requiresEveryValue = ["matching", "fill_blank"].includes(
+      currentQuestion.type
+    );
+    if (
+      (Array.isArray(response) &&
+        (response.length === 0 ||
+          (requiresEveryValue &&
+            response.some(value => !String(value).trim())))) ||
+      response === ""
+    ) {
       toast.error("Escolha ou organize sua resposta antes de continuar.");
       return;
     }
@@ -1924,8 +2194,13 @@ export default function Treinamento() {
         currentQuestion.type === "negotiation"
           ? (activeScenario?.options ?? [])
           : (currentQuestion.config.options ?? []);
-      const isMulti = currentQuestion.type === "multiple_select";
+      const isMulti =
+        currentQuestion.type === "multiple_select" ||
+        currentQuestion.type === "sum";
       const isOrdering = currentQuestion.type === "ordering";
+      const isMatching = currentQuestion.type === "matching";
+      const isFillBlank = currentQuestion.type === "fill_blank";
+      const isShortAnswer = currentQuestion.type === "short_answer";
       const isScenario = currentQuestion.type === "negotiation";
       const submitted = Boolean(
         answerResult &&
@@ -1959,7 +2234,9 @@ export default function Treinamento() {
           </CardHeader>
           <CardContent>
             <h3 className="text-lg font-semibold leading-7">
-              {currentQuestion.prompt}
+              {isFillBlank
+                ? currentQuestion.prompt.replace(/\{\{([^}]+)\}\}/g, "_____")
+                : currentQuestion.prompt}
             </h3>
             {isScenario && (
               <div className="mt-4 rounded-lg border-l-4 border-primary bg-muted/60 p-4 text-sm leading-6">
@@ -2004,7 +2281,96 @@ export default function Treinamento() {
                 })}
               </div>
             )}
-            {!isOrdering && (
+            {isMatching && (
+              <div className="mt-5 space-y-3">
+                {currentQuestion.config.leftItems.map(
+                  (item: any, index: number) => (
+                    <div
+                      key={item.id}
+                      className="grid gap-2 rounded-lg border p-3 md:grid-cols-2 md:items-center"
+                    >
+                      <span className="text-sm font-medium">{item.text}</span>
+                      <select
+                        className="w-full rounded-md border bg-background px-3 py-2 text-sm"
+                        value={
+                          Array.isArray(selected) ? (selected[index] ?? "") : ""
+                        }
+                        disabled={submitted || Boolean(answerResult)}
+                        onChange={event =>
+                          setSelected(previous => {
+                            const values = Array.isArray(previous)
+                              ? [...previous]
+                              : Array(
+                                  currentQuestion.config.leftItems.length
+                                ).fill("");
+                            values[index] = event.target.value;
+                            return values;
+                          })
+                        }
+                      >
+                        <option value="">Selecione a associação</option>
+                        {currentQuestion.config.rightItems.map((right: any) => (
+                          <option
+                            key={right.id}
+                            value={right.id}
+                            disabled={
+                              Array.isArray(selected) &&
+                              selected.includes(right.id) &&
+                              selected[index] !== right.id
+                            }
+                          >
+                            {right.text}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  )
+                )}
+              </div>
+            )}
+            {isFillBlank && (
+              <div className="mt-5 grid gap-3 sm:grid-cols-2">
+                {currentQuestion.config.blanks.map(
+                  (blank: any, index: number) => (
+                    <div key={blank.id} className="space-y-2">
+                      <Label htmlFor={`blank-${blank.id}`}>
+                        Lacuna {index + 1}
+                      </Label>
+                      <Input
+                        id={`blank-${blank.id}`}
+                        value={
+                          Array.isArray(selected) ? (selected[index] ?? "") : ""
+                        }
+                        disabled={submitted || Boolean(answerResult)}
+                        onChange={event =>
+                          setSelected(previous => {
+                            const values = Array.isArray(previous)
+                              ? [...previous]
+                              : Array(
+                                  currentQuestion.config.blanks.length
+                                ).fill("");
+                            values[index] = event.target.value;
+                            return values;
+                          })
+                        }
+                      />
+                    </div>
+                  )
+                )}
+              </div>
+            )}
+            {isShortAnswer && (
+              <div className="mt-5 space-y-2">
+                <Label htmlFor="short-answer-response">Sua resposta</Label>
+                <Input
+                  id="short-answer-response"
+                  value={typeof selected === "string" ? selected : ""}
+                  disabled={submitted || Boolean(answerResult)}
+                  onChange={event => setSelected(event.target.value)}
+                />
+              </div>
+            )}
+            {!isOrdering && !isMatching && !isFillBlank && !isShortAnswer && (
               <div className="mt-5 space-y-2">
                 {options.map((option: any) => {
                   const checked = isMulti
@@ -2029,11 +2395,31 @@ export default function Treinamento() {
                             : setSelected(option.id)
                         }
                       />
-                      <span className="text-sm leading-6">{option.text}</span>
+                      <span className="text-sm leading-6">
+                        {currentQuestion.type === "sum" && (
+                          <strong className="mr-1">{option.value}.</strong>
+                        )}
+                        {option.text}
+                      </span>
                     </label>
                   );
                 })}
               </div>
+            )}
+            {currentQuestion.type === "sum" && (
+              <p className="mt-3 text-sm text-muted-foreground">
+                Somatório selecionado:{" "}
+                {options
+                  .filter(
+                    (option: any) =>
+                      Array.isArray(selected) && selected.includes(option.id)
+                  )
+                  .reduce(
+                    (sum: number, option: any) =>
+                      sum + (Number(option.value) || 0),
+                    0
+                  )}
+              </p>
             )}
             {answerResult?.feedback && (
               <FeedbackPanel feedback={answerResult.feedback} />
@@ -2052,9 +2438,23 @@ export default function Treinamento() {
                   <Button
                     variant="outline"
                     onClick={() => {
-                      setSelected(
-                        currentQuestion.type === "multiple_select" ? [] : ""
-                      );
+                      if (currentQuestion.type === "matching")
+                        setSelected(
+                          Array(currentQuestion.config.leftItems.length).fill(
+                            ""
+                          )
+                        );
+                      else if (currentQuestion.type === "fill_blank")
+                        setSelected(
+                          Array(currentQuestion.config.blanks.length).fill("")
+                        );
+                      else
+                        setSelected(
+                          currentQuestion.type === "multiple_select" ||
+                            currentQuestion.type === "sum"
+                            ? []
+                            : ""
+                        );
                       setAnswerResult(null);
                     }}
                   >

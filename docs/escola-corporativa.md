@@ -1,10 +1,10 @@
 # Escola Corporativa do Radrasys
 
-A Escola Corporativa organiza conteúdo por setor, matéria, aula, avaliação e questão. O primeiro percurso publicado é Comercial → Closer, baseado no POP-COM-01, versão V1.2. A navegação fica em **Operações → Escola Corporativa** (`/treinamento`).
+A Escola Corporativa organiza conteúdo por setor, matéria, aula, avaliação e questão. O primeiro percurso publicado é Comercial → **Técnicas de Closer**, baseado no POP-COM-01, versão V1.2. A navegação fica em **Operações → Escola Corporativa** (`/treinamento`).
 
 ## Conteúdo e manutenção
 
-O conteúdo fica nas tabelas `training_sectors`, `training_subjects`, `training_lessons`, `training_lesson_versions`, `training_assessments` e `training_questions`. Os setores, matérias, aulas e avaliações podem ser publicados, reordenados ou arquivados por usuários com os papéis `admin`, `master` ou `gestor`. A autoria da avaliação edita as questões em JSON; o servidor valida a estrutura antes de salvar. Cada edição da aula grava a versão anterior e a nova no histórico, e a conclusão do aluno fica vinculada à versão estudada.
+O conteúdo fica nas tabelas `training_sectors`, `training_subjects`, `training_lessons`, `training_lesson_versions`, `training_assessments` e `training_questions`. Os setores, matérias, aulas e avaliações podem ser criados, publicados, reordenados ou arquivados por usuários com os papéis `admin`, `master` ou `gestor`. O editor de questões permite selecionar um perfil entre dez modelos e insere sua estrutura inicial no JSON para personalização. O servidor valida cada formato antes de salvar. Cada edição da aula grava a versão anterior e a nova no histórico, e a conclusão do aluno fica vinculada à versão estudada.
 
 Ao salvar uma avaliação existente, a versão aumenta e as questões atuais são substituídas. Cada tentativa guarda um snapshot próprio, incluindo enunciados, alternativas, gabarito e explicações. Assim, a correção e o feedback de uma tentativa antiga continuam vinculados à versão que o aluno respondeu.
 
@@ -29,12 +29,17 @@ O painel administrativo agrupa tentativas reais por aluno e exibe quantidade con
 
 ## Formato das questões
 
-O endpoint `treinamento.saveAssessment` recebe uma lista de objetos com `key`, `type`, `prompt`, `points`, `position` e `config`. Os tipos entregues nesta primeira versão são:
+O endpoint `treinamento.saveAssessment` recebe uma lista de objetos com `key`, `type`, `prompt`, `points`, `position` e `config`. O seletor de perfil oferece estes dez tipos:
 
-- `multiple_choice` e `best_response`: `config.options` contém alternativas `{ id, text, correct, feedback }` e `config.explanation` explica o raciocínio.
-- `multiple_select`: usa as mesmas alternativas e `config.allowPartialCredit` para habilitar crédito parcial.
+- `multiple_choice` e `best_response`: escolha única em `config.options`, com `{ id, text, correct, feedback }`; `config.explanation` explica o raciocínio.
+- `multiple_select`: escolha de várias alternativas; `config.allowPartialCredit` habilita crédito parcial.
+- `matching`: associação entre `config.leftItems` e `config.rightItems`, com gabarito em `config.correctPairs` (`leftId`, `rightId`).
+- `sum`: seleção de itens com `value` numérico; o gabarito usa `correct: true` e a nota compara o somatório selecionado ao somatório correto.
+- `fill_blank`: o enunciado usa marcadores `{{id}}`; `config.blanks` fornece respostas aceitas por lacuna. `config.allowPartialCredit` habilita crédito por lacuna.
 - `ordering`: `config.steps` contém `{ id, text }` e `config.correctOrder` contém a ordem esperada de IDs.
 - `negotiation`: `config.nodes` contém nós `{ id, clientText, options }`. Uma alternativa pode definir `score` (0–100), `feedback`, `criteriaScores` e `nextNodeId`; ausência de próximo nó encerra o caminho. `finalFeedback` explica os critérios gerais.
+- `true_false`: `config.correctBoolean` guarda o gabarito sem enviá-lo ao aluno antes da correção.
+- `short_answer`: `config.acceptedAnswers` lista respostas aceitas; a comparação ignora maiúsculas, acentos e espaços repetidos.
 
 O exemplo abaixo representa uma questão de escolha única:
 

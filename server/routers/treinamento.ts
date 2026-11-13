@@ -29,6 +29,7 @@ const questionOptionSchema = z.object({
   id: z.string().min(1).max(80),
   text: z.string().min(1).max(2000),
   correct: z.boolean().optional(),
+  value: z.number().int().min(-1000).max(1000).optional(),
   feedback: z.string().max(4000).optional(),
   score: z.number().min(0).max(100).optional(),
   nextNodeId: z.string().max(80).nullable().optional(),
@@ -43,6 +44,44 @@ const configSchema = z
   .object({
     options: z.array(questionOptionSchema).optional(),
     allowPartialCredit: z.boolean().optional(),
+    leftItems: z
+      .array(
+        z.object({
+          id: z.string().min(1).max(80),
+          text: z.string().min(1).max(2000),
+        })
+      )
+      .max(20)
+      .optional(),
+    rightItems: z
+      .array(
+        z.object({
+          id: z.string().min(1).max(80),
+          text: z.string().min(1).max(2000),
+        })
+      )
+      .max(20)
+      .optional(),
+    correctPairs: z
+      .array(
+        z.object({
+          leftId: z.string().min(1).max(80),
+          rightId: z.string().min(1).max(80),
+        })
+      )
+      .max(20)
+      .optional(),
+    blanks: z
+      .array(
+        z.object({
+          id: z.string().min(1).max(80),
+          acceptedAnswers: z.array(z.string().min(1).max(500)).min(1).max(20),
+        })
+      )
+      .max(20)
+      .optional(),
+    correctBoolean: z.boolean().optional(),
+    acceptedAnswers: z.array(z.string().min(1).max(500)).max(30).optional(),
     steps: z
       .array(
         z.object({
@@ -163,6 +202,65 @@ function publicQuestion(
         : null,
     };
   }
+  if (question.type === "matching") {
+    return {
+      key: question.key,
+      type: question.type,
+      prompt: question.prompt,
+      points: question.points,
+      config: {
+        leftItems: config.leftItems ?? [],
+        rightItems: config.rightItems ?? [],
+      },
+    };
+  }
+  if (question.type === "sum") {
+    return {
+      key: question.key,
+      type: question.type,
+      prompt: question.prompt,
+      points: question.points,
+      config: {
+        options: config.options?.map(({ id, text, value }) => ({
+          id,
+          text,
+          value: value ?? 0,
+        })),
+      },
+    };
+  }
+  if (question.type === "fill_blank") {
+    return {
+      key: question.key,
+      type: question.type,
+      prompt: question.prompt,
+      points: question.points,
+      config: { blanks: config.blanks?.map(({ id }) => ({ id })) ?? [] },
+    };
+  }
+  if (question.type === "true_false") {
+    return {
+      key: question.key,
+      type: question.type,
+      prompt: question.prompt,
+      points: question.points,
+      config: {
+        options: [
+          { id: "true", text: "Verdadeiro" },
+          { id: "false", text: "Falso" },
+        ],
+      },
+    };
+  }
+  if (question.type === "short_answer") {
+    return {
+      key: question.key,
+      type: question.type,
+      prompt: question.prompt,
+      points: question.points,
+      config: {},
+    };
+  }
   if (question.type === "ordering") {
     const steps = [...(config.steps ?? [])];
     for (let i = steps.length - 1; i > 0; i--) {
@@ -221,6 +319,82 @@ function validateQuestion(question: QuestionInput) {
         message: `A questão ${question.key} deve ter uma única resposta correta.`,
       });
     }
+  }
+  if (question.type === "matching") {
+    const leftItems = config.leftItems ?? [];
+    const rightItems = config.rightItems ?? [];
+    const pairs = config.correctPairs ?? [];
+    const leftIds = leftItems.map(item => item.id);
+    const rightIds = rightItems.map(item => item.id);
+    if (
+      leftItems.length < 2 ||
+      rightItems.length !== leftItems.length ||
+      pairs.length !== leftItems.length ||
+      new Set(leftIds).size !== leftIds.length ||
+      new Set(rightIds).size !== rightIds.length ||
+      new Set(pairs.map(pair => pair.leftId)).size !== pairs.length ||
+      new Set(pairs.map(pair => pair.rightId)).size !== pairs.length ||
+      pairs.some(
+        pair =>
+          !leftIds.includes(pair.leftId) || !rightIds.includes(pair.rightId)
+      )
+    ) {
+      throw new TRPCError({
+        code: "BAD_REQUEST",
+        message: `A questÃ£o ${question.key} precisa de pares vÃ¡lidos, sem repetiÃ§Ã£o, para todos os itens.`,
+      });
+    }
+  }
+  if (question.type === "sum") {
+    const options = config.options ?? [];
+    if (
+      options.length < 2 ||
+      new Set(options.map(option => option.id)).size !== options.length ||
+      options.some(
+        option => option.value === undefined || option.correct === undefined
+      ) ||
+      !options.some(option => option.correct)
+    ) {
+      throw new TRPCError({
+        code: "BAD_REQUEST",
+        message: `A questÃ£o ${question.key} precisa de itens numerados e ao menos um item correto.`,
+      });
+    }
+  }
+  if (question.type === "fill_blank") {
+    const blanks = config.blanks ?? [];
+    if (
+      !blanks.length ||
+      new Set(blanks.map(blank => blank.id)).size !== blanks.length ||
+      blanks.some(
+        blank =>
+          !blank.acceptedAnswers.length ||
+          !question.prompt.includes(`{{${blank.id}}}`)
+      )
+    ) {
+      throw new TRPCError({
+        code: "BAD_REQUEST",
+        message: `A questÃ£o ${question.key} deve usar {{id}} no enunciado e cadastrar uma resposta aceita por lacuna.`,
+      });
+    }
+  }
+  if (
+    question.type === "true_false" &&
+    typeof config.correctBoolean !== "boolean"
+  ) {
+    throw new TRPCError({
+      code: "BAD_REQUEST",
+      message: `A questÃ£o ${question.key} precisa definir correctBoolean como true ou false.`,
+    });
+  }
+  if (
+    question.type === "short_answer" &&
+    !(config.acceptedAnswers ?? []).some(answer => answer.trim().length > 0)
+  ) {
+    throw new TRPCError({
+      code: "BAD_REQUEST",
+      message: `A questÃ£o ${question.key} precisa de ao menos uma resposta curta aceita.`,
+    });
   }
   if (question.type === "ordering") {
     const ids = (config.steps ?? []).map(step => step.id);
@@ -287,6 +461,15 @@ function validateQuestion(question: QuestionInput) {
   }
 }
 
+function normalizeAnswer(value: string) {
+  return value
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLocaleLowerCase("pt-BR")
+    .trim()
+    .replace(/\s+/g, " ");
+}
+
 function evaluateQuestion(question: SnapshotQuestion, response: unknown) {
   const config = question.config;
   const selected = Array.isArray(response)
@@ -331,6 +514,87 @@ function evaluateQuestion(question: SnapshotQuestion, response: unknown) {
       option =>
         `${option.correct ? "Correta" : "Não é a escolha esperada"}: ${option.text}${option.feedback ? ` — ${option.feedback}` : ""}`
     );
+  } else if (question.type === "matching") {
+    const leftItems = config.leftItems ?? [];
+    const rightItems = config.rightItems ?? [];
+    const correctByLeft = new Map(
+      (config.correctPairs ?? []).map(pair => [pair.leftId, pair.rightId])
+    );
+    const correctCount = leftItems.reduce(
+      (count, item, index) =>
+        count + Number(selected[index] === correctByLeft.get(item.id)),
+      0
+    );
+    fraction = config.allowPartialCredit
+      ? correctCount / Math.max(1, leftItems.length)
+      : correctCount === leftItems.length
+        ? 1
+        : 0;
+    const rightById = new Map(rightItems.map(item => [item.id, item.text]));
+    const leftById = new Map(leftItems.map(item => [item.id, item.text]));
+    expectedAnswer = (config.correctPairs ?? [])
+      .map(
+        pair =>
+          `${leftById.get(pair.leftId) ?? pair.leftId} → ${rightById.get(pair.rightId) ?? pair.rightId}`
+      )
+      .join("; ");
+    details = [`Associações corretas: ${correctCount} de ${leftItems.length}.`];
+  } else if (question.type === "sum") {
+    const options = config.options ?? [];
+    const uniqueSelection = new Set(selected);
+    const selectedOptions = options.filter(option =>
+      uniqueSelection.has(option.id)
+    );
+    const actualSum = selectedOptions.reduce(
+      (sum, option) => sum + (option.value ?? 0),
+      0
+    );
+    const correctOptions = options.filter(option => option.correct);
+    const correctSum = correctOptions.reduce(
+      (sum, option) => sum + (option.value ?? 0),
+      0
+    );
+    fraction =
+      uniqueSelection.size === selected.length && actualSum === correctSum
+        ? 1
+        : 0;
+    expectedAnswer = `Somatório correto: ${correctSum}.`;
+    details = correctOptions.map(option => `${option.value}: ${option.text}`);
+  } else if (question.type === "fill_blank") {
+    const blanks = config.blanks ?? [];
+    const correctCount = blanks.reduce((count, blank, index) => {
+      const answer = normalizeAnswer(selected[index] ?? "");
+      return (
+        count +
+        Number(
+          blank.acceptedAnswers.some(
+            accepted => normalizeAnswer(accepted) === answer
+          )
+        )
+      );
+    }, 0);
+    fraction = config.allowPartialCredit
+      ? correctCount / Math.max(1, blanks.length)
+      : correctCount === blanks.length
+        ? 1
+        : 0;
+    expectedAnswer = blanks
+      .map(blank => `${blank.id}: ${blank.acceptedAnswers[0]}`)
+      .join("; ");
+    details = [`Lacunas corretas: ${correctCount} de ${blanks.length}.`];
+  } else if (question.type === "true_false") {
+    const expected = String(config.correctBoolean);
+    fraction = selected[0]?.toLowerCase() === expected ? 1 : 0;
+    expectedAnswer = config.correctBoolean ? "Verdadeiro" : "Falso";
+  } else if (question.type === "short_answer") {
+    const answer = normalizeAnswer(selected[0] ?? "");
+    const acceptedAnswers = config.acceptedAnswers ?? [];
+    fraction = acceptedAnswers.some(
+      accepted => normalizeAnswer(accepted) === answer
+    )
+      ? 1
+      : 0;
+    expectedAnswer = acceptedAnswers.join(" / ");
   } else if (question.type === "ordering") {
     const correct = config.correctOrder ?? [];
     fraction =
@@ -442,6 +706,20 @@ function questionFeedback(
     selected = Array.isArray(response)
       ? response.map(id => textById.get(String(id)) ?? String(id))
       : [];
+  } else if (question.type === "matching") {
+    const rightText = new Map(
+      (question.config.rightItems ?? []).map(item => [item.id, item.text])
+    );
+    selected = (question.config.leftItems ?? []).map((item, index) => {
+      const responseIds = Array.isArray(response) ? response : [];
+      return `${item.text} → ${rightText.get(String(responseIds[index] ?? "")) ?? "Sem associação"}`;
+    });
+  } else if (question.type === "fill_blank") {
+    selected = Array.isArray(response) ? response.map(String) : [];
+  } else if (question.type === "true_false") {
+    selected = String(response) === "true" ? "Verdadeiro" : "Falso";
+  } else if (question.type === "short_answer") {
+    selected = String(response ?? "");
   } else {
     const textById = new Map(
       (question.config.options ?? []).map(option => [option.id, option.text])
@@ -1675,6 +1953,66 @@ export const treinamentoRouter = router({
             : null,
         };
       }
+
+      if (question.type === "matching") {
+        const leftItems = question.config.leftItems ?? [];
+        const rightIds = new Set(
+          (question.config.rightItems ?? []).map(item => item.id)
+        );
+        if (
+          !Array.isArray(input.response) ||
+          input.response.length !== leftItems.length ||
+          input.response.some(id => !rightIds.has(id)) ||
+          new Set(input.response).size !== input.response.length
+        )
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: "Preencha cada associação usando uma opção diferente.",
+          });
+      }
+      if (question.type === "sum") {
+        const optionIds = new Set(
+          (question.config.options ?? []).map(option => option.id)
+        );
+        if (
+          !Array.isArray(input.response) ||
+          input.response.some(id => !optionIds.has(id)) ||
+          new Set(input.response).size !== input.response.length
+        )
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: "Selecione cada item do somatório uma única vez.",
+          });
+      }
+      if (question.type === "fill_blank") {
+        const blanks = question.config.blanks ?? [];
+        if (
+          !Array.isArray(input.response) ||
+          input.response.length !== blanks.length ||
+          input.response.some(answer => !answer.trim())
+        )
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: "Preencha todas as lacunas antes de responder.",
+          });
+      }
+      if (
+        question.type === "true_false" &&
+        (typeof input.response !== "string" ||
+          !["true", "false"].includes(input.response))
+      )
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "Escolha verdadeiro ou falso.",
+        });
+      if (
+        question.type === "short_answer" &&
+        (typeof input.response !== "string" || !input.response.trim())
+      )
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "Digite uma resposta antes de continuar.",
+        });
 
       const grade = evaluateQuestion(question, input.response);
       await db.insert(trainingAttemptAnswers).values({
