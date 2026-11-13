@@ -36,29 +36,35 @@ não há streaming em lugar nenhum do projeto (sem subscriptions, sem SSE, sem
 
 ## 5.1 — `baseURL` dinâmica em `server/_core/auth.ts`
 
-A Vercel injeta `VERCEL_URL` (o host daquele deploy específico, **sem**
-esquema) em runtime. Use-a como fallback quando `BETTER_AUTH_URL` não estiver
-definida.
+A Vercel injeta `VERCEL_BRANCH_URL` (o alias estável da branch, **sem**
+esquema) e `VERCEL_URL` (o host daquele deploy específico, sem esquema) em
+runtime. No preview, prefira `VERCEL_BRANCH_URL`: a URL publicada no comentário
+do PR aponta para o alias da branch, que pode ser diferente da URL exclusiva
+do deploy. Use `VERCEL_URL` como fallback e `BETTER_AUTH_URL` em produção.
 
 No topo de `server/_core/auth.ts`, depois dos imports e antes de
 `const db = drizzle(getPool());`:
 
 ```ts
-/**
- * URL base do Better Auth.
- *
- * - Local e produção: `BETTER_AUTH_URL` explícita (é o domínio final, estável).
- * - Preview na Vercel: cada deploy ganha um host novo em `VERCEL_URL`, então
- *   não dá para fixar por variável — derivamos dele.
- *
- * Se as duas faltarem, `undefined` faz o Better Auth inferir a URL a partir
- * dos headers da requisição. Funciona, mas é o caminho menos previsível —
- * por isso `BETTER_AUTH_URL` está na tabela obrigatória da Fase 8.
- */
+function vercelOrigin(host: string | undefined): string | undefined {
+  const normalizedHost = host?.trim().toLowerCase();
+  if (!normalizedHost || !normalizedHost.endsWith(".vercel.app")) return undefined;
+  return `https://${normalizedHost}`;
+}
+
+const vercelDeploymentOrigin = vercelOrigin(process.env.VERCEL_URL);
+const vercelBranchOrigin = vercelOrigin(process.env.VERCEL_BRANCH_URL);
+
 function resolveBaseURL(): string | undefined {
+  if (process.env.VERCEL_ENV === "preview") {
+    return (
+      vercelBranchOrigin ??
+      vercelDeploymentOrigin ??
+      process.env.BETTER_AUTH_URL
+    );
+  }
   if (process.env.BETTER_AUTH_URL) return process.env.BETTER_AUTH_URL;
-  if (process.env.VERCEL_URL) return `https://${process.env.VERCEL_URL}`;
-  return undefined;
+  return vercelDeploymentOrigin;
 }
 ```
 
@@ -74,7 +80,8 @@ E na chamada de `betterAuth({...})`:
 +   // enquanto a função roda num deploy de preview.
 +   trustedOrigins: [
 +     ...(process.env.BETTER_AUTH_URL ? [process.env.BETTER_AUTH_URL] : []),
-+     ...(process.env.VERCEL_URL ? [`https://${process.env.VERCEL_URL}`] : []),
++     ...(vercelDeploymentOrigin ? [vercelDeploymentOrigin] : []),
++     ...(vercelBranchOrigin ? [vercelBranchOrigin] : []),
 +   ],
 ```
 
@@ -230,8 +237,8 @@ desatualizado. Atualize:
 ```diff
 - # Better Auth (Fase 3 da migração — local-only)
 + # Better Auth. BETTER_AUTH_URL é a URL pública do app, COM esquema e SEM
-+ # barra no fim. Em deploy de preview na Vercel pode ficar vazia — o código
-+ # cai no fallback de VERCEL_URL (ver server/_core/auth.ts).
++ # barra no fim. Em preview, o código prefere VERCEL_BRANCH_URL e usa
++ # VERCEL_URL como fallback (ver server/_core/auth.ts).
   BETTER_AUTH_SECRET=
   BETTER_AUTH_URL=http://localhost:3000
 ```
