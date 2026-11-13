@@ -19,10 +19,13 @@ import {
   YAxis,
 } from "recharts";
 import { trpc } from "@/lib/trpc";
-import { fmtDate, fmtNum, fmtPct } from "@/lib/format";
+import { fmtBrl, fmtDate, fmtNum, fmtPct } from "@/lib/format";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import {
   Empty,
   EmptyDescription,
@@ -70,6 +73,14 @@ type SegmentRow = {
 
 function formatIndice(value: number | null | undefined, casas = 3) {
   return value == null ? "—" : fmtNum(value, casas);
+}
+
+function dataLocalHoje() {
+  const data = new Date();
+  const ano = data.getFullYear();
+  const mes = String(data.getMonth() + 1).padStart(2, "0");
+  const dia = String(data.getDate()).padStart(2, "0");
+  return `${ano}-${mes}-${dia}`;
 }
 
 function variacaoPp(value: number | null) {
@@ -199,14 +210,49 @@ function TrendIcon({ trend }: { trend: string }) {
   return <Activity className="size-4 text-amber-600" />;
 }
 
+function formatarIndicadorMensal(value: number | null, unidade: string, chave: string) {
+  if (value == null) return "—";
+  if (unidade === "percentual") return fmtPct(value);
+  if (unidade === "pp") return variacaoPp(value);
+  if (unidade === "moeda") return fmtBrl(value);
+  if (unidade === "indice") return formatIndice(value, 4);
+  return fmtNum(value, chave === "vitoriasEsperadas" || chave === "diferencaVitorias" ? 1 : 0);
+}
+
+function TendenciaMensal({ trend }: { trend: string }) {
+  if (trend === "descritivo") return <span className="text-xs text-muted-foreground">—</span>;
+  const status = trend === "melhorando" ? "Melhorando"
+    : trend === "piorando" ? "Piorando"
+      : trend === "mantido" ? "Mantido"
+        : "Amostra baixa";
+  const tone = trend === "melhorando" ? "text-emerald-700"
+    : trend === "piorando" ? "text-rose-700"
+      : trend === "mantido" ? "text-blue-700"
+        : "text-amber-700";
+  return <span className={`whitespace-nowrap text-xs font-semibold ${tone}`}>{status}</span>;
+}
+
 export function CrmProbabilityPerformance({ active }: { active: boolean }) {
   const [dias, setDias] = useState<(typeof PERIODOS)[number]["value"]>("90");
+  const [marcoAberto, setMarcoAberto] = useState(false);
+  const [tituloMarco, setTituloMarco] = useState("");
+  const [detalheMarco, setDetalheMarco] = useState("");
+  const [dataMarco, setDataMarco] = useState(dataLocalHoje);
   const { data, isLoading, isError, refetch, isFetching } =
     trpc.crm.getDesempenhoProbabilidade.useQuery(
       { dias },
       { enabled: active, refetchOnWindowFocus: false, retry: 1 }
     );
+  const registrarMarco = trpc.crm.registrarMarcoMudancaComercial.useMutation({
+    onSuccess: () => {
+      setMarcoAberto(false);
+      setTituloMarco("");
+      setDetalheMarco("");
+      void refetch();
+    },
+  });
   const painel = data?.painel;
+  const painelConversaoComercial = data?.painelConversaoComercial;
 
   if (!active) return null;
   if (isLoading)
@@ -314,6 +360,221 @@ export function CrmProbabilityPerformance({ active }: { active: boolean }) {
           benchmark histórico separado abaixo não é misturado com esta medição.
         </p>
       </div>
+
+      <Card className="shadow-sm">
+        <CardHeader className="pb-2">
+          <CardTitle className="text-base">Painel executivo — 20 indicadores do comercial</CardTitle>
+          <p className="text-xs text-muted-foreground">
+            Geral desde o início do acompanhamento, histórico anterior aos três meses recentes, cada mês fechado e o total dos últimos três meses.
+          </p>
+        </CardHeader>
+        <CardContent className="space-y-3 pt-0">
+          <div className="rounded-lg border border-sky-200 bg-sky-50 p-3 text-xs text-sky-950">
+            A conversão compara propostas decididas e ganhos. O previsto é a média das probabilidades do modelo para essas mesmas propostas. “Melhorando” compara os três meses fechados com o período anterior e só aparece com ao menos 30 decisões em cada lado. Isso mostra evolução; para provar que uma mudança específica causou o resultado, registre quando ela começou e compare grupos equivalentes.
+          </div>
+          <div className="overflow-x-auto rounded-lg border">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="min-w-56">Indicador</TableHead>
+                  <TableHead className="text-right">Geral acompanhado</TableHead>
+                  <TableHead className="text-right">Antes dos 3 meses</TableHead>
+                  {painel.indicadoresMensais.meses.map(mes => (
+                    <TableHead key={mes.mes} className="min-w-28 text-right capitalize">
+                      {mes.mes}
+                      <span className="block text-[10px] font-normal normal-case text-muted-foreground">{fmtNum(mes.resolvidas)} decididas</span>
+                    </TableHead>
+                  ))}
+                  <TableHead className="min-w-32 text-right">Últimos 3 meses</TableHead>
+                  <TableHead className="text-center">Tendência</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {painel.indicadoresMensais.indicadores.map(indicador => (
+                  <TableRow key={indicador.chave}>
+                    <TableCell>
+                      <span className="block text-[10px] uppercase tracking-wide text-muted-foreground">{indicador.grupo}</span>
+                      <span className="font-medium">{indicador.nome}</span>
+                    </TableCell>
+                    <TableCell className="text-right font-medium tabular-nums">
+                      {formatarIndicadorMensal(indicador.mediaGeral, indicador.unidade, indicador.chave)}
+                      <span className="block text-[10px] font-normal text-muted-foreground">{fmtNum(painel.indicadoresMensais.totalGeralResolvidas)} decididas no histórico</span>
+                    </TableCell>
+                    <TableCell className="text-right tabular-nums">
+                      {formatarIndicadorMensal(indicador.historicoAnterior, indicador.unidade, indicador.chave)}
+                      <span className="block text-[10px] text-muted-foreground">{fmtNum(painel.indicadoresMensais.historicoAnteriorResolvidas)} decididas</span>
+                    </TableCell>
+                    {indicador.meses.map(mes => (
+                      <TableCell key={mes.mes} className="text-right tabular-nums">
+                        {formatarIndicadorMensal(mes.valor, indicador.unidade, indicador.chave)}
+                        <span className="block text-[10px] text-muted-foreground">{fmtNum(mes.resolvidas)} decididas</span>
+                      </TableCell>
+                    ))}
+                    <TableCell className="text-right font-semibold tabular-nums">
+                      {formatarIndicadorMensal(indicador.ultimosTresMeses, indicador.unidade, indicador.chave)}
+                      <span className="block text-[10px] font-normal text-muted-foreground">{fmtNum(painel.indicadoresMensais.ultimosTresMesesResolvidas)} decididas</span>
+                    </TableCell>
+                    <TableCell className="text-center">
+                      <TendenciaMensal trend={indicador.tendencia} />
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+          <p className="text-[11px] text-muted-foreground">
+            Meses comparados: {painel.indicadoresMensais.meses.map(mes => mes.mes).join(" · ")}. Taxas e scores são calculados sobre todas as propostas do período; volumes e valores são acumulados; tickets são médias por proposta. Os desfechos são apenas ganhos e perdas explícitos sincronizados. Métricas do modelo começam a acumular após ativar o registro no banco.
+          </p>
+        </CardContent>
+      </Card>
+      {painelConversaoComercial && (
+        <Card className="shadow-sm">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base">Conversão comercial no histórico do MubiSys</CardTitle>
+            <p className="text-xs text-muted-foreground">
+              Propostas agrupadas pela data de cadastro. A conversão considera somente ganhos e perdas explícitos; propostas abertas ou com status indefinido aparecem como sem desfecho.
+            </p>
+          </CardHeader>
+          <CardContent className="space-y-3 pt-0">
+            <div className="overflow-x-auto rounded-lg border">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead className="min-w-56">Indicador comercial</TableHead>
+                    <TableHead className="text-right">Histórico geral</TableHead>
+                    {painelConversaoComercial.meses.map(mes => (
+                      <TableHead key={mes.mes} className="min-w-28 text-right capitalize">
+                        {mes.mes}
+                        <span className="block text-[10px] font-normal normal-case text-muted-foreground">{fmtNum(mes.propostasCriadas)} criadas</span>
+                      </TableHead>
+                    ))}
+                    <TableHead className="min-w-32 text-right">Últimos 3 meses</TableHead>
+                    <TableHead className="min-w-28 text-center">Variação</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {([
+                    { nome: "Propostas criadas", unidade: "numero", chave: "propostasCriadas" },
+                    { nome: "Propostas decididas", unidade: "numero", chave: "decididas" },
+                    { nome: "Ganhos", unidade: "numero", chave: "ganhos" },
+                    { nome: "Perdas", unidade: "numero", chave: "perdas" },
+                    { nome: "Sem desfecho explícito", unidade: "numero", chave: "semDesfecho" },
+                    { nome: "Conversão real", unidade: "percentual", chave: "conversaoRealPct" },
+                    { nome: "Valor vendido", unidade: "moeda", chave: "valorVendido" },
+                    { nome: "Ticket médio ganho", unidade: "moeda", chave: "ticketMedioGanho" },
+                  ] as const).map(indicador => {
+                    const valor = (resumo: typeof painelConversaoComercial.geral) => resumo[indicador.chave];
+                    const formatar = (item: number | null) => indicador.unidade === "percentual"
+                      ? fmtPct(item)
+                      : indicador.unidade === "moeda" ? fmtBrl(item) : fmtNum(item);
+                    return (
+                      <TableRow key={indicador.chave}>
+                        <TableCell className="font-medium">{indicador.nome}</TableCell>
+                        <TableCell className="text-right font-medium tabular-nums">{formatar(valor(painelConversaoComercial.geral))}</TableCell>
+                        {painelConversaoComercial.meses.map(mes => (
+                          <TableCell key={mes.mes} className="text-right tabular-nums">
+                            {formatar(valor(mes))}
+                            <span className="block text-[10px] text-muted-foreground">{fmtNum(mes.decididas)} decididas</span>
+                          </TableCell>
+                        ))}
+                        <TableCell className="text-right font-semibold tabular-nums">
+                          {formatar(valor(painelConversaoComercial.ultimosTresMeses))}
+                          <span className="block text-[10px] font-normal text-muted-foreground">{fmtNum(painelConversaoComercial.ultimosTresMeses.decididas)} decididas</span>
+                        </TableCell>
+                        <TableCell className="text-center">
+                          {indicador.chave === "conversaoRealPct" && (
+                            <span className={`text-xs font-semibold ${painelConversaoComercial.tendencia === "melhorando" ? "text-emerald-700" : painelConversaoComercial.tendencia === "piorando" ? "text-rose-700" : painelConversaoComercial.tendencia === "mantido" ? "text-blue-700" : "text-amber-700"}`}>
+                              {painelConversaoComercial.tendencia === "melhorando" ? "Subiu" : painelConversaoComercial.tendencia === "piorando" ? "Caiu" : painelConversaoComercial.tendencia === "mantido" ? "Estável" : "Amostra baixa"}
+                              {painelConversaoComercial.diferencaConversaoPp != null && ` · ${variacaoPp(painelConversaoComercial.diferencaConversaoPp)}`}
+                            </span>
+                          )}
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
+                </TableBody>
+              </Table>
+            </div>
+            <p className="text-[11px] text-muted-foreground">
+              Comparação de conversão: últimos 3 meses completos contra os 3 meses anteriores. A classificação exige 30 propostas decididas em cada período. Última proposta no espelho: {painelConversaoComercial.dataMaisRecente ? fmtDate(painelConversaoComercial.dataMaisRecente) : "sem data disponível"}. Confira a sincronização do MubiSys se essa data estiver antiga.
+            </p>
+          </CardContent>
+        </Card>
+      )}
+      <Card className="shadow-sm">
+        <CardHeader className="flex flex-row items-center justify-between gap-3 pb-2">
+          <div>
+            <CardTitle className="text-base">Mudanças comerciais e resultados</CardTitle>
+            <p className="mt-1 text-xs text-muted-foreground">
+              Registre a data em que uma ação entrou em vigor para contextualizar a evolução mensal.
+            </p>
+          </div>
+          <Button variant="outline" size="sm" onClick={() => setMarcoAberto(value => !value)}>
+            {marcoAberto ? "Fechar" : "Registrar mudança"}
+          </Button>
+        </CardHeader>
+        <CardContent className="space-y-3 pt-0">
+          {marcoAberto && (
+            <form
+              className="grid gap-3 rounded-lg border bg-slate-50 p-3 md:grid-cols-[minmax(12rem,1fr)_12rem]"
+              onSubmit={event => {
+                event.preventDefault();
+                registrarMarco.mutate({ titulo: tituloMarco, detalhe: detalheMarco, data: dataMarco });
+              }}
+            >
+              <div className="space-y-2">
+                <Label htmlFor="crm-marco-titulo">O que mudou?</Label>
+                <Input id="crm-marco-titulo" value={tituloMarco} onChange={event => setTituloMarco(event.target.value)} maxLength={120} required placeholder="Ex.: novo roteiro de retorno em 24 horas" />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="crm-marco-data">Data de início</Label>
+                <Input id="crm-marco-data" type="date" value={dataMarco} onChange={event => setDataMarco(event.target.value)} required />
+              </div>
+              <div className="space-y-2 md:col-span-2">
+                <Label htmlFor="crm-marco-detalhe">Detalhe (opcional)</Label>
+                <Textarea id="crm-marco-detalhe" value={detalheMarco} onChange={event => setDetalheMarco(event.target.value)} maxLength={380} rows={2} placeholder="Equipe ou carteira afetada, mudança aplicada e contexto." />
+              </div>
+              {registrarMarco.error && <p className="text-sm text-rose-700 md:col-span-2">{registrarMarco.error.message}</p>}
+              <div className="flex justify-end md:col-span-2">
+                <Button type="submit" disabled={!tituloMarco.trim() || registrarMarco.isPending}>
+                  {registrarMarco.isPending ? "Salvando…" : "Salvar marco"}
+                </Button>
+              </div>
+            </form>
+          )}
+          {data.marcosComerciais.length ? (
+            <div className="space-y-2">
+              {data.marcosComerciais.map(marco => (
+                <div key={marco.id} className="flex flex-col gap-1 rounded-lg border p-3 sm:flex-row sm:items-start sm:gap-4">
+                  <Badge variant="outline" className="w-fit shrink-0">{fmtDate(marco.realizadaEm)}</Badge>
+                  <div className="min-w-0 flex-1">
+                    <p className="font-semibold">{marco.titulo}</p>
+                    {marco.detalhe && <p className="mt-1 whitespace-pre-wrap text-sm text-muted-foreground">{marco.detalhe}</p>}
+                    <p className="mt-2 text-xs text-muted-foreground">
+                      Conversão real: antes {fmtPct(marco.antes.conversaoRealPct)} (n={fmtNum(marco.antes.resolvidas)}) → depois {fmtPct(marco.depois.conversaoRealPct)} (n={fmtNum(marco.depois.resolvidas)}).
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      Variação da conversão após a mudança: {marco.diferencaConversaoPp != null ? variacaoPp(marco.diferencaConversaoPp) : "ainda sem dados decididos"}.
+                      {!marco.janelaCompleta && ` Janela em andamento: ${marco.diasJanela}/30 dias.`}
+                      {marco.janelaCompleta && marco.leitura === "amostra_insuficiente" && " Amostra insuficiente para classificar."}
+                    </p>
+                    {marco.leitura !== "amostra_insuficiente" && (
+                      <Badge variant="outline" className={`mt-1 ${marco.leitura === "melhorando" ? "text-emerald-700" : marco.leitura === "piorando" ? "text-rose-700" : "text-blue-700"}`}>
+                        {marco.leitura === "melhorando" ? "Conversão maior" : marco.leitura === "piorando" ? "Conversão menor" : "Conversão estável"}
+                      </Badge>
+                    )}
+                  </div>
+                  <span className="shrink-0 text-xs text-muted-foreground">Registrado por {marco.registradoPor}</span>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="rounded-lg border border-dashed p-4 text-center text-sm text-muted-foreground">
+              Nenhuma mudança registrada ainda. Os próximos períodos poderão ser comparados com a data de cada ação.
+            </p>
+          )}
+        </CardContent>
+      </Card>
       {!data.trackingDisponivel && (
         <div className="rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-950">
           <p className="font-semibold">
@@ -323,6 +584,14 @@ export function CrmProbabilityPerformance({ active }: { active: boolean }) {
             O painel está no ar, mas a migration{" "}
             <code>crm_probabilidade_previsoes</code> precisa ser aplicada ao
             banco de produção para começar a registrar previsões.
+          </p>
+        </div>
+      )}
+      {data.trackingDisponivel && painel.snapshots === 0 && (
+        <div className="rounded-xl border border-sky-300 bg-sky-50 p-4 text-sm text-sky-950">
+          <p className="font-semibold">O acompanhamento de probabilidades está pronto e aguardando os primeiros registros.</p>
+          <p className="mt-1">
+            As previsões antigas não são reconstruídas como se tivessem sido exibidas. A partir de agora, o painel registra cada proposta acompanhada e mede a qualidade do score conforme os desfechos forem sincronizados. A conversão comercial histórica do MubiSys já aparece no quadro acima.
           </p>
         </div>
       )}

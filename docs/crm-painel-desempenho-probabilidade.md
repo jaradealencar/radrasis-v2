@@ -9,12 +9,19 @@ O resultado é associado depois por `historico_orcamentos.orcNumero`. Só status
 ## Métricas e comparações
 
 - Conversão prevista média e conversão real, incluindo a diferença em pontos percentuais e ganhos esperados contra ganhos observados.
+- Quadro executivo com 20 indicadores: volume de previsões e desfechos, conversão prevista/real, qualidade do score e valores/tickets das propostas decididas. Mostra o acumulado desde o início do acompanhamento, o histórico anterior, cada um dos três últimos meses completos e o agregado desses três meses.
 - Brier score, Brier skill contra um preditor constante com a conversão observada, log-loss, AUC e erro de calibração esperado por dez faixas de probabilidade.
 - Tendência dos últimos 30, 60, 90, 180 ou 365 dias contra uma janela anterior do mesmo tamanho. “Melhorando”, “piorando” e “mantido” só aparecem quando ambas as janelas têm no mínimo 30 propostas decididas; até lá, a amostra é insuficiente.
 - Evolução mensal e desempenho por vendedor, ticket, idade do CNPJ, região, coorte da primeira compra, recência, frequência e valor de compras em 12 meses. Os grupos monetários usam quartis do período escolhido.
 - Conversão histórica por região com ganhos, perdas, amostra e proporção. O painel também informa quantas O.S. do espelho completo entram como compras válidas, a cobertura de UF e a distribuição regional. O score histórico só usa região de O.S. anterior à proposta; propostas sem compra anterior ficam em “região desconhecida”.
 
 Desfechos que chegarem ao espelho após a previsão atualizam a mesma linha do painel; a previsão original não é reescrita. O filtro de período se refere ao dia em que a probabilidade foi exibida, não ao dia do orçamento ou do desfecho.
+
+No quadro mensal de probabilidades, a conversão agregada é ponderada pelo número de propostas, não é a média aritmética das taxas mensais. O comparativo de tendência confronta os três últimos meses completos com o período anterior; só classifica melhora/piora/estabilidade quando cada lado tem pelo menos 30 propostas decididas. Meses sem snapshots aparecem sem valor: a coleta prospectiva começa depois da ativação da migration e não reconstrói previsões antigas.
+
+O card de conversão comercial usa o histórico de orçamentos sincronizado do MubiSys e agrupa cada proposta pela data de cadastro. Ele mostra os três últimos meses completos, os totais do período recente e o histórico geral. Só estados explícitos de ganho/perda entram no denominador da conversão; linhas abertas ou ambíguas são mostradas como sem desfecho e não viram perda presumida. A data da proposta mais recente no espelho fica visível para ajudar a perceber atraso de sincronização.
+
+Mudanças comerciais podem ser registradas com título, data de início e contexto. O painel compara a conversão de propostas criadas nos 30 dias anteriores e posteriores à data registrada, usando somente desfechos explícitos. A comparação só classifica melhora/piora/estabilidade com 30 ou mais propostas decididas em cada janela; a taxa ainda pode mudar quando o MubiSys sincronizar novos desfechos. Essa comparação observacional contextualiza a evolução, mas não prova causalidade — sazonalidade, ticket, região, carteira e outras mudanças podem explicar parte do resultado. Para avaliar causalidade com mais segurança, compare grupos equivalentes e planeje um teste controlado.
 
 ## Benchmark anterior ao painel
 

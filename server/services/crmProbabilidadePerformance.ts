@@ -2,6 +2,7 @@ export interface PrevisaoCrmMonitorada {
   orcNumero: string;
   exibidaEm: Date;
   probabilidadePct: number;
+  valorProposta: number;
   modeloVersao: string;
   vendedor: string | null;
   faixaTicket: string;
@@ -14,6 +15,12 @@ export interface PrevisaoCrmMonitorada {
   desfecho: 0 | 1 | null;
   statusNoHistorico: string | null;
   existeNoHistorico: boolean;
+}
+
+export interface PropostaComercialHistorica {
+  dataCadastro: Date;
+  desfecho: 0 | 1 | null;
+  valorProposta: number;
 }
 
 export interface MetricasProbabilidadeCrm {
@@ -42,6 +49,155 @@ type IndicadorComparado = {
   variacao: number | null;
   tendencia: "melhorando" | "piorando" | "mantido" | "amostra_insuficiente";
 };
+
+const INDICADORES_MENSAIS = [
+  { chave: "previsoes", nome: "Previsões registradas", grupo: "Volume", unidade: "numero" },
+  { chave: "resolvidas", nome: "Propostas decididas", grupo: "Volume", unidade: "numero" },
+  { chave: "ganhos", nome: "Propostas ganhas", grupo: "Volume", unidade: "numero" },
+  { chave: "perdas", nome: "Propostas perdidas", grupo: "Volume", unidade: "numero" },
+  { chave: "pendentes", nome: "Aguardando desfecho", grupo: "Volume", unidade: "numero" },
+  { chave: "conversaoRealPct", nome: "Conversão real", grupo: "Conversão", unidade: "percentual", direcao: "maior" },
+  { chave: "conversaoEsperadaPct", nome: "Conversão prevista", grupo: "Conversão", unidade: "percentual" },
+  { chave: "vitoriasEsperadas", nome: "Ganhos esperados pelo score", grupo: "Conversão", unidade: "numero" },
+  { chave: "diferencaConversaoPct", nome: "Real menos prevista", grupo: "Conversão", unidade: "pp", direcao: "menor_abs" },
+  { chave: "diferencaVitorias", nome: "Ganhos reais menos esperados", grupo: "Conversão", unidade: "numero", direcao: "menor_abs" },
+  { chave: "brier", nome: "Brier score", grupo: "Qualidade do score", unidade: "indice", direcao: "menor" },
+  { chave: "brierSkillPct", nome: "Brier skill", grupo: "Qualidade do score", unidade: "percentual", direcao: "maior" },
+  { chave: "logLoss", nome: "Log-loss", grupo: "Qualidade do score", unidade: "indice", direcao: "menor" },
+  { chave: "auc", nome: "AUC", grupo: "Qualidade do score", unidade: "indice", direcao: "maior" },
+  { chave: "erroCalibracaoPct", nome: "Erro de calibração", grupo: "Qualidade do score", unidade: "percentual", direcao: "menor" },
+  { chave: "valorPropostoDecidido", nome: "Valor cotado nas decididas", grupo: "Valores", unidade: "moeda" },
+  { chave: "valorVendido", nome: "Valor das propostas ganhas", grupo: "Valores", unidade: "moeda" },
+  { chave: "ticketMedioDecidido", nome: "Ticket médio decidido", grupo: "Valores", unidade: "moeda" },
+  { chave: "ticketMedioGanho", nome: "Ticket médio ganho", grupo: "Valores", unidade: "moeda" },
+  { chave: "ticketMedioPerdido", nome: "Ticket médio perdido", grupo: "Valores", unidade: "moeda" },
+] as const;
+
+type ChaveIndicadorMensal = (typeof INDICADORES_MENSAIS)[number]["chave"];
+type ValoresIndicadoresMensais = Record<ChaveIndicadorMensal, number | null>;
+
+function calcularIndicadoresMensais(rows: PrevisaoCrmMonitorada[]): {
+  valores: ValoresIndicadoresMensais;
+  previsoes: number;
+  resolvidas: number;
+} {
+  const metricas = calcularMetricasProbabilidade(rows);
+  const decididas = rows.filter(row => row.desfecho !== null);
+  const ganhos = decididas.filter(row => row.desfecho === 1);
+  const perdas = decididas.filter(row => row.desfecho === 0);
+  const soma = (grupo: PrevisaoCrmMonitorada[]) =>
+    grupo.reduce((total, row) => total + Math.max(0, row.valorProposta || 0), 0);
+  const valorPropostoDecidido = soma(decididas);
+  const valorVendido = soma(ganhos);
+  const valorPerdido = soma(perdas);
+  const diferencaVitorias = metricas.resolvidas
+    ? metricas.ganhos - metricas.vitoriasEsperadas
+    : null;
+
+  return {
+    previsoes: metricas.previsoes,
+    resolvidas: metricas.resolvidas,
+    valores: {
+      previsoes: metricas.previsoes,
+      resolvidas: metricas.resolvidas,
+      ganhos: metricas.ganhos,
+      perdas: metricas.perdas,
+      pendentes: metricas.pendentes,
+      conversaoRealPct: metricas.conversaoRealPct,
+      conversaoEsperadaPct: metricas.conversaoEsperadaPct,
+      vitoriasEsperadas: metricas.resolvidas ? metricas.vitoriasEsperadas : null,
+      diferencaConversaoPct: metricas.diferencaConversaoPct,
+      diferencaVitorias,
+      brier: metricas.brier,
+      brierSkillPct: metricas.brierSkillPct,
+      logLoss: metricas.logLoss,
+      auc: metricas.auc,
+      erroCalibracaoPct: metricas.erroCalibracaoPct,
+      valorPropostoDecidido: decididas.length ? valorPropostoDecidido : null,
+      valorVendido: ganhos.length ? valorVendido : null,
+      ticketMedioDecidido: decididas.length ? valorPropostoDecidido / decididas.length : null,
+      ticketMedioGanho: ganhos.length ? valorVendido / ganhos.length : null,
+      ticketMedioPerdido: perdas.length ? valorPerdido / perdas.length : null,
+    },
+  };
+}
+
+function criarResumoMensal(rows: PrevisaoCrmMonitorada[], inicio: Date, fim: Date) {
+  const grupo = rows.filter(row => row.exibidaEm >= inicio && row.exibidaEm < fim);
+  const resumo = calcularIndicadoresMensais(grupo);
+  const mes = new Intl.DateTimeFormat("pt-BR", { month: "long", year: "numeric", timeZone: "UTC" }).format(inicio);
+  return { mes, inicio: inicio.toISOString(), previsoes: resumo.previsoes, resolvidas: resumo.resolvidas, valores: resumo.valores };
+}
+
+export function calcularMetricasConversaoComercial(rows: PropostaComercialHistorica[]) {
+  const decididas = rows.filter((row) => row.desfecho !== null);
+  const ganhos = decididas.filter((row) => row.desfecho === 1);
+  const perdas = decididas.filter((row) => row.desfecho === 0);
+  const valorProposto = (grupo: PropostaComercialHistorica[]) =>
+    grupo.reduce((total, row) => total + Math.max(0, row.valorProposta || 0), 0);
+  const valorDecidido = valorProposto(decididas);
+  const valorGanho = valorProposto(ganhos);
+  const valorPerdido = valorProposto(perdas);
+  return {
+    propostasCriadas: rows.length,
+    decididas: decididas.length,
+    ganhos: ganhos.length,
+    perdas: perdas.length,
+    semDesfecho: rows.length - decididas.length,
+    conversaoRealPct: decididas.length ? (ganhos.length / decididas.length) * 100 : null,
+    valorCotado: valorProposto(rows),
+    valorDecidido,
+    valorVendido: ganhos.length ? valorGanho : null,
+    ticketMedioDecidido: decididas.length ? valorDecidido / decididas.length : null,
+    ticketMedioGanho: ganhos.length ? valorGanho / ganhos.length : null,
+    ticketMedioPerdido: perdas.length ? valorPerdido / perdas.length : null,
+  };
+}
+
+export function construirPainelConversaoComercial(args: {
+  propostas: PropostaComercialHistorica[];
+  agora?: Date;
+}) {
+  const agora = args.agora ?? new Date();
+  const inicioMesAtual = new Date(Date.UTC(agora.getUTCFullYear(), agora.getUTCMonth(), 1));
+  const inicioTresMeses = new Date(Date.UTC(agora.getUTCFullYear(), agora.getUTCMonth() - 3, 1));
+  const inicioSeisMeses = new Date(Date.UTC(agora.getUTCFullYear(), agora.getUTCMonth() - 6, 1));
+  const meses = [-3, -2, -1].map((offset) => {
+    const inicio = new Date(Date.UTC(agora.getUTCFullYear(), agora.getUTCMonth() + offset, 1));
+    const fim = new Date(Date.UTC(inicio.getUTCFullYear(), inicio.getUTCMonth() + 1, 1));
+    const grupo = args.propostas.filter((row) => row.dataCadastro >= inicio && row.dataCadastro < fim);
+    return {
+      mes: new Intl.DateTimeFormat("pt-BR", { month: "long", year: "numeric", timeZone: "UTC" }).format(inicio),
+      ...calcularMetricasConversaoComercial(grupo),
+    };
+  });
+  const ultimosTresMeses = args.propostas.filter((row) => row.dataCadastro >= inicioTresMeses && row.dataCadastro < inicioMesAtual);
+  const tresMesesAnteriores = args.propostas.filter((row) => row.dataCadastro >= inicioSeisMeses && row.dataCadastro < inicioTresMeses);
+  const geral = calcularMetricasConversaoComercial(args.propostas);
+  const recente = calcularMetricasConversaoComercial(ultimosTresMeses);
+  const anterior = calcularMetricasConversaoComercial(tresMesesAnteriores);
+  const diferencaConversaoPp = recente.conversaoRealPct != null && anterior.conversaoRealPct != null
+    ? recente.conversaoRealPct - anterior.conversaoRealPct
+    : null;
+  const tendencia = recente.decididas < 30 || anterior.decididas < 30 || diferencaConversaoPp == null
+    ? "amostra_insuficiente"
+    : diferencaConversaoPp > 1 ? "melhorando" : diferencaConversaoPp < -1 ? "piorando" : "mantido";
+  const dataMaisRecente = args.propostas.reduce<Date | null>((maisRecente, row) =>
+    !maisRecente || row.dataCadastro > maisRecente ? row.dataCadastro : maisRecente, null);
+  const dataMaisRecenteMeioDia = dataMaisRecente
+    ? new Date(Date.UTC(dataMaisRecente.getUTCFullYear(), dataMaisRecente.getUTCMonth(), dataMaisRecente.getUTCDate(), 12))
+    : null;
+  return {
+    meses,
+    geral,
+    ultimosTresMeses: recente,
+    tresMesesAnteriores: anterior,
+    diferencaConversaoPp,
+    tendencia,
+    propostasNoHistorico: args.propostas.length,
+    dataMaisRecente: dataMaisRecenteMeioDia?.toISOString() ?? null,
+  };
+}
 
 const clampProbability = (value: number) =>
   Math.max(0.001, Math.min(0.999, value));
@@ -307,6 +463,62 @@ export function construirPainelProbabilidade(args: {
     mensal.set(mes, grupo);
   }
 
+  const inicioMesAtual = new Date(Date.UTC(agora.getUTCFullYear(), agora.getUTCMonth(), 1));
+  const mesesComparados = [-3, -2, -1].map(deslocamento => {
+    const inicio = new Date(Date.UTC(agora.getUTCFullYear(), agora.getUTCMonth() + deslocamento, 1));
+    const fim = new Date(Date.UTC(inicio.getUTCFullYear(), inicio.getUTCMonth() + 1, 1));
+    return criarResumoMensal(args.previsoes, inicio, fim);
+  });
+  const inicioTresMeses = new Date(Date.UTC(agora.getUTCFullYear(), agora.getUTCMonth() - 3, 1));
+  const grupoTresMeses = args.previsoes.filter(
+    row => row.exibidaEm >= inicioTresMeses && row.exibidaEm < inicioMesAtual
+  );
+  const grupoHistoricoAnterior = args.previsoes.filter(row => row.exibidaEm < inicioTresMeses);
+  const geralMensal = calcularIndicadoresMensais(args.previsoes);
+  const tresMesesMensal = calcularIndicadoresMensais(grupoTresMeses);
+  const historicoAnteriorMensal = calcularIndicadoresMensais(grupoHistoricoAnterior);
+  const indicadoresMensais = INDICADORES_MENSAIS.map(indicador => {
+    const geralValor = geralMensal.valores[indicador.chave];
+    const anteriorValor = historicoAnteriorMensal.valores[indicador.chave];
+    const recenteValor = tresMesesMensal.valores[indicador.chave];
+    const direcao = "direcao" in indicador ? indicador.direcao : undefined;
+    let tendencia: "melhorando" | "piorando" | "mantido" | "amostra_insuficiente" | "descritivo" = "descritivo";
+    if (direcao) {
+      if (
+        historicoAnteriorMensal.resolvidas < 30 ||
+        tresMesesMensal.resolvidas < 30 ||
+        anteriorValor === null ||
+        recenteValor === null
+      ) {
+        tendencia = "amostra_insuficiente";
+      } else {
+        const delta = direcao === "menor_abs"
+          ? Math.abs(recenteValor) - Math.abs(anteriorValor)
+          : recenteValor - anteriorValor;
+        const limite = indicador.chave === "brier" ? 0.005
+          : indicador.chave === "logLoss" || indicador.chave === "auc" ? 0.01
+            : indicador.chave === "diferencaVitorias" ? 2
+              : 1;
+        tendencia = Math.abs(delta) <= limite
+          ? "mantido"
+          : ((direcao === "maior" && delta > 0) || (direcao !== "maior" && delta < 0))
+            ? "melhorando"
+            : "piorando";
+      }
+    }
+    return {
+      chave: indicador.chave,
+      nome: indicador.nome,
+      grupo: indicador.grupo,
+      unidade: indicador.unidade,
+      mediaGeral: geralValor,
+      historicoAnterior: anteriorValor,
+      ultimosTresMeses: recenteValor,
+      tendencia,
+      meses: mesesComparados.map(mes => ({ mes: mes.mes, valor: mes.valores[indicador.chave], previsoes: mes.previsoes, resolvidas: mes.resolvidas })),
+    };
+  });
+
   return {
     dias: args.dias,
     geradoEm: agora.toISOString(),
@@ -344,6 +556,17 @@ export function construirPainelProbabilidade(args: {
     porMes: [...mensal.entries()]
       .sort(([a], [b]) => a.localeCompare(b))
       .map(([mes, grupo]) => ({ mes, ...resumirGrupo(grupo) })),
+    indicadoresMensais: {
+      indicadores: indicadoresMensais,
+      meses: mesesComparados.map(({ mes, previsoes, resolvidas }) => ({ mes, previsoes, resolvidas })),
+      totalGeralPrevisoes: geralMensal.previsoes,
+      totalGeralResolvidas: geralMensal.resolvidas,
+      historicoAnteriorPrevisoes: historicoAnteriorMensal.previsoes,
+      historicoAnteriorResolvidas: historicoAnteriorMensal.resolvidas,
+      ultimosTresMesesPrevisoes: tresMesesMensal.previsoes,
+      ultimosTresMesesResolvidas: tresMesesMensal.resolvidas,
+      mesesCompletos: true,
+    },
     snapshots: args.previsoes.length,
     previsoesForaDaJanela:
       args.previsoes.length - atuais.length - anteriores.length,

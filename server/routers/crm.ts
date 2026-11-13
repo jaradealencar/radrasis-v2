@@ -25,8 +25,11 @@ import {
 } from "../services/crmProbabilidadeModel";
 import {
   construirPainelProbabilidade,
+  construirPainelConversaoComercial,
+  calcularMetricasConversaoComercial,
   CRM_PROBABILITY_BACKTEST_BASELINE,
 } from "../services/crmProbabilidadePerformance";
+import { parseDataFlexivel } from "../services/inteligenciaClientes";
 import { safeErrorType } from "../db/db-connection";
 import { UF_PARA_REGIAO, normalizarUf } from "../utils/regioesBrasil";
 import { diasUteisEntre } from "../../shared/dias-uteis";
@@ -573,12 +576,12 @@ export const crmRouter = router({
     .query(async ({ input }) => {
       const db = (await getDb())!;
       const dias = Number(input.dias);
-      const corte = new Date(Date.now() - dias * 2 * 24 * 60 * 60 * 1000);
       let trackingDisponivel = true;
       let rows: Array<{
         orcNumero: string;
         exibidaEm: Date;
         probabilidadePct: number;
+        valorProposta: string;
         modeloVersao: string;
         vendedor: string | null;
         faixaTicket: string;
@@ -596,6 +599,7 @@ export const crmRouter = router({
           orcNumero: crmProbabilidadePrevisoes.orcNumero,
           exibidaEm: crmProbabilidadePrevisoes.exibidaEm,
           probabilidadePct: crmProbabilidadePrevisoes.probabilidadePct,
+          valorProposta: crmProbabilidadePrevisoes.valorProposta,
           modeloVersao: crmProbabilidadePrevisoes.modeloVersao,
           vendedor: crmProbabilidadePrevisoes.vendedor,
           faixaTicket: crmProbabilidadePrevisoes.faixaTicket,
@@ -609,7 +613,6 @@ export const crmRouter = router({
           existeNoHistorico: historicoOrcamentos.orcNumero,
         }).from(crmProbabilidadePrevisoes)
           .leftJoin(historicoOrcamentos, eq(crmProbabilidadePrevisoes.orcNumero, historicoOrcamentos.orcNumero))
-          .where(gte(crmProbabilidadePrevisoes.exibidaEm, corte))
           .orderBy(desc(crmProbabilidadePrevisoes.exibidaEm));
       } catch (error) {
         trackingDisponivel = false;
@@ -620,6 +623,7 @@ export const crmRouter = router({
         orcNumero: row.orcNumero,
         exibidaEm: row.exibidaEm,
         probabilidadePct: row.probabilidadePct,
+        valorProposta: Number(row.valorProposta) || 0,
         modeloVersao: row.modeloVersao,
         vendedor: row.vendedor,
         faixaTicket: row.faixaTicket,
@@ -633,6 +637,68 @@ export const crmRouter = router({
         statusNoHistorico: row.statusNoHistorico,
         existeNoHistorico: row.existeNoHistorico !== null,
       }));
+      const propostasComerciais = await db.select({
+        orcNumero: historicoOrcamentos.orcNumero,
+        dataCadastro: historicoOrcamentos.dataCadastro,
+        status: historicoOrcamentos.status,
+        valor: historicoOrcamentos.total,
+      }).from(historicoOrcamentos).then(orcamentos => orcamentos.flatMap(row => {
+        if (!row.orcNumero?.trim()) return [];
+        const dataLocal = parseDataFlexivel(row.dataCadastro);
+        if (!dataLocal) return [];
+        const dataCadastro = new Date(Date.UTC(dataLocal.getFullYear(), dataLocal.getMonth(), dataLocal.getDate()));
+        return [{
+          dataCadastro,
+          desfecho: classificarDesfechoExplicito(row.status),
+          valorProposta: Number(row.valor) || 0,
+        }];
+      })).catch(error => {
+        console.error("[CRM-PROBABILIDADE] Histórico comercial indisponível:", safeErrorType(error));
+        return [];
+      });
+      const painelConversaoComercial = construirPainelConversaoComercial({ propostas: propostasComerciais });
+      const marcosComerciais = await db.select({
+        id: crmAtividadeLog.id,
+        realizadaEm: crmAtividadeLog.realizadaEm,
+        vendedor: crmAtividadeLog.vendedor,
+        detalhe: crmAtividadeLog.detalhe,
+      }).from(crmAtividadeLog)
+        .where(eq(crmAtividadeLog.acao, "marcoMudancaComercial"))
+        .orderBy(desc(crmAtividadeLog.realizadaEm))
+        .limit(30)
+        .then(rows => rows.map(row => {
+          const [titulo = "Mudança comercial", ...detalhe] = (row.detalhe ?? "").split("\n");
+          const dataMarco = row.realizadaEm;
+          const inicioMarco = new Date(Date.UTC(dataMarco.getUTCFullYear(), dataMarco.getUTCMonth(), dataMarco.getUTCDate()));
+          const agora = new Date();
+          const hojeUtc = new Date(Date.UTC(agora.getUTCFullYear(), agora.getUTCMonth(), agora.getUTCDate()));
+          const diasJanela = Math.max(0, Math.min(30, Math.floor((hojeUtc.getTime() - inicioMarco.getTime()) / 86400000)));
+          const inicioAntes = new Date(inicioMarco.getTime() - diasJanela * 86400000);
+          const fimDepois = new Date(inicioMarco.getTime() + diasJanela * 86400000);
+          const antes = calcularMetricasConversaoComercial(propostasComerciais.filter(p => p.dataCadastro >= inicioAntes && p.dataCadastro < inicioMarco));
+          const depois = calcularMetricasConversaoComercial(propostasComerciais.filter(p => p.dataCadastro >= inicioMarco && p.dataCadastro < fimDepois));
+          const comparavel = diasJanela === 30 && antes.decididas >= 30 && depois.decididas >= 30;
+          const diferencaConversaoPp = antes.conversaoRealPct != null && depois.conversaoRealPct != null
+            ? depois.conversaoRealPct - antes.conversaoRealPct
+            : null;
+          return {
+            id: row.id,
+            realizadaEm: dataMarco.toISOString(),
+            titulo,
+            detalhe: detalhe.join("\n"),
+            registradoPor: row.vendedor,
+            diasJanela,
+            janelaCompleta: diasJanela === 30,
+            antes: { resolvidas: antes.decididas, conversaoRealPct: antes.conversaoRealPct },
+            depois: { resolvidas: depois.decididas, conversaoRealPct: depois.conversaoRealPct },
+            diferencaConversaoPp,
+            leitura: !comparavel ? "amostra_insuficiente" : diferencaConversaoPp! > 1 ? "melhorando" : diferencaConversaoPp! < -1 ? "piorando" : "mantido",
+          };
+        }))
+        .catch(error => {
+          console.error("[CRM-PROBABILIDADE] Marcos comerciais indisponíveis:", safeErrorType(error));
+          return [];
+        });
       const modelo = await construirModeloProbabilidadeCrm(db).catch(() => null);
       const modeloAtual = modelo ? {
         versao: CRM_PROBABILITY_MODEL_VERSION,
@@ -655,10 +721,42 @@ export const crmRouter = router({
       } : null;
       return {
         painel: construirPainelProbabilidade({ previsoes, dias }),
+        painelConversaoComercial,
         modelo: modeloAtual,
+        marcosComerciais,
         benchmarkHistorico: CRM_PROBABILITY_BACKTEST_BASELINE,
         trackingDisponivel,
       };
+    }),
+
+  registrarMarcoMudancaComercial: protectedProcedure
+    .input(z.object({
+      titulo: z.string().trim().min(3).max(120),
+      detalhe: z.string().trim().max(380).optional().default(""),
+      data: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      const db = (await getDb())!;
+      const realizadaEm = new Date(`${input.data}T12:00:00.000Z`);
+      if (
+        !Number.isFinite(realizadaEm.getTime()) ||
+        realizadaEm.toISOString().slice(0, 10) !== input.data ||
+        input.data > new Date().toISOString().slice(0, 10)
+      ) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "Data da mudança inválida." });
+      }
+      const vendedor = ctx.user?.name ?? "Usuário CRM";
+      await db.insert(crmAtividadeLog).values({
+        vendedor,
+        localUserId: ctx.user?.id ?? null,
+        acao: "marcoMudancaComercial",
+        orcamentoId: null,
+        empresa: null,
+        detalhe: `${input.titulo}${input.detalhe ? `\n${input.detalhe}` : ""}`,
+        realizadaEm,
+        turno: calcTurno(realizadaEm),
+      });
+      return { ok: true };
     }),
   // Desfazer contato registrado
   desfazarContato: protectedProcedure
