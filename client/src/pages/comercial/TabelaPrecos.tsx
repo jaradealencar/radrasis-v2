@@ -107,6 +107,7 @@ import { Fragment, useState, useMemo, useRef, useCallback, useEffect } from "rea
 import { enviarArquivo } from "@/lib/upload";
 import RichTextEditor from "../../components/RichTextEditor";
 import type { ConfigItem, MarginRow, ContentJson } from "@shared/price-table";
+import { ajustarTabelaDePintura } from "@shared/price-table-pintura";
 import { PriceTableHistoryDashboard } from "@/components/PriceTableHistoryDashboard";
 import PriceRevenueDashboard from "@/components/PriceRevenueDashboard";
 import { PriceAdjustmentCalculator } from "@/components/PriceAdjustmentCalculator";
@@ -1222,10 +1223,14 @@ function MarginTableEditor({
   value,
   onChange,
   sectionTitle,
+  sectionId,
+  page,
 }: {
   value: string;
   onChange: (v: string) => void;
-  sectionTitle?: string;
+  sectionTitle: string;
+  sectionId: number;
+  page: number;
 }) {
   const parsed = useMemo(() => {
     try {
@@ -1240,6 +1245,11 @@ function MarginTableEditor({
 
   const cols = parsed.columns ?? [];
   const rows = parsed.rows ?? [];
+  const colunaBrancoColorido = cols.findIndex(
+    column => column.trim().toLowerCase() === "branco + colorido"
+  );
+  const indiceValorBrancoColorido =
+    colunaBrancoColorido - (parsed.type === "margin_table_multi" ? 1 : 0);
 
   function updateCell(rowIdx: number, colIdx: number, val: string) {
     const newRows = rows.map((r, ri) => {
@@ -1248,7 +1258,15 @@ function MarginTableEditor({
       newVals[colIdx] = val;
       return { ...r, values: newVals };
     });
-    onChange(JSON.stringify({ ...parsed, rows: newRows }));
+    const contentJson = JSON.stringify({ ...parsed, rows: newRows });
+    onChange(
+      ajustarTabelaDePintura({
+        id: sectionId,
+        page,
+        sectionTitle,
+        contentJson,
+      }).contentJson
+    );
   }
 
   function updateRowLabel(rowIdx: number, val: string) {
@@ -1374,6 +1392,9 @@ function MarginTableEditor({
                 <input
                   className="w-full text-xs font-semibold text-center bg-transparent outline-none focus:bg-white focus:border-blue-300 rounded px-1"
                   value={col}
+                  readOnly={
+                    (rows.length > 1 ? ci + 1 : ci) === colunaBrancoColorido
+                  }
                   onChange={e =>
                     updateColHeader(
                       rows.length > 1 ? ci + 1 : ci,
@@ -1409,6 +1430,7 @@ function MarginTableEditor({
                   <input
                     className="w-full text-xs text-center font-semibold text-blue-700 bg-transparent outline-none focus:bg-white focus:border-blue-300 rounded px-1"
                     value={val}
+                    readOnly={vi === indiceValorBrancoColorido}
                     onChange={e => updateCell(ri, vi, e.target.value)}
                   />
                 </TableCell>
@@ -1525,10 +1547,14 @@ function SmartEditor({
   value,
   onChange,
   sectionTitle,
+  sectionId,
+  page,
 }: {
   value: string;
   onChange: (v: string) => void;
-  sectionTitle?: string;
+  sectionTitle: string;
+  sectionId: number;
+  page: number;
 }) {
   const type = useMemo(() => {
     try {
@@ -1545,6 +1571,8 @@ function SmartEditor({
         value={value}
         onChange={onChange}
         sectionTitle={sectionTitle}
+        sectionId={sectionId}
+        page={page}
       />
     );
   if (type === "config")
@@ -1888,6 +1916,8 @@ function EditableSection({
                 value={contentJson}
                 onChange={setContentJson}
                 sectionTitle={section.sectionTitle}
+                sectionId={section.id}
+                page={section.page}
               />
             </div>
             <div>
