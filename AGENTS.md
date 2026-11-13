@@ -2,6 +2,16 @@
 
 Guia para agentes de IA (e humanos) trabalhando neste repositório.
 
+## Delegação de tarefas
+
+Ao trabalhar neste repositório, o agente principal deve sempre delegar a
+execução das tarefas a subagentes usando o modelo `gpt-6-luna` com
+`reasoning_effort: max`. Divida o trabalho em tarefas independentes e delegue-as
+em paralelo, respeitando os slots disponíveis; delegue tarefas dependentes na
+ordem necessária. O agente principal coordena a delegação, recebe e avalia
+os resultados e pode corrigi-los quando necessário, sem assumir a
+implementação de rotina.
+
 ## O que é este projeto
 
 Radrasys — sistema interno de gestão (logística, qualidade, comercial,
@@ -242,6 +252,10 @@ periodicamente, precisa ser reconfigurado com o novo header/segredo.
 
 ## Commits ao final de sprint/tarefa/fix
 
+Antes de criar o commit ou fazer push de um PR, sprint ou funcionalidade,
+execute com sucesso os testes E2E exigidos na seção Testes. Corrija todas as
+falhas e repita a execução antes de prosseguir.
+
 **Toda sprint, tarefa ou fix concluído termina com um commit** — não deixe
 trabalho pronto (e validado: typecheck/testes relevantes rodados) parado
 sem commitar, e não acumule várias tarefas/fixes não relacionados num
@@ -387,6 +401,17 @@ em vez de reescrever o padrão:
   permissão do navegador, baixa o arquivo). Não use `html2canvas` para isso — ele não lê as cores `oklch()` do Tailwind 4.
 
 ## Testes
+
+Cada PR, sprint ou funcionalidade entregue deve criar testes E2E ou ampliar
+os existentes com cenários novos que cubram os fluxos entregues e as regressões
+pertinentes. Execute-os antes de commit e push; corrija falhas e repita até
+passar. Registre os comandos reais executados e os resultados no registro da
+tarefa, PR ou sprint. Use a ferramenta e o comando E2E configurados no
+repositório; não presuma nem invente comandos ou frameworks. Se não houver
+infraestrutura E2E adequada aos fluxos alterados, configure-a como parte da
+entrega antes do commit e do push. Execute em ambiente isolado e,
+quando houver acesso ao banco, siga as proteções existentes e use somente um
+banco descartável de teste, nunca produção.
 
 `yarn test:safety` roda os testes unitários das proteções sem conexão ao banco.
 `yarn test` roda a suíte completa em `server/**/*.test.ts`, mas exige
