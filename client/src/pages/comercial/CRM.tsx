@@ -82,6 +82,8 @@ type Proposta = {
   /** Dias desde a última compra registrada no histórico local — null quando
    * o cliente é novo (sem nenhuma compra anterior) ou não há data disponível. */
   diasSemComprar: number | null;
+  /** Data da última compra, em ISO, para exibir meses e dias de calendário. */
+  ultimaCompraEm: string | null;
   totalCotacoes?: number;
   totalCompras?: number;
   orcamentosFechados?: number;
@@ -93,14 +95,63 @@ type Proposta = {
 // Limiar de compras a partir do qual o cliente é elegível a parcelamento (regra do usuário)
 const LIMIAR_PARCELAMENTO = 3;
 
-// Aproximação em dias dos "6 meses de inatividade" da Lógica do Cliente Novo e
-// Reativado (ver server/routers/performanceComercial.ts, MESES_INATIVIDADE_PARA_NOVO)
-// — usado só para destacar visualmente o badge de dias sem comprar, não afeta
-// nenhum cálculo de negócio.
+// Fallback aproximado para seis meses quando a data da última compra não estiver disponível.
 const MESES_REATIVACAO_DIAS = 180;
 
-function isClienteReativacao(p: Pick<Proposta, "clienteNovo" | "diasSemComprar">): boolean {
-  return !p.clienteNovo && p.diasSemComprar != null && p.diasSemComprar >= MESES_REATIVACAO_DIAS;
+/** Calcula meses completos e dias restantes desde a última compra.
+ * Usa a parte de calendário da data ISO para não deslocar um dia por fuso horário. */
+function calcularTempoSemComprar(data: unknown): { meses: number; dias: number } | null {
+  let compra: Date | null = null;
+  if (typeof data === "string") {
+    const match = data.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (match) compra = new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]));
+  } else if (data instanceof Date && !Number.isNaN(data.getTime())) {
+    compra = new Date(data.getUTCFullYear(), data.getUTCMonth(), data.getUTCDate());
+  }
+
+  if (!compra || Number.isNaN(compra.getTime())) return null;
+
+  const hoje = new Date();
+  hoje.setHours(0, 0, 0, 0);
+  if (compra > hoje) return { meses: 0, dias: 0 };
+
+  const anoCompra = compra.getFullYear();
+  const mesCompra = compra.getMonth();
+  const diaCompra = compra.getDate();
+  let meses = (hoje.getFullYear() - anoCompra) * 12 + hoje.getMonth() - mesCompra;
+  const marcoDoMes = (quantidade: number) => {
+    const ano = anoCompra;
+    const mes = mesCompra + quantidade;
+    const ultimoDia = new Date(ano, mes + 1, 0).getDate();
+    return new Date(ano, mes, Math.min(diaCompra, ultimoDia));
+  };
+
+  if (marcoDoMes(meses) > hoje) meses--;
+  const marco = marcoDoMes(meses);
+  const dataHojeUtc = Date.UTC(hoje.getFullYear(), hoje.getMonth(), hoje.getDate());
+  const marcoUtc = Date.UTC(marco.getFullYear(), marco.getMonth(), marco.getDate());
+  const dias = Math.max(0, Math.round((dataHojeUtc - marcoUtc) / 86_400_000));
+  return { meses, dias };
+}
+
+function tempoSemComprar(data: unknown, diasFallback?: number | null): string | null {
+  const duracao = calcularTempoSemComprar(data);
+  if (!duracao) {
+    return typeof diasFallback === "number" ? `${diasFallback} ${diasFallback === 1 ? "dia" : "dias"}` : null;
+  }
+  const { meses, dias } = duracao;
+  const parteMeses = meses > 0 ? `${meses} ${meses === 1 ? "mês" : "meses"}` : "";
+  const parteDias = dias > 0 ? `${dias} ${dias === 1 ? "dia" : "dias"}` : "";
+  return [parteMeses, parteDias].filter(Boolean).join(" e ") || "0 dias";
+}
+
+function clienteSemComprarHaSeisMeses(data: unknown, diasFallback?: number | null): boolean {
+  const duracao = calcularTempoSemComprar(data);
+  return duracao ? duracao.meses >= 6 : typeof diasFallback === "number" && diasFallback >= MESES_REATIVACAO_DIAS;
+}
+
+function isClienteReativacao(p: Pick<Proposta, "clienteNovo" | "diasSemComprar" | "ultimaCompraEm">): boolean {
+  return !p.clienteNovo && clienteSemComprarHaSeisMeses(p.ultimaCompraEm, p.diasSemComprar);
 }
 
 // ─── Score de Probabilidade de Compra (Fase 1) ────────────────────────────────
@@ -525,7 +576,7 @@ function PropostaRow({ p, vendedor, onRefresh, showVendedor, faixasConfig }: {
                         </span>
                       </TooltipTrigger>
                       <TooltipContent side="top" className="text-xs">
-                        Cliente sem comprar há 6 meses ou mais ({p.diasSemComprar} dias)
+                        Cliente sem comprar há 6 meses ou mais ({tempoSemComprar(p.ultimaCompraEm, p.diasSemComprar)})
                       </TooltipContent>
                     </Tooltip>
                   </TooltipProvider>
@@ -595,17 +646,17 @@ function PropostaRow({ p, vendedor, onRefresh, showVendedor, faixasConfig }: {
                     <Tooltip>
                       <TooltipTrigger asChild>
                         <span className={`inline-flex items-center px-1.5 py-0.5 rounded-full border text-[10px] cursor-default ${
-                          p.diasSemComprar >= MESES_REATIVACAO_DIAS
+                          clienteSemComprarHaSeisMeses(p.ultimaCompraEm, p.diasSemComprar)
                             ? "font-bold bg-red-100 text-red-700 border-red-200"
                             : "text-gray-500 bg-gray-50 border-gray-200"
                         }`}>
-                          há {p.diasSemComprar}d sem comprar
+                          há {tempoSemComprar(p.ultimaCompraEm, p.diasSemComprar)} sem comprar
                         </span>
                       </TooltipTrigger>
                       <TooltipContent side="top" className="text-xs max-w-[220px]">
-                        {p.diasSemComprar >= MESES_REATIVACAO_DIAS
+                        {clienteSemComprarHaSeisMeses(p.ultimaCompraEm, p.diasSemComprar)
                           ? "6 meses ou mais sem comprar — se fechar, conta como cliente reativado."
-                          : "Dias desde a última compra registrada no histórico local."}
+                          : "Tempo desde a última compra registrada no histórico local."}
                       </TooltipContent>
                     </Tooltip>
                   </TooltipProvider>
@@ -822,6 +873,8 @@ function SugestaoContatoCard({ s, vendedor, showVendedor, onRefresh }: {
 
   const cor = probabilidadeCor(s.score);
   const diasSemComprar = typeof s.evidencia.diasDesdeUltima === "number" ? s.evidencia.diasDesdeUltima : null;
+  const dataUltimaCompra = s.evidencia.ultimaCompra ?? s.evidencia.data;
+  const tempoCompra = tempoSemComprar(dataUltimaCompra, diasSemComprar);
   const tipoLabel = s.tipo === "primeira_sem_segunda" ? "1ª compra sem repetição" : "Atraso na recompra";
 
   return (
@@ -841,8 +894,8 @@ function SugestaoContatoCard({ s, vendedor, showVendedor, onRefresh }: {
           </span>
           {diasSemComprar != null && (
             <span className="inline-flex items-center text-[10px] font-medium text-red-600 bg-red-50 border border-red-200 rounded-full px-1.5 py-0.5">
-              {diasSemComprar >= MESES_REATIVACAO_DIAS && <Star className="w-3 h-3 mr-0.5 fill-red-500" />}
-              há {diasSemComprar}d sem comprar
+              {clienteSemComprarHaSeisMeses(dataUltimaCompra, diasSemComprar) && <Star className="w-3 h-3 mr-0.5 fill-red-500" />}
+              há {tempoCompra} sem comprar
             </span>
           )}
           {showVendedor && s.vendedor && (
@@ -1055,14 +1108,17 @@ export default function CRM() {
     const sugestoes = sugestoesData?.sugestoes ?? [];
     return sugestoes.filter(s => {
       const dias = typeof s.evidencia.diasDesdeUltima === "number" ? s.evidencia.diasDesdeUltima : null;
-      const reativacao = dias != null && dias >= MESES_REATIVACAO_DIAS;
+      const reativacao = clienteSemComprarHaSeisMeses(s.evidencia.ultimaCompra ?? s.evidencia.data, dias);
       const bateFiltro = filtroSugestoes === "todas" || reativacao;
       const bateBusca = !buscaPropostas.trim() || [s.empresa, s.vendedor].some(v => String(v ?? "").toLocaleLowerCase("pt-BR").includes(buscaPropostas.trim().toLocaleLowerCase("pt-BR")));
       return bateFiltro && bateBusca;
     });
   }, [sugestoesData, filtroSugestoes, buscaPropostas]);
   const sugestoesReativacaoCount = useMemo(() => (sugestoesData?.sugestoes ?? []).filter(s =>
-    typeof s.evidencia.diasDesdeUltima === "number" && s.evidencia.diasDesdeUltima >= MESES_REATIVACAO_DIAS
+    clienteSemComprarHaSeisMeses(
+      s.evidencia.ultimaCompra ?? s.evidencia.data,
+      typeof s.evidencia.diasDesdeUltima === "number" ? s.evidencia.diasDesdeUltima : null,
+    )
   ).length, [sugestoesData]);
 
   // Alerta de acompanhamento atrasado

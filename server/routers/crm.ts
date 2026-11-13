@@ -467,6 +467,7 @@ export const crmRouter = router({
         const diasSemComprar = conversaoCliente?.ultimaCompra
           ? Math.floor((Date.now() - conversaoCliente.ultimaCompra.getTime()) / (1000 * 60 * 60 * 24))
           : null;
+        const ultimaCompraEm = conversaoCliente?.ultimaCompra?.toISOString() ?? null;
         const orcsHist = conversaoCliente?.orcNumeros ?? new Set<string>();
         const orcsAbertos = (chaveCliente ? orcsAbertosPorCliente.get(chaveCliente) : undefined) ?? new Set<string>();
         const todosOrcsDoCliente = new Set<string>([...orcsHist, ...orcsAbertos]);
@@ -480,7 +481,7 @@ export const crmRouter = router({
         const orcamentosFechados = Math.min(conversaoCliente?.orcamentosFechados ?? 0, totalCotacoes);
         const taxaConversao = calcularTaxaConversaoCliente(totalCotacoes, orcamentosFechados, conversaoCliente?.totalOrcamentos ?? 0);
 
-        return { ...p, telefone, nomeCliente, nomeContato: p.nomeContato ?? "", clienteNovo, probabilidadeCompra, probabilidadeExplicacao, qtdComprasCliente, totalCompras: qtdComprasCliente, diasSemComprar, totalCotacoes, orcamentosFechados, taxaConversao, orcamentosDesde: mapaConversao?.orcamentosDesde ?? null, estadoCliente, regiaoCliente };
+        return { ...p, telefone, nomeCliente, nomeContato: p.nomeContato ?? "", clienteNovo, probabilidadeCompra, probabilidadeExplicacao, qtdComprasCliente, totalCompras: qtdComprasCliente, diasSemComprar, ultimaCompraEm, totalCotacoes, orcamentosFechados, taxaConversao, orcamentosDesde: mapaConversao?.orcamentosDesde ?? null, estadoCliente, regiaoCliente };
       });
       return {
         propostas: propostasComTelefone.sort((a, b) => a.qtdContatos - b.qtdContatos || b.diasAberto - a.diasAberto),
