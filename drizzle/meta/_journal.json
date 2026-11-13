@@ -897,6 +897,13 @@
       "when": 1794570181597,
       "tag": "0127_closer_full_coverage",
       "breakpoints": true
+    },
+    {
+      "idx": 128,
+      "version": "7",
+      "when": 1794570824038,
+      "tag": "0128_score_scale_0_10",
+      "breakpoints": true
     }
   ]
 }

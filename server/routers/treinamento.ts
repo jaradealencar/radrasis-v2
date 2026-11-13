@@ -2224,7 +2224,7 @@ export const treinamentoRouter = router({
         }
       }
       const score = pointsPossible
-        ? Math.round((pointsEarned / pointsPossible) * 10000) / 100
+        ? Math.round((pointsEarned / pointsPossible) * 1000) / 100
         : 0;
       await db
         .update(trainingAttempts)

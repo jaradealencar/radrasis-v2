@@ -755,7 +755,7 @@ function TrainingAdmin({ onChanged }: { onChanged: () => void }) {
             subject:
               data.subjects.find(subject => subject.id === assessment.subjectId)
                 ?.title ?? "Matéria",
-            score: Math.round((35 + Math.random() * 65) * 100) / 100,
+            score: Math.round((3.5 + Math.random() * 6.5) * 100) / 100,
             startedAt,
           };
         }
@@ -1653,7 +1653,7 @@ function TrainingAdmin({ onChanged }: { onChanged: () => void }) {
                                             {Number(attempt.score ?? 0).toFixed(
                                               2
                                             )}
-                                            %
+                                            /10
                                           </Badge>
                                         ) : (
                                           <Badge variant="outline">
@@ -1806,7 +1806,7 @@ function TrainingAdmin({ onChanged }: { onChanged: () => void }) {
                           )
                         )
                       ).toFixed(2)}
-                      %
+                      /10
                     </p>
                   </CardContent>
                 </Card>
@@ -1853,7 +1853,7 @@ function TrainingAdmin({ onChanged }: { onChanged: () => void }) {
                                   {formatDate(attempt.startedAt)}
                                 </span>
                                 <Badge variant="secondary">
-                                  {attempt.score.toFixed(2)}%
+                                  {attempt.score.toFixed(2)}/10
                                 </Badge>
                               </div>
                             ))}
@@ -1924,7 +1924,7 @@ function TrainingAdmin({ onChanged }: { onChanged: () => void }) {
                           </TableCell>
                           <TableCell>
                             <Badge variant="secondary">
-                              {student.score.toFixed(2)}%
+                              {student.score.toFixed(2)}/10
                             </Badge>
                           </TableCell>
                           <TableCell>
@@ -2000,7 +2000,7 @@ function TrainingAdmin({ onChanged }: { onChanged: () => void }) {
                               </span>
                               {attempt.status === "completed" ? (
                                 <Badge variant="secondary">
-                                  {Number(attempt.score ?? 0).toFixed(2)}%
+                                  {Number(attempt.score ?? 0).toFixed(2)}/10
                                 </Badge>
                               ) : (
                                 <Badge variant="outline">Em andamento</Badge>
@@ -2068,7 +2068,7 @@ function TrainingAdmin({ onChanged }: { onChanged: () => void }) {
                       <TableCell>
                         {row.score == null
                           ? "—"
-                          : `${Number(row.score).toFixed(2)}%`}
+                          : `${Number(row.score).toFixed(2)}/10`}
                       </TableCell>
                       <TableCell>{formatDate(row.startedAt)}</TableCell>
                     </TableRow>
@@ -2291,7 +2291,7 @@ export default function Treinamento() {
               <Badge variant="outline">Versão {finalResult.version}</Badge>
             </div>
             <CardTitle className="text-2xl">
-              Tentativa concluída · {finalResult.score.toFixed(2)}%
+              Tentativa concluída · {finalResult.score.toFixed(2)}/10
             </CardTitle>
             <CardDescription>
               {finalResult.pointsEarned} de {finalResult.pointsPossible} pontos.{" "}
@@ -2676,9 +2676,10 @@ export default function Treinamento() {
               )}
             </div>
             <p className="mt-4 text-xs text-slate-500">
-              Pontuação: pontos obtidos ÷ pontos possíveis. Em múltipla seleção,
-              a pontuação parcial usa respostas corretas selecionadas menos
-              incorretas, divididas pelo total de corretas, com mínimo zero.
+              Nota final de 0 a 10: (pontos obtidos ÷ pontos possíveis) × 10.
+              Em múltipla seleção, a pontuação parcial usa respostas corretas
+              selecionadas menos incorretas, divididas pelo total de corretas,
+              com mínimo zero.
             </p>
           </CardContent>
         </Card>
@@ -2789,13 +2790,13 @@ export default function Treinamento() {
                       Última nota:{" "}
                       {currentProgress?.lastScore == null
                         ? "—"
-                        : `${currentProgress.lastScore.toFixed(2)}%`}
+                        : `${currentProgress.lastScore.toFixed(2)}/10`}
                     </span>
                     <span>
                       Melhor nota:{" "}
                       {currentProgress?.bestScore == null
                         ? "—"
-                        : `${currentProgress.bestScore.toFixed(2)}%`}
+                        : `${currentProgress.bestScore.toFixed(2)}/10`}
                     </span>
                   </div>
                   <p className="mt-3 text-xs text-muted-foreground">
@@ -2987,7 +2988,7 @@ export default function Treinamento() {
                                               {attempt.status === "completed"
                                                 ? Number(
                                                     attempt.score ?? 0
-                                                  ).toFixed(2) + "%"
+                                                ).toFixed(2) + "/10"
                                                 : "Em andamento"}
                                             </Badge>
                                           )
@@ -3107,7 +3108,7 @@ export default function Treinamento() {
                               <TableCell>
                                 {row.score == null
                                   ? "—"
-                                  : `${Number(row.score).toFixed(2)}%`}
+                                  : `${Number(row.score).toFixed(2)}/10`}
                               </TableCell>
                               <TableCell>{formatDate(row.startedAt)}</TableCell>
                               <TableCell>
@@ -3144,7 +3145,7 @@ export default function Treinamento() {
                             ? "Prática"
                             : "Avaliação formal"}{" "}
                           · versão {reviewedAttempt.version} ·{" "}
-                          {reviewedAttempt.score.toFixed(2)}%
+                          {reviewedAttempt.score.toFixed(2)}/10
                         </CardDescription>
                       </div>
                       <Button
