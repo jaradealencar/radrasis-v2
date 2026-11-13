@@ -275,6 +275,43 @@ function formatFileSize(bytes: number) {
   return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
 }
 
+function TrainingLoadError({
+  errorCode,
+  onRetry,
+  isRetrying,
+}: {
+  errorCode?: string;
+  onRetry: () => void;
+  isRetrying: boolean;
+}) {
+  return (
+    <Card className="m-6 max-w-2xl border-amber-300">
+      <CardHeader>
+        <CardTitle>Não foi possível carregar o treinamento</CardTitle>
+        <CardDescription>
+          Este ambiente pode ainda não ter recebido as tabelas da Escola
+          Corporativa. Depois que o banco for atualizado, tente novamente.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        {errorCode && (
+          <p className="text-xs text-muted-foreground">
+            Código do erro: {errorCode}
+          </p>
+        )}
+        <Button
+          type="button"
+          variant="outline"
+          onClick={onRetry}
+          disabled={isRetrying}
+        >
+          {isRetrying ? "Tentando novamente…" : "Tentar novamente"}
+        </Button>
+      </CardContent>
+    </Card>
+  );
+}
+
 async function downloadAssessmentMaterial(url: string, name: string) {
   try {
     const response = await fetch(url);
@@ -372,7 +409,8 @@ function FeedbackPanel({ feedback }: { feedback: any }) {
 
 function TrainingAdmin({ onChanged }: { onChanged: () => void }) {
   const utils = trpc.useUtils();
-  const { data, isLoading } = trpc.treinamento.adminCatalog.useQuery();
+  const { data, isLoading, error, refetch, isRefetching } =
+    trpc.treinamento.adminCatalog.useQuery();
   const [sectorId, setSectorId] = useState<number | undefined>();
   const [subjectId, setSubjectId] = useState<number | undefined>();
   const [lessonId, setLessonId] = useState<number | undefined>();
@@ -610,11 +648,19 @@ function TrainingAdmin({ onChanged }: { onChanged: () => void }) {
     }
   }, [data, assessmentId]);
 
-  if (isLoading || !data)
+  if (isLoading)
     return (
       <p className="p-6 text-sm text-slate-500">
         Carregando conteúdo de autoria…
       </p>
+    );
+  if (error || !data)
+    return (
+      <TrainingLoadError
+        errorCode={error?.data?.code}
+        onRetry={() => void refetch()}
+        isRetrying={isRefetching}
+      />
     );
 
   const checkboxes = (
@@ -2089,7 +2135,13 @@ export default function Treinamento() {
   const { user } = useAuth();
   const canManage = ["admin", "master", "gestor"].includes(user?.role ?? "");
   const utils = trpc.useUtils();
-  const { data: sectors = [], isLoading } = trpc.treinamento.catalog.useQuery();
+  const {
+    data: sectors = [],
+    isLoading,
+    error: catalogError,
+    refetch: retryCatalog,
+    isRefetching: isCatalogRefetching,
+  } = trpc.treinamento.catalog.useQuery();
   const { data: progress = [] } = trpc.treinamento.myProgress.useQuery();
   const [subjectId, setSubjectId] = useState<number | undefined>();
   const [lessonId, setLessonId] = useState<number | undefined>();
@@ -2745,8 +2797,8 @@ export default function Treinamento() {
               )}
             </div>
             <p className="mt-4 text-xs text-slate-500">
-              Nota final de 0 a 10: (pontos obtidos ÷ pontos possíveis) × 10.
-              Em múltipla seleção, a pontuação parcial usa respostas corretas
+              Nota final de 0 a 10: (pontos obtidos ÷ pontos possíveis) × 10. Em
+              múltipla seleção, a pontuação parcial usa respostas corretas
               selecionadas menos incorretas, divididas pelo total de corretas,
               com mínimo zero.
             </p>
@@ -3059,7 +3111,7 @@ export default function Treinamento() {
                                               {attempt.status === "completed"
                                                 ? Number(
                                                     attempt.score ?? 0
-                                                ).toFixed(2) + "/10"
+                                                  ).toFixed(2) + "/10"
                                                 : "Em andamento"}
                                             </Badge>
                                           )
@@ -3320,6 +3372,12 @@ export default function Treinamento() {
                 Carregando matérias…
               </CardContent>
             </Card>
+          ) : catalogError ? (
+            <TrainingLoadError
+              errorCode={catalogError.data?.code}
+              onRetry={() => void retryCatalog()}
+              isRetrying={isCatalogRefetching}
+            />
           ) : (
             studentBody()
           )}
