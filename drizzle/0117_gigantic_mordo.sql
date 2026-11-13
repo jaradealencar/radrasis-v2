@@ -10,6 +10,7 @@ CREATE TABLE "crm_probabilidade_previsoes" (
 	"faixa_idade_empresa" varchar(40) NOT NULL,
 	"coorte_cliente" varchar(40) NOT NULL,
 	"faixa_recencia_compra" varchar(32) NOT NULL,
+	"regiao" varchar(32) DEFAULT 'região desconhecida' NOT NULL,
 	"compras_ultimos_12m" integer DEFAULT 0 NOT NULL,
 	"valor_compras_ultimos_12m" numeric(14, 2) DEFAULT '0' NOT NULL,
 	"vendedor" varchar(128),

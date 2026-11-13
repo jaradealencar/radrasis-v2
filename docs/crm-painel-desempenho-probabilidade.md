@@ -2,7 +2,7 @@
 
 ## O que é medido
 
-O CRM registra a primeira probabilidade que devolve para cada orçamento aberto. O snapshot fica em `crm_probabilidade_previsoes`, com chave única por `orc_numero`, horário de exibição, versão do modelo, percentual previsto, vendedor, ticket, idade da empresa e sinais RFM/coorte anteriores à proposta. Não grava nome do cliente nem CNPJ. A tabela só acompanha previsões; a fila operacional continua limitada a orçamentos abertos do MubiSys.
+O CRM registra a primeira probabilidade que devolve para cada orçamento aberto. O snapshot fica em `crm_probabilidade_previsoes`, com chave única por `orc_numero`, horário de exibição, versão do modelo, percentual previsto, vendedor, ticket, idade da empresa, região e sinais RFM/coorte anteriores à proposta. Não grava nome do cliente nem CNPJ. A tabela só acompanha previsões; a fila operacional continua limitada a orçamentos abertos do MubiSys.
 
 O resultado é associado depois por `historico_orcamentos.orcNumero`. Só status explícitos reconhecidos como ganho ou perda entram nas métricas. Propostas ainda abertas, com status não reconhecido ou ausentes do espelho permanecem pendentes; o painel não deduz perda pela validade nem pelo tempo em aberto.
 
@@ -11,7 +11,8 @@ O resultado é associado depois por `historico_orcamentos.orcNumero`. Só status
 - Conversão prevista média e conversão real, incluindo a diferença em pontos percentuais e ganhos esperados contra ganhos observados.
 - Brier score, Brier skill contra um preditor constante com a conversão observada, log-loss, AUC e erro de calibração esperado por dez faixas de probabilidade.
 - Tendência dos últimos 30, 60, 90, 180 ou 365 dias contra uma janela anterior do mesmo tamanho. “Melhorando”, “piorando” e “mantido” só aparecem quando ambas as janelas têm no mínimo 30 propostas decididas; até lá, a amostra é insuficiente.
-- Evolução mensal e desempenho por vendedor, ticket, idade do CNPJ, coorte da primeira compra, recência, frequência e valor de compras em 12 meses. Os grupos monetários usam quartis do período escolhido.
+- Evolução mensal e desempenho por vendedor, ticket, idade do CNPJ, região, coorte da primeira compra, recência, frequência e valor de compras em 12 meses. Os grupos monetários usam quartis do período escolhido.
+- Conversão histórica por região com ganhos, perdas, amostra e proporção. O painel também informa quantas O.S. do espelho completo entram como compras válidas, a cobertura de UF e a distribuição regional. O score histórico só usa região de O.S. anterior à proposta; propostas sem compra anterior ficam em “região desconhecida”.
 
 Desfechos que chegarem ao espelho após a previsão atualizam a mesma linha do painel; a previsão original não é reescrita. O filtro de período se refere ao dia em que a probabilidade foi exibida, não ao dia do orçamento ou do desfecho.
 
@@ -23,4 +24,4 @@ Este benchmark fica separado das medições prospectivas. O painel não interpre
 
 ## Publicação
 
-A tabela foi adicionada pela migration `0117_gigantic_mordo.sql`. Gere e revise a migration junto com `drizzle/schema.ts`; não aplique direto ao banco de produção. A medição ao vivo só começa depois de a migration ser aplicada pelo fluxo protegido de banco. Se o código chegar antes, a aba informa que o armazenamento ainda está indisponível e mantém o benchmark histórico visível.
+A tabela foi adicionada pela migration `0117_gigantic_mordo.sql`, que inclui a região no snapshot. Gere e revise a migration junto com `drizzle/schema.ts`; não aplique direto ao banco de produção. A medição ao vivo só começa depois de a migration ser aplicada pelo fluxo protegido de banco. Se o código chegar antes, a aba informa que o armazenamento ainda está indisponível e mantém o benchmark histórico visível.

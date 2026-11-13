@@ -4973,6 +4973,13 @@
           "primaryKey": false,
           "notNull": true
         },
+        "regiao": {
+          "name": "regiao",
+          "type": "varchar(32)",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'região desconhecida'"
+        },
         "compras_ultimos_12m": {
           "name": "compras_ultimos_12m",
           "type": "integer",

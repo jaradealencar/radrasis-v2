@@ -138,7 +138,9 @@ function SegmentTable({
                     ? "Vendedor"
                     : title === "Por modelo"
                       ? "Versão"
-                      : "Faixa"}
+                      : title.startsWith("Por região")
+                        ? "Região"
+                        : "Faixa"}
                 </TableHead>
                 <TableHead className="text-right">Previsões</TableHead>
                 <TableHead className="text-right">Decididas</TableHead>
@@ -685,6 +687,50 @@ export function CrmProbabilityPerformance({ active }: { active: boolean }) {
           rows={painel.porRecencia}
         />
         <SegmentTable
+          title="Por região"
+          description="Compara probabilidade prevista e conversão real por região informada na proposta ou inferida do histórico anterior."
+          rows={painel.porRegiao}
+        />
+        <Card className="shadow-sm">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base">Conversão histórica por região</CardTitle>
+            <p className="text-xs text-muted-foreground">
+              Propostas do histórico usadas pelo treino; região conhecida vem
+              de uma compra anterior à proposta. Sem esse dado, fica
+              desconhecida.
+            </p>
+          </CardHeader>
+          <CardContent className="pt-0">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Região</TableHead>
+                  <TableHead className="text-right">No treino</TableHead>
+                  <TableHead className="text-right">Ganhos</TableHead>
+                  <TableHead className="text-right">Perdas</TableHead>
+                  <TableHead className="text-right">Conversão</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {(data.modelo?.conversaoHistoricaPorRegiao ?? []).map(row => (
+                  <TableRow key={row.regiao}>
+                    <TableCell>{row.regiao}</TableCell>
+                    <TableCell className="text-right tabular-nums">{fmtNum(row.propostasDecididas)}</TableCell>
+                    <TableCell className="text-right tabular-nums">{fmtNum(row.ganhos)}</TableCell>
+                    <TableCell className="text-right tabular-nums">{fmtNum(row.perdas)}</TableCell>
+                    <TableCell className="text-right tabular-nums">{fmtPct(row.conversaoPct)}</TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+            <p className="mt-2 text-xs text-muted-foreground">
+              Quando não há status explícito, proposta aberta vencida entra
+              como perda presumida no treino. A tabela prospectiva acima só
+              conta ganhos e perdas sincronizados explicitamente.
+            </p>
+          </CardContent>
+        </Card>
+        <SegmentTable
           title="Por frequência de compra"
           description="Quantidade de compras válidas nos 12 meses anteriores à proposta."
           rows={painel.porFrequencia}
@@ -745,6 +791,58 @@ export function CrmProbabilityPerformance({ active }: { active: boolean }) {
               {fmtNum(data.modelo?.coberturaIdade.propostasComIdade)} propostas
               de treino tinham idade conhecida.
             </div>
+          </CardContent>
+        </Card>
+        <Card className="shadow-sm">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base">Histórico de O.S. usado pelo modelo</CardTitle>
+            <p className="text-xs text-muted-foreground">
+              O espelho local é carregado por inteiro. Compras válidas seguem
+              a regra comercial, que exclui retrabalho, amostra, cortesia,
+              cancelada e tipo ausente.
+            </p>
+          </CardHeader>
+          <CardContent className="space-y-3 text-sm">
+            <div className="grid grid-cols-2 gap-3">
+              <div className="rounded-lg bg-slate-50 p-3">
+                <p className="text-xs text-muted-foreground">Registros sincronizados</p>
+                <p className="mt-1 text-lg font-semibold tabular-nums">
+                  {fmtNum(data.modelo?.coberturaHistoricoOs.registrosSincronizados)}
+                </p>
+              </div>
+              <div className="rounded-lg bg-slate-50 p-3">
+                <p className="text-xs text-muted-foreground">Compras válidas no histórico</p>
+                <p className="mt-1 text-lg font-semibold tabular-nums">
+                  {fmtNum(data.modelo?.coberturaHistoricoOs.comprasValidas)}
+                </p>
+              </div>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Período das compras: {fmtDate(data.modelo?.coberturaHistoricoOs.primeiraCompra)}
+              a {fmtDate(data.modelo?.coberturaHistoricoOs.ultimaCompra)}. UF
+              conhecida em {fmtNum(data.modelo?.coberturaHistoricoOs.comUf)}
+              compras; sem UF em
+              {" "}
+              {fmtNum(data.modelo?.coberturaHistoricoOs.semUf)}.
+            </p>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Região da O.S.</TableHead>
+                  <TableHead className="text-right">Compras válidas</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {(data.modelo?.coberturaHistoricoOs.porRegiao ?? []).map(row => (
+                  <TableRow key={row.regiao}>
+                    <TableCell>{row.regiao}</TableCell>
+                    <TableCell className="text-right tabular-nums">
+                      {fmtNum(row.quantidade)}
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
           </CardContent>
         </Card>
       </div>

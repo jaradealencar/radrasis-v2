@@ -521,6 +521,7 @@ export const crmRouter = router({
               faixaIdadeEmpresa: segmentos.faixaIdadeEmpresa,
               coorteCliente: segmentos.coorteCliente,
               faixaRecenciaCompra: segmentos.faixaRecenciaCompra,
+              regiao: segmentos.regiao,
               comprasUltimos12m: segmentos.comprasUltimos12m,
               valorComprasUltimos12m: String(segmentos.valorComprasUltimos12m),
               vendedor: proposta.vendedor || null,
@@ -584,6 +585,7 @@ export const crmRouter = router({
         faixaIdadeEmpresa: string;
         coorteCliente: string;
         faixaRecenciaCompra: string;
+        regiao: string;
         comprasUltimos12m: number;
         valorComprasUltimos12m: string;
         statusNoHistorico: string | null;
@@ -600,6 +602,7 @@ export const crmRouter = router({
           faixaIdadeEmpresa: crmProbabilidadePrevisoes.faixaIdadeEmpresa,
           coorteCliente: crmProbabilidadePrevisoes.coorteCliente,
           faixaRecenciaCompra: crmProbabilidadePrevisoes.faixaRecenciaCompra,
+          regiao: crmProbabilidadePrevisoes.regiao,
           comprasUltimos12m: crmProbabilidadePrevisoes.comprasUltimos12m,
           valorComprasUltimos12m: crmProbabilidadePrevisoes.valorComprasUltimos12m,
           statusNoHistorico: historicoOrcamentos.status,
@@ -623,6 +626,7 @@ export const crmRouter = router({
         faixaIdadeEmpresa: row.faixaIdadeEmpresa,
         coorteCliente: row.coorteCliente,
         faixaRecenciaCompra: row.faixaRecenciaCompra,
+        regiao: row.regiao,
         comprasUltimos12m: row.comprasUltimos12m,
         valorComprasUltimos12m: Number(row.valorComprasUltimos12m) || 0,
         desfecho: classificarDesfechoExplicito(row.statusNoHistorico),
@@ -638,6 +642,16 @@ export const crmRouter = router({
         propostasHistoricoSemDesfecho: modelo.propostasHistoricoSemDesfecho,
         taxaGeralPct: modelo.taxaGeral * 100,
         coberturaIdade: modelo.coberturaIdadeEmpresarial,
+        coberturaHistoricoOs: {
+          registrosSincronizados: modelo.coberturaHistoricoOs.registrosSincronizados,
+          comprasValidas: modelo.coberturaHistoricoOs.comprasValidas,
+          comUf: modelo.coberturaHistoricoOs.comUf,
+          semUf: modelo.coberturaHistoricoOs.semUf,
+          primeiraCompra: modelo.coberturaHistoricoOs.primeiraCompra?.toISOString() ?? null,
+          ultimaCompra: modelo.coberturaHistoricoOs.ultimaCompra?.toISOString() ?? null,
+          porRegiao: modelo.coberturaHistoricoOs.porRegiao,
+        },
+        conversaoHistoricaPorRegiao: modelo.conversaoHistoricaPorRegiao,
       } : null;
       return {
         painel: construirPainelProbabilidade({ previsoes, dias }),

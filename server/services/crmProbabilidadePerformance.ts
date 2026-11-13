@@ -8,6 +8,7 @@ export interface PrevisaoCrmMonitorada {
   faixaIdadeEmpresa: string;
   coorteCliente: string;
   faixaRecenciaCompra: string;
+  regiao: string;
   comprasUltimos12m: number;
   valorComprasUltimos12m: number;
   desfecho: 0 | 1 | null;
@@ -337,6 +338,7 @@ export function construirPainelProbabilidade(args: {
     porIdadeEmpresa: agruparPor(atuais, row => row.faixaIdadeEmpresa),
     porCoorte: agruparPor(atuais, row => row.coorteCliente),
     porRecencia: agruparPor(atuais, row => row.faixaRecenciaCompra),
+    porRegiao: agruparPor(atuais, row => row.regiao),
     porFrequencia: bucketsFrequencia,
     porValorRfm: bucketsValorRfm,
     porMes: [...mensal.entries()]
