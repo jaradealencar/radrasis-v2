@@ -55,6 +55,20 @@ type AttemptView = {
   }>;
 };
 
+type SimulatedAttempt = {
+  id: string;
+  assessment: string;
+  subject: string;
+  score: number;
+  startedAt: string;
+};
+
+type SimulatedStudent = {
+  id: string;
+  name: string;
+  attempts: SimulatedAttempt[];
+};
+
 const EMPTY_SECTOR = {
   name: "",
   slug: "",
@@ -224,6 +238,29 @@ function TrainingAdmin({ onChanged }: { onChanged: () => void }) {
   });
   const { data: results = [], isLoading: resultsLoading } =
     trpc.treinamento.resultsReport.useQuery({ subjectId: reportFilter });
+  const [simulationStudents, setSimulationStudents] = useState<
+    SimulatedStudent[]
+  >([]);
+  const [simulationStudentCount, setSimulationStudentCount] = useState(12);
+  const [simulationMaxAttempts, setSimulationMaxAttempts] = useState(4);
+  const [simulationDays, setSimulationDays] = useState(30);
+  const studentSummaries = useMemo(() => {
+    const grouped = new Map<
+      string,
+      { name: string; attempts: typeof results }
+    >();
+    for (const attempt of results) {
+      const student = grouped.get(attempt.userId) ?? {
+        name: attempt.userName,
+        attempts: [],
+      };
+      student.attempts.push(attempt);
+      grouped.set(attempt.userId, student);
+    }
+    return [...grouped.entries()]
+      .map(([userId, student]) => ({ userId, ...student }))
+      .sort((a, b) => a.name.localeCompare(b.name, "pt-BR"));
+  }, [results]);
 
   useEffect(() => {
     if (!data) return;
@@ -348,6 +385,54 @@ function TrainingAdmin({ onChanged }: { onChanged: () => void }) {
       return;
     }
     saveAssessment.mutate({ ...assessment, questions: parsed });
+  };
+
+  const generateSimulation = () => {
+    const assessments = data.assessments.filter(
+      item =>
+        !item.archivedAt && (!reportFilter || item.subjectId === reportFilter)
+    );
+    if (assessments.length === 0) {
+      toast.error("Não há avaliações disponíveis para este filtro.");
+      return;
+    }
+
+    const studentCount = Math.min(100, Math.max(1, simulationStudentCount));
+    const maxAttempts = Math.min(20, Math.max(1, simulationMaxAttempts));
+    const days = Math.min(365, Math.max(1, simulationDays));
+    const now = Date.now();
+    const generated = Array.from({ length: studentCount }, (_, index) => {
+      const attemptCount = 1 + Math.floor(Math.random() * maxAttempts);
+      const attempts = Array.from(
+        { length: attemptCount },
+        (_, attemptIndex) => {
+          const assessment =
+            assessments[Math.floor(Math.random() * assessments.length)];
+          const startedAt = new Date(
+            now - Math.random() * days * 24 * 60 * 60 * 1000
+          ).toISOString();
+          return {
+            id: `sim-${index}-${attemptIndex}-${now}`,
+            assessment: assessment.title,
+            subject:
+              data.subjects.find(subject => subject.id === assessment.subjectId)
+                ?.title ?? "Matéria",
+            score: Math.round((35 + Math.random() * 65) * 100) / 100,
+            startedAt,
+          };
+        }
+      ).sort(
+        (a, b) =>
+          new Date(b.startedAt).getTime() - new Date(a.startedAt).getTime()
+      );
+      return {
+        id: `sim-aluno-${index}-${now}`,
+        name: `Aluno de teste ${String(index + 1).padStart(2, "0")}`,
+        attempts,
+      };
+    });
+    setSimulationStudents(generated);
+    toast.success(`${studentCount} alunos fictícios simulados.`);
   };
 
   return (
@@ -840,30 +925,280 @@ function TrainingAdmin({ onChanged }: { onChanged: () => void }) {
 
       <Card>
         <CardHeader>
-          <CardTitle>Resultados por pessoa</CardTitle>
+          <div className="flex flex-wrap items-center gap-2">
+            <CardTitle>Simulacro do painel de alunos</CardTitle>
+            <Badge variant="outline">Fictício · não salva</Badge>
+          </div>
+          <CardDescription>
+            Gere alunos, datas, quantidade de provas e notas para conferir a
+            apresentação dos resultados sem registrar uma tentativa real.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-5">
+          <div className="flex flex-wrap items-center gap-3">
+            <Label htmlFor="training-report-filter">Filtrar matéria</Label>
+            <select
+              id="training-report-filter"
+              className="max-w-sm rounded-md border bg-background px-3 py-2 text-sm"
+              value={reportFilter ?? ""}
+              onChange={event => {
+                setReportFilter(Number(event.target.value) || undefined);
+                setSimulationStudents([]);
+              }}
+            >
+              <option value="">Todas</option>
+              {data.subjects.map(subject => (
+                <option key={subject.id} value={subject.id}>
+                  {subject.title}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="grid gap-4 md:grid-cols-3">
+            <div className="space-y-2">
+              <Label htmlFor="sim-students">Alunos fictícios</Label>
+              <Input
+                id="sim-students"
+                type="number"
+                min={1}
+                max={100}
+                value={simulationStudentCount}
+                onChange={event =>
+                  setSimulationStudentCount(Number(event.target.value) || 1)
+                }
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="sim-attempts">Máximo de provas por aluno</Label>
+              <Input
+                id="sim-attempts"
+                type="number"
+                min={1}
+                max={20}
+                value={simulationMaxAttempts}
+                onChange={event =>
+                  setSimulationMaxAttempts(Number(event.target.value) || 1)
+                }
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="sim-days">
+                Distribuir datas nos últimos dias
+              </Label>
+              <Input
+                id="sim-days"
+                type="number"
+                min={1}
+                max={365}
+                value={simulationDays}
+                onChange={event =>
+                  setSimulationDays(Number(event.target.value) || 1)
+                }
+              />
+            </div>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <Button onClick={generateSimulation}>Gerar simulacro</Button>
+            <Button
+              variant="outline"
+              disabled={simulationStudents.length === 0}
+              onClick={() => setSimulationStudents([])}
+            >
+              Limpar simulacro
+            </Button>
+          </div>
+          {simulationStudents.length > 0 && (
+            <>
+              <div className="grid gap-3 sm:grid-cols-3">
+                <Card>
+                  <CardContent className="pt-5">
+                    <p className="text-sm text-muted-foreground">
+                      Alunos simulados
+                    </p>
+                    <p className="text-2xl font-semibold">
+                      {simulationStudents.length}
+                    </p>
+                  </CardContent>
+                </Card>
+                <Card>
+                  <CardContent className="pt-5">
+                    <p className="text-sm text-muted-foreground">
+                      Provas simuladas
+                    </p>
+                    <p className="text-2xl font-semibold">
+                      {simulationStudents.reduce(
+                        (total, student) => total + student.attempts.length,
+                        0
+                      )}
+                    </p>
+                  </CardContent>
+                </Card>
+                <Card>
+                  <CardContent className="pt-5">
+                    <p className="text-sm text-muted-foreground">
+                      Média das pontuações
+                    </p>
+                    <p className="text-2xl font-semibold">
+                      {(
+                        simulationStudents
+                          .flatMap(student => student.attempts)
+                          .reduce((sum, attempt) => sum + attempt.score, 0) /
+                        Math.max(
+                          1,
+                          simulationStudents.reduce(
+                            (total, student) => total + student.attempts.length,
+                            0
+                          )
+                        )
+                      ).toFixed(2)}
+                      %
+                    </p>
+                  </CardContent>
+                </Card>
+              </div>
+              <div className="overflow-x-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Aluno</TableHead>
+                      <TableHead>Provas</TableHead>
+                      <TableHead>Provas distintas</TableHead>
+                      <TableHead>Data mais recente</TableHead>
+                      <TableHead>Pontuações por prova</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {simulationStudents.map(student => (
+                      <TableRow key={student.id}>
+                        <TableCell className="font-medium">
+                          {student.name}
+                        </TableCell>
+                        <TableCell>{student.attempts.length}</TableCell>
+                        <TableCell>
+                          {
+                            new Set(
+                              student.attempts.map(item => item.assessment)
+                            ).size
+                          }
+                        </TableCell>
+                        <TableCell>
+                          {formatDate(student.attempts[0]?.startedAt)}
+                        </TableCell>
+                        <TableCell>
+                          <div className="space-y-2">
+                            {student.attempts.map(attempt => (
+                              <div
+                                key={attempt.id}
+                                className="flex flex-wrap items-center gap-2 text-sm"
+                              >
+                                <span>
+                                  {attempt.assessment} · {attempt.subject}
+                                </span>
+                                <span className="text-muted-foreground">
+                                  {formatDate(attempt.startedAt)}
+                                </span>
+                                <Badge variant="secondary">
+                                  {attempt.score.toFixed(2)}%
+                                </Badge>
+                              </div>
+                            ))}
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            </>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Painel dos alunos</CardTitle>
+          <CardDescription>
+            Resumo das avaliações reais: quantidade de provas, atividade mais
+            recente e pontuação de cada tentativa.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          {resultsLoading ? (
+            <p className="text-sm text-slate-500">Carregando painel…</p>
+          ) : studentSummaries.length === 0 ? (
+            <p className="text-sm text-slate-500">
+              Ainda não há alunos com tentativas registradas.
+            </p>
+          ) : (
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Aluno</TableHead>
+                    <TableHead>Provas concluídas / tentativas</TableHead>
+                    <TableHead>Data mais recente</TableHead>
+                    <TableHead>Pontuações por prova</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {studentSummaries.map(student => (
+                    <TableRow key={student.userId}>
+                      <TableCell className="font-medium">
+                        {student.name}
+                      </TableCell>
+                      <TableCell>
+                        {
+                          student.attempts.filter(
+                            attempt => attempt.status === "completed"
+                          ).length
+                        }{" "}
+                        / {student.attempts.length}
+                      </TableCell>
+                      <TableCell>
+                        {formatDate(student.attempts[0]?.startedAt)}
+                      </TableCell>
+                      <TableCell>
+                        <div className="max-h-56 space-y-2 overflow-y-auto">
+                          {student.attempts.map(attempt => (
+                            <div
+                              key={attempt.attemptId}
+                              className="flex flex-wrap items-center gap-2 text-sm"
+                            >
+                              <span>
+                                {attempt.assessment} · {attempt.subject}
+                              </span>
+                              <span className="text-muted-foreground">
+                                {formatDate(attempt.startedAt)}
+                              </span>
+                              {attempt.status === "completed" ? (
+                                <Badge variant="secondary">
+                                  {Number(attempt.score ?? 0).toFixed(2)}%
+                                </Badge>
+                              ) : (
+                                <Badge variant="outline">Em andamento</Badge>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Tentativas reais detalhadas</CardTitle>
           <CardDescription>
             Consulta administrativa; tentativas próprias do aluno também ficam
             disponíveis no histórico da matéria.
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="mb-4 flex items-center gap-3">
-            <Label>Filtrar matéria</Label>
-            <select
-              className="max-w-sm rounded-md border bg-background px-3 py-2 text-sm"
-              value={reportFilter ?? ""}
-              onChange={e =>
-                setReportFilter(Number(e.target.value) || undefined)
-              }
-            >
-              <option value="">Todas</option>
-              {data.subjects.map(row => (
-                <option key={row.id} value={row.id}>
-                  {row.title}
-                </option>
-              ))}
-            </select>
-          </div>
           {resultsLoading ? (
             <p className="text-sm text-slate-500">Carregando resultados…</p>
           ) : results.length === 0 ? (

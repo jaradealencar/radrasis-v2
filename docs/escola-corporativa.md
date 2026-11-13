@@ -17,6 +17,10 @@ Ao salvar uma avaliação existente, a versão aumenta e as questões atuais sã
 
 O sistema registra tentativas e respostas sem gravar textos privados em logs. O aluno consulta suas tentativas; `admin`, `master` e `gestor` consultam o relatório agregado. A autorização é verificada no servidor pela role e pela permissão da página `treinamento`.
 
+## Painel de alunos e simulacro
+
+O painel administrativo agrupa tentativas reais por aluno e exibe quantidade concluída/total, data mais recente e pontuação de cada prova. O **Simulacro do painel de alunos** gera nomes fictícios, datas distribuídas no período informado, avaliações do filtro selecionado e notas aleatórias para exercitar a apresentação do relatório. Os dados de simulacro existem somente no estado da página: não criam usuários, tentativas ou respostas no banco, não afetam o histórico real e desaparecem ao limpar ou recarregar a tela. É uma ferramenta de conferência visual do painel, não uma execução do motor de correção das questões.
+
 ## Formato das questões
 
 O endpoint `treinamento.saveAssessment` recebe uma lista de objetos com `key`, `type`, `prompt`, `points`, `position` e `config`. Os tipos entregues nesta primeira versão são:
