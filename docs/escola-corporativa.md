@@ -25,6 +25,38 @@ Instrutores aplicam uma avaliação formal publicada aos alunos já matriculados
 
 O painel administrativo também apresenta o ranking de cada avaliação formal concluída. Cada aluno aparece uma vez por avaliação, com sua melhor nota, data da nota e quantidade de tentativas concluídas. Notas iguais compartilham a posição; as práticas não entram no ranking.
 
+## Cobertura integral da avaliação de Técnicas de Closer
+
+Após aplicar a migration `0127_closer_full_coverage`, a avaliação **Closer · Atendimento consultivo** recebe 21 questões situacionais e de conhecimento, sem apagar questões anteriores. Na seed original de `0121`, que tem oito questões, o banco totaliza 29; cada tentativa inclui todas as questões publicadas, inclusive as que instrutores adicionarem depois. A matriz liga todas as 14 seções e os anexos visuais A–F do POP-COM-01 ao banco da avaliação.
+
+| Parte do material | Questões da avaliação |
+| --- | --- |
+| 1. Objetivo e regra central | `venda_solucao_beneficio` |
+| 2. Pergunta de entrada | `pergunta_entrada_obrigatoria`, `classificacao_por_perfil`, `classificar_hibrido` |
+| 3. Grupo 1 — começando | `oportunidade_grupo1`, `mapa_necessidade_evidencia` |
+| 4. Grupo 2 — fabrica | `dois_motivos_grupo2`, `escopo_pronto_para_instalar`, `mapa_necessidade_evidencia` |
+| 5. Grupo 3 — terceiriza | `diagnostico_grupo3`, `mapa_necessidade_evidencia` |
+| 6.1 Prazo | `prazo_confirmado`, `referencias_prazo` |
+| 6.2 Acabamento | `objecao_acabamento`, `mapa_necessidade_evidencia` |
+| 6.3 Atendimento | `objecao_atendimento` |
+| 6.4 Preço | `resposta_preco`, `sim_objecao_valor`, `mapa_necessidade_evidencia` |
+| 7. Evidências institucionais | `uso_responsavel_evidencias`, `mapa_necessidade_evidencia` |
+| 8. Construção da argumentação | `etapas_whatsapp`, `fala_consultiva`, `etapas_argumentacao` |
+| 9. Três confianças | `tres_confiancas` |
+| 10. Perspectivas do comprador | `perspectivas_comprador` |
+| 11. Registro no CRM | `crm_qualificacao`, `crm_campos_completos` |
+| 12. Avanço para cotação | `dados_para_cotacao` |
+| 13. Limites comerciais | `limites_comerciais`, `resposta_preco`, `prazo_confirmado`, `sim_aprovacao_final`, `sim_objecao_valor` |
+| 14. Monitoramento e melhoria | `indicadores_closer`, `lideranca_treinamento` |
+| Anexo A — Fluxograma | `pergunta_entrada_obrigatoria`, `classificacao_por_perfil`, `mapa_necessidade_evidencia` |
+| Anexo B — Mapa mental | `oportunidade_grupo1`, `mapa_necessidade_evidencia` |
+| Anexo C — Resolver problemas | `venda_solucao_beneficio` |
+| Anexo D — Classificação | `pergunta_entrada_obrigatoria`, `classificacao_por_perfil`, `classificar_hibrido` |
+| Anexo E — Grupos e interesses | `classificacao_por_perfil`, `tres_confiancas`, `perspectivas_comprador` |
+| Anexo F — Roteiro WhatsApp | `etapas_whatsapp`, `etapas_argumentacao` |
+
+Os prazos de cerca de 4 dias úteis para alguns projetos em PVC e 10 a 11 dias úteis para letreiros acabados aparecem como referências condicionais, nunca como compromisso geral. Da mesma forma, volume, carteira e processo só podem ser apresentados como evidências atuais depois de validação.
+
 ## Painel de alunos e simulacro
 
 O painel administrativo agrupa tentativas reais por aluno e exibe quantidade concluída/total, data mais recente e pontuação de cada prova. O **Simulacro do painel de alunos** gera nomes fictícios, datas distribuídas no período informado, avaliações do filtro selecionado e notas aleatórias para exercitar a apresentação do relatório. Os dados de simulacro existem somente no estado da página: não criam usuários, tentativas ou respostas no banco, não afetam o histórico real e desaparecem ao limpar ou recarregar a tela. É uma ferramenta de conferência visual do painel, não uma execução do motor de correção das questões.
