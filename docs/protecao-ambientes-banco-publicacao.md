@@ -140,15 +140,17 @@ independente. A credencial `DATABASE_URL` fica como secret de ambiente, própria
 daquele destino.
 
 As verificações de 14/11/2026 confirmaram que os ambientes dinâmicos existem.
-`production-radrasis-v2` permite a aprovação pelo administrador único e está
-limitado a `main`; os ambientes `production-radrasis-v2` e
-`production-radrasis-v2-wts-deploy` ainda não têm as variáveis nem o secret
-`DATABASE_URL` necessários. `production-radrasis-v2-wts-deploy` ainda lista o
-administrador como único revisor e permite autoaprovação, o que não atende à
-política de revisão independente desse alvo. O destino de produção da
-Vercel/Neon também segue sem validação independente. Não execute `migrate.yml`
-até cadastrar a identidade e a credencial do banco correto em cada ambiente e
-confirmar o destino no painel da Vercel e no provedor PostgreSQL.
+`production-radrasis-v2` permite a aprovação pelo administrador único, está
+limitado a `main` e foi provisionado com a identidade do banco Neon indicada
+por `PRODUCTION_DATABASE_URL` local: host `ep-delicate-dawn-ayusk2me-pooler.c-5.us-east-2.aws.neon.tech`,
+porta `5432`, banco `neondb` e recurso estável `neon-ep-delicate-dawn-ayusk2me-neondb`.
+O secret `DATABASE_URL` foi cadastrado nesse ambiente sem registrar seu valor.
+Uma consulta somente leitura confirmou que o destino contém o histórico de
+orçamentos e ainda não tem `crm_probabilidade_previsoes` antes desta publicação.
+`production-radrasis-v2-wts-deploy` ainda não tem as variáveis nem o secret
+`DATABASE_URL` necessários, e sua política de revisão independente precisa ser
+alinhada separadamente. O destino da publicação CRM usa explicitamente a URL
+local marcada como produção; não reutilize essa identidade para o projeto WTS.
 
 ## Configuração externa pendente
 
