@@ -24,7 +24,9 @@ test("aluno se matricula, retoma prova e instrutor aplica uma avaliação", asyn
     page.getByRole("heading", { name: "Escola Corporativa" })
   ).toBeVisible();
   await expect(
-    page.getByRole("heading", { name: "Técnicas de Closer" })
+    page
+      .locator('[data-slot="card-title"]')
+      .filter({ hasText: "Técnicas de Closer" })
   ).toBeVisible();
   await expect(
     page.getByRole("button", { name: "Matricular-se" })
@@ -102,13 +104,24 @@ test("painel do instrutor apresenta notas e ranking das provas formais", async (
   await page.goto("/treinamento");
   await page.getByRole("tab", { name: "Administrar conteúdo" }).click();
 
+  const studentPanelTitle = page
+    .locator('[data-slot="card-title"]')
+    .filter({ hasText: "Painel dos alunos" });
+  const studentPanel = page
+    .locator('[data-slot="card"]')
+    .filter({ has: studentPanelTitle });
+  await expect(studentPanelTitle).toBeVisible();
+  await expect(studentPanel).toContainText("E2E Instrutor");
+  await expect(studentPanel).toContainText("8.50/10");
+
+  const rankingTitle = page
+    .locator('[data-slot="card-title"]')
+    .filter({ hasText: "Ranking das provas formais" });
+  const ranking = page
+    .locator('[data-slot="card"]')
+    .filter({ has: rankingTitle });
+  await expect(rankingTitle).toBeVisible();
   await expect(
-    page.getByRole("heading", { name: "Painel dos alunos" })
+    ranking.getByRole("heading", { name: assessmentTitle })
   ).toBeVisible();
-  await expect(page.getByText("E2E Instrutor", { exact: true })).toBeVisible();
-  await expect(page.getByText("8.50/10", { exact: true })).toBeVisible();
-  await expect(
-    page.getByRole("heading", { name: "Ranking das provas formais" })
-  ).toBeVisible();
-  await expect(page.getByText(assessmentTitle, { exact: true })).toBeVisible();
 });
