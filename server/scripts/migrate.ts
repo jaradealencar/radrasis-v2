@@ -9,7 +9,18 @@ import { assertMigrationTarget } from "./migration-safety";
 // não suporta sessão/transação — ver server/db/db-connection.ts.
 async function main() {
   const connectionString = process.env.DATABASE_URL;
-  const { target, identity } = assertMigrationTarget();
+  let target: ReturnType<typeof assertMigrationTarget>["target"];
+  let identity: ReturnType<typeof assertMigrationTarget>["identity"];
+  try {
+    ({ target, identity } = assertMigrationTarget());
+  } catch (error) {
+    // Guard errors use fixed, credential-free messages. Preserve the reason
+    // for a blocked deployment while continuing to suppress driver details.
+    const reason = error instanceof Error ? error.message : "Unknown migration target guard error.";
+    console.error(`Migration blocked by target safety check: ${reason}`);
+    process.exitCode = 1;
+    return;
+  }
 
   const pool = new Pool({ connectionString });
   const db = drizzle(pool);
