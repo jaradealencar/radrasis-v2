@@ -126,6 +126,13 @@ Ver `docs/protecao-ambientes-banco-publicacao.md`.
 
 ## Banco de dados — sempre via migration
 
+Publicação em produção pode seguir o fluxo de administrador único descrito em
+`docs/protecao-ambientes-banco-publicacao.md`: a conta administradora configura
+a si própria como revisora obrigatória do ambiente, permite autoaprovação e
+confirma explicitamente a identidade do banco e a migration. Não relaxe as
+validações de alvo, recurso, branch `main` ou Quality para remover a necessidade
+de um segundo revisor.
+
 No runtime normal, consultas avulsas por `getPool().query()` usam HTTP via
 Neon. Transações Drizzle (`db.transaction`) reservam um `PoolClient` por
 WebSocket e exigem runtime Node com suporte a WebSocket. Dentro do callback,
