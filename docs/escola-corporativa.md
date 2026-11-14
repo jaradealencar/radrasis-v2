@@ -29,7 +29,7 @@ O painel administrativo também apresenta o ranking de cada avaliação formal c
 
 ## Cobertura integral da avaliação de Técnicas de Closer
 
-Após aplicar a migration `0127_closer_full_coverage`, a avaliação **Closer · Atendimento consultivo** recebe 21 questões situacionais e de conhecimento, sem apagar questões anteriores. Na seed original de `0121`, que tem oito questões, o banco totaliza 29; cada tentativa inclui todas as questões publicadas, inclusive as que instrutores adicionarem depois. A matriz liga todas as 14 seções e os anexos visuais A–F do POP-COM-01 ao banco da avaliação.
+Após aplicar a migration `0120_closer_full_coverage`, a avaliação **Closer · Atendimento consultivo** recebe 21 questões situacionais e de conhecimento, sem apagar questões anteriores. Na seed original de `0121`, que tem oito questões, o banco totaliza 29; cada tentativa inclui todas as questões publicadas, inclusive as que instrutores adicionarem depois. A matriz liga todas as 14 seções e os anexos visuais A–F do POP-COM-01 ao banco da avaliação.
 
 | Parte do material | Questões da avaliação |
 | --- | --- |
@@ -97,6 +97,10 @@ O exemplo abaixo representa uma questão de escolha única:
 ```
 
 O editor autorizado acessa a aba **Administrar conteúdo** dentro da mesma página. Ao publicar novas matérias, use a organização já existente por setor e mantenha perguntas, respostas e explicações alinhadas a uma fonte aprovada.
+
+## Testes de navegador da Escola
+
+`yarn test:e2e:school` executa os fluxos principais da Escola em Chromium. O workflow `Quality` cria um PostgreSQL descartável, aplica as migrations, semeia contas e resultados fictícios e executa matrícula, aplicação/retomada de prova, painel e ranking. `yarn e2e:seed` e o servidor de teste validam que `DATABASE_URL` corresponde a `TEST_DATABASE_URL` local; nunca use esses fixtures em produção.
 
 ## Limites do material Closer
 
