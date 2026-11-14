@@ -8,7 +8,7 @@ const assessmentTitle = "Closer · Atendimento consultivo";
 async function login(page: import("@playwright/test").Page, username: string) {
   await page.goto("/login");
   await page.getByLabel("E-mail ou nome de usuário").fill(username);
-  await page.getByLabel("Senha").fill(password);
+  await page.locator("#password").fill(password);
   await page.getByRole("button", { name: "Entrar" }).click();
   await expect(page).toHaveURL(/\/$/);
 }
