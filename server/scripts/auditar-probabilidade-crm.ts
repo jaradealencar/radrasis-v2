@@ -7,6 +7,7 @@ import {
   CRM_PROBABILITY_TICKET_BANDS,
   CRM_PROBABILITY_AGE_BANDS,
   CRM_PROBABILITY_COHORTS,
+  CRM_PROBABILITY_REGIONS,
   treinarRegressaoLogistica,
   preverComLogistica,
   type ExemploProbabilidadeCrm,
@@ -312,6 +313,10 @@ async function main() {
   console.log(`Desfechos decididos: ${exemplos.length}; ganhos ${ganhos}; perdas ${exemplos.length - ganhos}; taxa de ganho ${(dados.taxaGeral * 100).toFixed(1)}%.`);
   if (exemplos.length) console.log(`Período: ${exemplos[0].proposta.data.toISOString().slice(0, 10)} a ${exemplos[exemplos.length - 1].proposta.data.toISOString().slice(0, 10)}.`);
   if (dados.ultimaPropostaHistorico) console.log(`Espelho histórico de propostas: até ${dados.ultimaPropostaHistorico.toISOString().slice(0, 10)}; ${dados.propostasHistoricoSemDesfecho} ainda sem desfecho observável.`);
+  const os = dados.coberturaHistoricoOs;
+  console.log(`Histórico sincronizado de O.S.: ${os.registrosSincronizados} registros no espelho; ${os.comprasValidas} compras válidas para RFM (${os.comUf} com UF, ${os.semUf} sem UF). Período: ${os.primeiraCompra?.toISOString().slice(0, 10) ?? "sem data"} a ${os.ultimaCompra?.toISOString().slice(0, 10) ?? "sem data"}.`);
+  console.log("Compras válidas de O.S. por região (a O.S. alimenta o histórico do cliente; não é vinculada diretamente a uma proposta):");
+  for (const row of os.porRegiao) console.log(`  ${row.regiao}: ${row.quantidade}`);
   const c = dados.coberturaIdadeEmpresarial;
   console.log(`Cobertura de idade CNPJ: ${c.clientesComIdade}/${c.clientesHistoricos} clientes (${c.clientesHistoricos ? (c.clientesComIdade / c.clientesHistoricos * 100).toFixed(1) : "0.0"}%) e ${c.propostasComIdade}/${c.propostasTreino} propostas (${c.propostasTreino ? (c.propostasComIdade / c.propostasTreino * 100).toFixed(1) : "0.0"}%).`);
   const ultimosRegistrosPorCliente = new Map<string, ExemploProbabilidadeCrm>();
@@ -334,6 +339,10 @@ async function main() {
   }
   console.log("Conversão por coorte da primeira compra:");
   for (const row of distribuicaoCategoria(exemplos, CRM_PROBABILITY_COHORTS.map((v) => `coorte:${v}`))) {
+    if (row.n) console.log(`  ${row.segmento}: n=${row.n}, ganhos=${row.ganhos}, ${(row.conversao * 100).toFixed(1)}%`);
+  }
+  console.log("Conversão por região conhecida antes da proposta (rótulo vem do histórico disponível naquela data):");
+  for (const row of distribuicaoCategoria(exemplos, CRM_PROBABILITY_REGIONS.map((v) => `regiao:${v}`))) {
     if (row.n) console.log(`  ${row.segmento}: n=${row.n}, ganhos=${row.ganhos}, ${(row.conversao * 100).toFixed(1)}%`);
   }
   console.log("\nA data final é a última proposta do histórico local com desfecho observável. Um intervalo até hoje indica atraso do espelho do ERP.");

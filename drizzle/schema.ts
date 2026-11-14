@@ -3244,6 +3244,33 @@ export const crmAtividadeLog = pgTable("crm_atividade_log", {
 export type CrmAtividadeLog = typeof crmAtividadeLog.$inferSelect;
 export type InsertCrmAtividadeLog = typeof crmAtividadeLog.$inferInsert;
 
+// Primeira probabilidade entregue para cada proposta no CRM. O registro
+// é imutável e permite comparar previsões com desfechos sincronizados depois.
+export const crmProbabilidadePrevisoes = pgTable("crm_probabilidade_previsoes", {
+  id: serial("id").primaryKey(),
+  orcNumero: varchar("orc_numero", { length: 32 }).notNull(),
+  dataProposta: timestamp("data_proposta"),
+  exibidaEm: timestamp("exibida_em").defaultNow().notNull(),
+  probabilidadePct: integer("probabilidade_pct").notNull(),
+  modeloVersao: varchar("modelo_versao", { length: 64 }).notNull(),
+  valorProposta: decimal("valor_proposta", { precision: 14, scale: 2 }).notNull().default("0"),
+  faixaTicket: varchar("faixa_ticket", { length: 32 }).notNull(),
+  faixaIdadeEmpresa: varchar("faixa_idade_empresa", { length: 40 }).notNull(),
+  coorteCliente: varchar("coorte_cliente", { length: 40 }).notNull(),
+  faixaRecenciaCompra: varchar("faixa_recencia_compra", { length: 32 }).notNull(),
+  regiao: varchar("regiao", { length: 32 }).notNull().default("região desconhecida"),
+  comprasUltimos12m: integer("compras_ultimos_12m").notNull().default(0),
+  valorComprasUltimos12m: decimal("valor_compras_ultimos_12m", { precision: 14, scale: 2 }).notNull().default("0"),
+  vendedor: varchar("vendedor", { length: 128 }),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => ({
+  orcNumeroUnique: uniqueIndex("crm_probabilidade_previsoes_orc_numero_unique").on(table.orcNumero),
+  exibidaEmIdx: index("crm_probabilidade_previsoes_exibida_em_idx").on(table.exibidaEm),
+  vendedorExibidaEmIdx: index("crm_probabilidade_previsoes_vendedor_exibida_em_idx").on(table.vendedor, table.exibidaEm),
+}));
+export type CrmProbabilidadePrevisao = typeof crmProbabilidadePrevisoes.$inferSelect;
+export type InsertCrmProbabilidadePrevisao = typeof crmProbabilidadePrevisoes.$inferInsert;
+
 // Dados Financeiros Mensais (integração com relatórios financeiros)
 export const financeirosMensais = pgTable("financeiros_mensais", {
   id: serial("id").primaryKey(),

@@ -18,8 +18,10 @@ destinos de banco ou overrides de build configurados no painel. Nenhuma consulta
 ou escrita foi feita em bancos, e nenhuma migration foi aplicada.
 
 O `main` usado como base foi verificado no GitHub em
-`f6ae1bf1d196737f1a36df0488aa600e82af8070`. A migration `0115` e o journal não
-foram alterados.
+`f6ae1bf1d196737f1a36df0488aa600e82af8070`. A fase de proteção não alterou a
+migration `0115`; a PR do painel de desempenho do CRM adiciona a migration
+`0122_watery_umar` e sua entrada no journal. Essa migration ainda não foi
+aplicada em produção.
 
 ## Comandos
 
@@ -75,33 +77,35 @@ Os builds completos (`yarn build` e `yarn build:vercel`) também gravam
 ou produção, requer a confirmação da identidade, compara o SHA informado com o
 SHA completo do commit escolhido para release em `main`, e exige um workflow `Quality`
 bem-sucedido para esse mesmo SHA. O ambiente GitHub nomeado por alvo/projeto
-precisa aprovar o trabalho antes da execução. O script registra o commit e a
-identidade sanitizada do destino.
+mantém uma pausa de aprovação antes da execução. O script registra o commit e
+a identidade sanitizada do destino.
 
 O workflow agora serializa migrations pelo identificador estável do recurso do
 banco e mantém uma fila sem substituir execuções pendentes. Antes do checkout ou
 da migration, exige as variáveis de ambiente `DB_MIGRATION_RESOURCE_ID` e
 `DB_MIGRATION_ENVIRONMENT_READY` com os valores correspondentes ao alvo, projeto
 e recurso. Um ambiente criado implicitamente pelo GitHub não terá esse marcador
-e falhará antes de acessar o banco.
+e falhará antes de acessar o banco. O marcador não substitui a aprovação manual
+do ambiente.
 
-### Operação com um único administrador
+### Operação com um único administrador em produção
 
-Este repositório pode ser operado por uma única pessoa administradora. Nos
-ambientes de produção do GitHub, configure essa própria conta como revisora
-obrigatória e deixe a opção de impedir autoaprovação desativada. Assim, a mesma
-pessoa que inicia o workflow consegue aprovar a execução. Não é necessário
-adicionar um segundo revisor.
+Em 14/11/2026, o usuário escolheu permitir que o único administrador do
+repositório publique sem convidar uma segunda pessoa. Para o ambiente
+`production-radrasis-v2`, mantenha `Required reviewers` ativo com
+`jaradealencar` como revisor, deixe a opção de impedir autoaprovação desativada (`Prevent self-review` desmarcado) e mantenha
+desativado `Allow administrators to bypass configured protection rules`. A
+branch permitida continua sendo somente `main`. Assim, o administrador inicia
+o workflow manual e aprova a própria execução na etapa do ambiente.
 
-A aprovação do ambiente não substitui as confirmações do workflow: para produção,
-o administrador ainda informa a identidade do destino, a confirmação
-`MIGRATE:production:<host>:<porta>/<banco>` e a autorização
-`AUTHORIZE_PRODUCTION_MIGRATION:<host>:<porta>/<banco>`. O workflow só aplica a
-migration ao SHA completo de `main` que passou no Quality. Mantenha a branch
-permitida como `main`, o segredo `DATABASE_URL` e as variáveis de identidade
-exclusivos para cada banco, e não habilite bypass de aprovação. Essas validações
-mantêm a separação dos bancos e a confirmação explícita mesmo sem revisão por
-outra pessoa.
+Esse modo remove a revisão independente e aumenta o risco de uma decisão
+individual incorreta. Para compensar, não remova os demais controles: Quality
+deve passar no SHA exato de `main`; o workflow exige esse mesmo SHA, o marcador
+do recurso correto, identidade esperada de host/porta/banco e as duas frases de
+confirmação de produção; `DATABASE_URL` fica restrita ao ambiente
+`production-radrasis-v2`; migrations não rodam no build nem em deploy automático.
+Essa exceção vale somente para `radrasis-v2`; não altera a política do projeto
+`radrasis-v2-wts-deploy`.
 
 Os workflows locais não alteram configurações no GitHub ou na Vercel. Para
 ativá-los com segurança, um administrador deve configurar separadamente os
@@ -113,11 +117,14 @@ ambientes GitHub abaixo, usando host/porta/banco esperados e segredo
 - `staging-radrasis-v2-wts-deploy`
 - `production-radrasis-v2-wts-deploy`
 
-O ambiente de produção deve exigir a aprovação da conta administradora única,
-com autoaprovação permitida conforme descrito acima. Antes de cadastrar qualquer
-segredo, confirme no painel de cada projeto Vercel e no provedor de Postgres se
-os bancos de preview/staging e produção são destinos distintos. Não reutilize
-um segredo entre projetos por conveniência.
+Os ambientes de produção devem manter a aprovação manual configurada conforme
+a política do projeto. `production-radrasis-v2` usa o modo de administrador
+único descrito acima; `production-radrasis-v2-wts-deploy` continua exigindo
+revisão independente, e sua configuração externa precisa ser alinhada antes de
+usar esse alvo. Antes de cadastrar qualquer segredo, confirme no painel de cada
+projeto Vercel e no provedor de Postgres se os bancos de preview/staging e
+produção são destinos distintos. Não reutilize um segredo entre projetos por
+conveniência.
 
 Em cada ambiente, configure os valores não secretos `DB_MIGRATION_EXPECTED_HOST`,
 `DB_MIGRATION_EXPECTED_PORT`, `DB_MIGRATION_EXPECTED_DATABASE` e
@@ -126,17 +133,24 @@ projeto/alvo apontar ao mesmo recurso físico, pois é a chave de serialização
 Configure também `DB_MIGRATION_ENVIRONMENT_READY` exatamente como
 `MIGRATION_ENVIRONMENT_READY:<alvo>:<projeto>:<resource-id>`. Este marcador só
 deve ser cadastrado no ambiente GitHub correspondente depois de confirmar a
-aprovação da conta administradora única e a branch permitida. A credencial
-`DATABASE_URL` fica como secret de ambiente, própria daquele destino.
+política de aprovação daquele projeto, a branch permitida e o bypass de
+administrador desativado. Para `radrasis-v2`, aplique a exceção de administrador
+único documentada acima; para `radrasis-v2-wts-deploy`, mantenha revisão
+independente. A credencial `DATABASE_URL` fica como secret de ambiente, própria
+daquele destino.
 
-As verificações manuais de 22/10/2026 encontraram ambientes chamados
-`Production – radrasis-v2`, `Preview – radrasis-v2`, `Production` e `Preview`,
-sem secrets ou variables de ambiente. Esses nomes não correspondem aos quatro ambientes
-dinâmicos requeridos pelo workflow. Não execute `migrate.yml` até que os quatro
-ambientes corretos existam e tenham branches permitidas, a conta administradora
-única configurada como revisora de produção com autoaprovação permitida, bypass
-de administrador desativado e secrets/variables exclusivos do recurso
-correspondente.
+As verificações de 14/11/2026 confirmaram que os ambientes dinâmicos existem.
+`production-radrasis-v2` permite a aprovação pelo administrador único, está
+limitado a `main` e foi provisionado com a identidade do banco Neon indicada
+por `PRODUCTION_DATABASE_URL` local: host `ep-delicate-dawn-ayusk2me-pooler.c-5.us-east-2.aws.neon.tech`,
+porta `5432`, banco `neondb` e recurso estável `neon-ep-delicate-dawn-ayusk2me-neondb`.
+O secret `DATABASE_URL` foi cadastrado nesse ambiente sem registrar seu valor.
+Uma consulta somente leitura confirmou que o destino contém o histórico de
+orçamentos e ainda não tem `crm_probabilidade_previsoes` antes desta publicação.
+`production-radrasis-v2-wts-deploy` ainda não tem as variáveis nem o secret
+`DATABASE_URL` necessários, e sua política de revisão independente precisa ser
+alinhada separadamente. O destino da publicação CRM usa explicitamente a URL
+local marcada como produção; não reutilize essa identidade para o projeto WTS.
 
 ## Configuração externa pendente
 
@@ -160,9 +174,9 @@ Para cada projeto Vercel, um administrador deve verificar:
 
 No GitHub, proteja `main` e configure como checks obrigatórios os jobs
 `Quality / build-and-typecheck` e `Quality / isolated-database-tests`. Configure
-a conta administradora única como revisora obrigatória nos dois ambientes de
-produção, permitindo que ela própria aprove a execução e mantendo o bypass de
-administrador desativado. Configure a proteção de
+a aprovação de produção conforme a política de cada projeto: administrador
+único em `production-radrasis-v2` e revisor independente em
+`production-radrasis-v2-wts-deploy`. Configure a proteção de
 deploy da Vercel para aguardar os checks correspondentes antes da promoção. A
 Vercel documenta que uma promoção forçada pode contornar Deployment Checks; trate
 esse recurso como acesso administrativo de exceção e audite seu uso. Para cada
