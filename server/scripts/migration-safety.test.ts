@@ -77,7 +77,9 @@ describe("migration target safety", () => {
           DATABASE_URL: "postgresql://db_user:db_password@127.0.0.1:5433/radrasys_ci_test",
         }),
       ),
-    ).toThrow("does not match");
+    ).toThrow(
+      "DATABASE_URL identity 127.0.0.1:5433/radrasys_ci_test does not match declared target identity 127.0.0.1:5432/radrasys_ci_test.",
+    );
   });
 
   it("requires target-specific confirmation", () => {

@@ -4,6 +4,8 @@ import { migrate } from "drizzle-orm/node-postgres/migrator";
 import { Pool } from "pg";
 import { assertMigrationTarget } from "./migration-safety";
 
+class MigrationTargetSafetyError extends Error {}
+
 // Usa o driver `pg` direto (não o @neondatabase/serverless da app) porque
 // migrations rodam em transação e o pool da app usa poolQueryViaFetch, que
 // não suporta sessão/transação — ver server/db/db-connection.ts.
@@ -17,9 +19,7 @@ async function main() {
     // Guard errors use fixed, credential-free messages. Preserve the reason
     // for a blocked deployment while continuing to suppress driver details.
     const reason = error instanceof Error ? error.message : "Unknown migration target guard error.";
-    console.error(`Migration blocked by target safety check: ${reason}`);
-    process.exitCode = 1;
-    return;
+    throw new MigrationTargetSafetyError(reason);
   }
 
   const pool = new Pool({ connectionString });
@@ -45,6 +45,11 @@ async function main() {
 main()
   .then(() => console.info("Migrations applied successfully."))
   .catch(error => {
+    if (error instanceof MigrationTargetSafetyError) {
+      console.error(`Migration blocked by target safety check: ${error.message}`);
+      process.exitCode = 1;
+      return;
+    }
     const errorType = error instanceof Error ? error.name : "UnknownError";
     console.error(`Migration failed (${errorType}); database details were suppressed.`);
     process.exitCode = 1;

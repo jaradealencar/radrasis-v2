@@ -62,6 +62,10 @@ function sameDatabase(left: DatabaseIdentity, right: DatabaseIdentity): boolean 
   return left.host === right.host && left.port === right.port && left.database === right.database;
 }
 
+function describeIdentity(identity: DatabaseIdentity): string {
+  return `${identity.host}:${identity.port}/${identity.database}`;
+}
+
 function expectedIdentity(environment: Environment): DatabaseIdentity {
   const host = environment.DB_MIGRATION_EXPECTED_HOST;
   const port = environment.DB_MIGRATION_EXPECTED_PORT;
@@ -152,7 +156,9 @@ export function assertMigrationTarget(environment: Environment = process.env): {
   const expected = expectedIdentity(environment);
 
   if (!sameDatabase(identity, expected)) {
-    return fail("DATABASE_URL does not match the declared migration target.");
+    return fail(
+      `DATABASE_URL identity ${describeIdentity(identity)} does not match declared target identity ${describeIdentity(expected)}.`,
+    );
   }
   validateEnvironment(target, identity, environment);
 
