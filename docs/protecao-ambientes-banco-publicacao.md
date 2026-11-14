@@ -88,12 +88,12 @@ e recurso. Um ambiente criado implicitamente pelo GitHub não terá esse marcado
 e falhará antes de acessar o banco. O marcador não substitui a aprovação manual
 do ambiente.
 
-### Modo de administrador único para `radrasis-v2`
+### Operação com um único administrador em produção
 
 Em 14/11/2026, o usuário escolheu permitir que o único administrador do
 repositório publique sem convidar uma segunda pessoa. Para o ambiente
 `production-radrasis-v2`, mantenha `Required reviewers` ativo com
-`jaradealencar` como revisor, deixe `Prevent self-review` desmarcado e mantenha
+`jaradealencar` como revisor, deixe a opção de impedir autoaprovação desativada (`Prevent self-review` desmarcado) e mantenha
 desativado `Allow administrators to bypass configured protection rules`. A
 branch permitida continua sendo somente `main`. Assim, o administrador inicia
 o workflow manual e aprova a própria execução na etapa do ambiente.
