@@ -80,6 +80,10 @@ bem-sucedido para esse mesmo SHA. O ambiente GitHub nomeado por alvo/projeto
 mantém uma pausa de aprovação antes da execução. O script registra o commit e
 a identidade sanitizada do destino.
 
+A instalação de dependências nesse workflow usa `--production=false`, embora
+`NODE_ENV` permaneça `production`, porque o `postinstall` precisa de
+`patch-package`, declarado como dependência de desenvolvimento.
+
 O workflow agora serializa migrations pelo identificador estável do recurso do
 banco e mantém uma fila sem substituir execuções pendentes. Antes do checkout ou
 da migration, exige as variáveis de ambiente `DB_MIGRATION_RESOURCE_ID` e
