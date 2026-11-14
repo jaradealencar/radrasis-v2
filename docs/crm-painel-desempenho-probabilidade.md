@@ -6,6 +6,8 @@ O CRM registra a primeira probabilidade que devolve para cada orçamento aberto.
 
 O resultado é associado depois por `historico_orcamentos.orcNumero`. Só status explícitos reconhecidos como ganho ou perda entram nas métricas. Propostas ainda abertas, com status não reconhecido ou ausentes do espelho permanecem pendentes; o painel não deduz perda pela validade nem pelo tempo em aberto.
 
+Na aba Propostas, a tabela mostra todas as propostas ainda abertas no MubiSys, incluindo as que já receberam dois contatos. O filtro “Pendentes de acompanhamento” permite focar as que ainda não chegaram a essa meta. A fila e a agenda não repetem contatos para propostas que já chegaram a dois.
+
 ## Métricas e comparações
 
 - Conversão prevista média e conversão real, incluindo a diferença em pontos percentuais e ganhos esperados contra ganhos observados.
@@ -14,6 +16,7 @@ O resultado é associado depois por `historico_orcamentos.orcNumero`. Só status
 - Tendência dos últimos 30, 60, 90, 180 ou 365 dias contra uma janela anterior do mesmo tamanho. “Melhorando”, “piorando” e “mantido” só aparecem quando ambas as janelas têm no mínimo 30 propostas decididas; até lá, a amostra é insuficiente.
 - Evolução mensal e desempenho por vendedor, ticket, idade do CNPJ, região, coorte da primeira compra, recência, frequência e valor de compras em 12 meses. Os grupos monetários usam quartis do período escolhido.
 - Conversão histórica por região com ganhos, perdas, amostra e proporção. O painel também informa quantas O.S. do espelho completo entram como compras válidas, a cobertura de UF e a distribuição regional. O score histórico só usa região de O.S. anterior à proposta; propostas sem compra anterior ficam em “região desconhecida”.
+- Curva ABC do mês atual, calculada a partir de O.S. faturadas no MubiSys, com faturamento, participação e acumulado dos dez principais produtos/modelos. Esse bloco é descritivo e não altera o score: o histórico local de orçamentos não preserva os itens cotados. Para usar ABC como fator individual da probabilidade, primeiro é necessário guardar os itens de cada proposta e calcular a classe com vendas anteriores à data dela; reutilizar somente itens de O.S. faturadas criaria viés em favor das propostas ganhas.
 
 Desfechos que chegarem ao espelho após a previsão atualizam a mesma linha do painel; a previsão original não é reescrita. O filtro de período se refere ao dia em que a probabilidade foi exibida, não ao dia do orçamento ou do desfecho.
 

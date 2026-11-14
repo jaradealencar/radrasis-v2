@@ -101,7 +101,7 @@ yarn dev         # servidor de desenvolvimento (Vite + Express na mesma porta)
 yarn build       # build de produção (client via Vite, server via esbuild)
 yarn build:vercel # build do client e API para Vercel; não aplica migrations
 yarn start       # roda o build de produção
-yarn run check   # tsc --noEmit (app) + tsc -p tsconfig.cpq3d.json (client/src/cpq3d)
+yarn run check   # tsc --noEmit (app) + tsconfig.cpq3d.json + tsconfig.e2e.json
                  # + tsc -p tsconfig.e2e.json (Playwright/fixtures), ver o comentário abaixo;
                  # ver "CPQ renderização 3D") — precisa do "run"! `yarn check`
                  # sozinho dispara o comando nativo do Yarn (valida lockfile),
@@ -109,7 +109,8 @@ yarn run check   # tsc --noEmit (app) + tsc -p tsconfig.cpq3d.json (client/src/c
 yarn test        # wrapper seguro; exige TEST_DATABASE_URL local de teste
 yarn test:e2e:school # Playwright no Chromium; exige banco de teste migrado e seed E2E
 yarn e2e:seed     # cria fixtures da Escola somente no TEST_DATABASE_URL local
-yarn test:safety # testes unitários de guardas; não acessa banco
+yarn test:e2e:crm # build client + fluxos de restauração do CRM com APIs simuladas
+yarn test:safety # guardas e regressões puras do CRM; não acessa banco
 yarn format      # prettier --write .
 yarn db:generate # drizzle-kit generate, sem alterar banco
 yarn db:migrate  # migration protegida por alvo, identidade e confirmação
@@ -400,7 +401,7 @@ em vez de reescrever o padrão:
 
 ## Testes
 
-`yarn test:safety` roda os testes unitários das proteções sem conexão ao banco.
+`yarn test:safety` roda os testes unitários das proteções e regressões puras do score e do painel de desempenho do CRM, sem conexão ao banco.
 `yarn test` roda a suíte completa em `server/**/*.test.ts`, mas exige
 `TEST_DATABASE_URL` apontando para `localhost`, `127.0.0.1` ou `::1` e um nome
 de banco contendo `_ci`, `_test` ou `_tests`. O runner injeta essa URL como

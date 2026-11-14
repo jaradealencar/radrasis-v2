@@ -26,6 +26,10 @@ const COORTES = ["sem compra anterior", "até 2022", "2023-2024", "2025+", "coor
 const REGIOES = ["Norte", "Nordeste", "Centro-Oeste", "Sudeste", "Sul", "região desconhecida"];
 
 export const CRM_PROBABILITY_MODEL_VERSION = "logit-platt-v1";
+// Não exibe o fallback matemático do modelo como uma probabilidade real.
+// A probabilidade só é apresentada quando o modelo consegue formar a
+// calibração temporal fora da amostra (treino mínimo de 300 decisões).
+export const CRM_PROBABILITY_MIN_TRAINING_EXAMPLES = 300;
 
 const NUMERIC_FEATURES = [
   "ticketLog", "idadeEmpresaLog", "recenciaCompraMesesLog", "frequenciaRfm12mLog",
@@ -517,7 +521,7 @@ export function calcularProbabilidadeCrmAprendida(args: {
   numeroProposta?: string | null;
   regiaoCliente?: string | null;
 }): {
-  probabilidade: number;
+  probabilidade: number | null;
   explicacao: string[];
   segmentos: {
     faixaTicket: string;
@@ -545,8 +549,10 @@ export function calcularProbabilidadeCrmAprendida(args: {
     osPorCliente: args.modelo.osPorCliente,
     inicioEmpresaPorCliente: args.modelo.inicioEmpresaPorCliente,
   });
-  const bruto = preverComLogistica(args.modelo.modelo, features);
-  const probabilidade = Math.max(1, Math.min(99, Math.round(bruto * 100)));
+  const amostraSuficiente = args.modelo.nTreino >= CRM_PROBABILITY_MIN_TRAINING_EXAMPLES
+    && args.modelo.modelo.calibrador !== null;
+  const bruto = amostraSuficiente ? preverComLogistica(args.modelo.modelo, features) : null;
+  const probabilidade = bruto === null ? null : Math.max(1, Math.min(99, Math.round(bruto * 100)));
   const idadeIndex = FEATURE_NAMES.indexOf("idade:disponivel");
   const ultimaCompra = osAnteriores.at(-1)?.data ?? null;
   const recencia = ultimaCompra ? Math.min(120, mesesEntre(ultimaCompra, data)) : 120;
@@ -575,6 +581,9 @@ export function calcularProbabilidadeCrmAprendida(args: {
   if (calibracao) explicacao.push(`Calibração temporal: automática, baseada em ${calibracao.n} previsões históricas fora da amostra.`);
   if (args.modelo.ultimaPropostaTreino) explicacao.push(`Desfechos até: ${args.modelo.ultimaPropostaTreino.toLocaleDateString("pt-BR")}.`);
   if (args.modelo.ultimaPropostaHistorico) explicacao.push(`Histórico de propostas: até ${args.modelo.ultimaPropostaHistorico.toLocaleDateString("pt-BR")}; ${args.modelo.propostasHistoricoSemDesfecho} ainda sem desfecho para treino.`);
+  if (!amostraSuficiente) {
+    explicacao.splice(0, explicacao.length, `Sem estimativa confiável: o modelo precisa de pelo menos ${CRM_PROBABILITY_MIN_TRAINING_EXAMPLES} propostas decididas e calibração temporal válida. Base atual: ${args.modelo.nTreino} propostas. O valor padrão de 20% não é usado como previsão.`);
+  }
   return {
     probabilidade,
     explicacao,

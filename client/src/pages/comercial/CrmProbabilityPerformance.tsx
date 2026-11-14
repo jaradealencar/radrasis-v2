@@ -19,7 +19,7 @@ import {
   YAxis,
 } from "recharts";
 import { trpc } from "@/lib/trpc";
-import { fmtBrl, fmtDate, fmtNum, fmtPct } from "@/lib/format";
+import { fmtBrl, fmtDate, fmtDateTime, fmtNum, fmtPct } from "@/lib/format";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -243,6 +243,11 @@ export function CrmProbabilityPerformance({ active }: { active: boolean }) {
       { dias },
       { enabled: active, refetchOnWindowFocus: false, retry: 1 }
     );
+  const agora = new Date();
+  const abcProdutos = trpc.performanceAbc.getAbc.useQuery(
+    { mes: agora.getMonth() + 1, ano: agora.getFullYear(), tipo: "produtos" },
+    { enabled: active, refetchOnWindowFocus: false, retry: 1 }
+  );
   const registrarMarco = trpc.crm.registrarMarcoMudancaComercial.useMutation({
     onSuccess: () => {
       setMarcoAberto(false);
@@ -360,6 +365,61 @@ export function CrmProbabilityPerformance({ active }: { active: boolean }) {
           benchmark histórico separado abaixo não é misturado com esta medição.
         </p>
       </div>
+
+      <Card className="shadow-sm">
+        <CardHeader className="pb-2">
+          <CardTitle className="text-base">Curva ABC de produtos vendidos</CardTitle>
+          <p className="text-xs text-muted-foreground">
+            Vendas faturadas no MubiSys em {new Intl.DateTimeFormat("pt-BR", { month: "long", year: "numeric" }).format(agora)}.
+          </p>
+        </CardHeader>
+        <CardContent className="space-y-3 pt-0">
+          <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-950">
+            Esta curva descreve produtos vendidos; ela ainda não altera a probabilidade de uma proposta. O histórico de propostas não guarda os itens cotados. Usar apenas os itens das vendas criaria viés em favor das propostas ganhas.
+          </div>
+          {abcProdutos.isLoading ? (
+            <div className="flex items-center justify-center gap-2 py-6 text-sm text-muted-foreground"><Spinner className="size-4" /> Carregando Curva ABC...</div>
+          ) : abcProdutos.isError ? (
+            <p className="py-4 text-center text-sm text-muted-foreground">Curva ABC indisponível. Os outros indicadores continuam disponíveis.</p>
+          ) : !abcProdutos.data?.items.length ? (
+            <p className="py-4 text-center text-sm text-muted-foreground">Ainda não há dados da Curva ABC para este mês.</p>
+          ) : (
+            <>
+              <div className="flex flex-wrap gap-2 text-xs">
+                <Badge variant="outline">{fmtNum(abcProdutos.data.totalOs)} O.S. faturadas</Badge>
+                <Badge variant="outline">{fmtBrl(abcProdutos.data.faturamento)} faturamento</Badge>
+                <Badge variant="outline">Atualizada em {fmtDateTime(abcProdutos.data.updatedAt)}</Badge>
+                {"stale" in abcProdutos.data && abcProdutos.data.stale && (
+                  <Badge variant="destructive" title={"syncError" in abcProdutos.data ? abcProdutos.data.syncError : undefined}>
+                    Dados desatualizados; mostrando o último cache
+                  </Badge>
+                )}
+              </div>
+              <div className="overflow-x-auto rounded-lg border">
+                <Table>
+                  <TableHeader><TableRow>
+                    <TableHead>Classe</TableHead><TableHead>Produto / modelo</TableHead>
+                    <TableHead className="text-right">Faturamento</TableHead>
+                    <TableHead className="text-right">Participação</TableHead>
+                    <TableHead className="text-right">Acumulado</TableHead>
+                  </TableRow></TableHeader>
+                  <TableBody>
+                    {abcProdutos.data.items.slice(0, 10).map((item, index) => (
+                      <TableRow key={`${item.nome}-${index}`}>
+                        <TableCell><Badge variant={item.classe === "A" ? "default" : "outline"} className={item.classe === "A" ? "bg-blue-700" : item.classe === "B" ? "border-amber-300 text-amber-800" : "text-slate-600"}>{item.classe}</Badge></TableCell>
+                        <TableCell className="max-w-80 truncate font-medium" title={item.nome}>{item.nome}</TableCell>
+                        <TableCell className="text-right tabular-nums">{fmtBrl(Number(item.total) || 0)}</TableCell>
+                        <TableCell className="text-right tabular-nums">{fmtPct(Number(item.pct) || 0)}</TableCell>
+                        <TableCell className="text-right tabular-nums">{fmtPct(Number(item.pctAcum) || 0)}</TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            </>
+          )}
+        </CardContent>
+      </Card>
 
       <Card className="shadow-sm">
         <CardHeader className="pb-2">

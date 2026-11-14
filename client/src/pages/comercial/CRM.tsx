@@ -204,7 +204,24 @@ function ExplicacaoLinha({ linha }: { linha: string }) {
 }
 
 function ProbabilidadeBadge({ p, explicacao }: { p: number | null; explicacao: string[] }) {
-  if (p == null) return null;
+  if (p == null) {
+    const motivo = explicacao[0] ?? "Estimativa indisponível. Confira a sincronização e o histórico do CRM.";
+    return (
+      <TooltipProvider>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full border border-slate-300 bg-slate-100 text-[10px] font-bold text-slate-600 cursor-help">
+              <TrendingUp className="w-2.5 h-2.5" /> S/D
+            </span>
+          </TooltipTrigger>
+          <TooltipContent side="top" className="text-xs max-w-[280px] py-2">
+            <p className="font-semibold mb-1">Sem estimativa confiável</p>
+            <p>{motivo}</p>
+          </TooltipContent>
+        </Tooltip>
+      </TooltipProvider>
+    );
+  }
   const cor = probabilidadeCor(p);
   return (
     <TooltipProvider>
@@ -943,13 +960,16 @@ export default function CRM() {
   const [verHistorico, setVerHistorico] = useState(false);
   const [apenasNovos, setApenasNovos] = useState(false);
   const [apenasSemCompra6Meses, setApenasSemCompra6Meses] = useState(false);
+  const [apenasPendentesAcompanhamento, setApenasPendentesAcompanhamento] = useState(false);
   const [apenasHoje, setApenasHoje] = useState(false);
   const [filtroProbabilidade, setFiltroProbabilidade] = useState<"todas" | "alta" | "media" | "baixa">("todas");
   const [apenasMS, setApenasMS] = useState(false);
   const [ordenarPorProbabilidade, setOrdenarPorProbabilidade] = useState(false);
   const [filtroResposta, setFiltroResposta] = useState<string>("todos");
   const [filtroFaixa, setFiltroFaixa] = useState<string>("todas");
-  const [abaAtiva, setAbaAtiva] = useState<string>("fila");
+  // Abra o CRM na tela de propostas conhecida. Os painéis novos continuam
+  // disponíveis como abas adicionais, sem esconder os filtros legados.
+  const [abaAtiva, setAbaAtiva] = useState<string>("propostas");
   const [buscaPropostas, setBuscaPropostas] = useState("");
   const [filtroFila, setFiltroFila] = useState<"todas" | TipoProximaAcao>("todas");
   const [filtroSugestoes, setFiltroSugestoes] = useState<"todas" | "reativar">("todas");
@@ -1029,6 +1049,7 @@ export default function CRM() {
   const abertosAtualizadoEmIso = (data as any)?.abertosAtualizadoEm as string | undefined;
   const abertosAtualizadoEm = fmtTempoRelativo(abertosAtualizadoEmIso);
   const modeloProbabilidade = (data as any)?.modeloProbabilidade as {
+    status?: "disponivel" | "amostra_insuficiente" | "calibracao_indisponivel" | "indisponivel";
     propostasTreinoAte?: string | null;
     propostasHistoricoAte?: string | null;
     propostasTreino?: number;
@@ -1051,7 +1072,10 @@ export default function CRM() {
 
   // Filtros
   const propostasAtivas = useMemo(() => {
-    let list = propostas.filter(p => !p.meta2Contatos);
+    // O endpoint entrega apenas propostas ainda abertas no MubiSys. Contatos
+    // feitos nao encerram uma proposta nem a transformam em venda.
+    let list = propostas;
+    if (apenasPendentesAcompanhamento) list = list.filter(p => !p.meta2Contatos);
     if (buscaPropostas.trim()) list = list.filter(p => propostaCombinaBusca(p, buscaPropostas));
     if (apenasNovos) list = list.filter(p => p.clienteNovo);
     if (apenasSemCompra6Meses) list = list.filter(isClienteReativacao);
@@ -1079,6 +1103,7 @@ export default function CRM() {
       const hojeKey = toDateKey(new Date());
       const maxDias = faixasConfig[3].diasFim;
       list = list.filter(p => {
+        if (p.meta2Contatos) return false;
         const dates = getDates(p.dataCriacao, maxDias);
         return dates.some(d => toDateKey(d) === hojeKey);
       });
@@ -1097,7 +1122,7 @@ export default function CRM() {
     if (apenasMS) list = list.filter(p => p.estadoCliente === "MS");
     if (ordenarPorProbabilidade) list = [...list].sort((a, b) => (b.probabilidadeCompra ?? -1) - (a.probabilidadeCompra ?? -1));
     return list;
-  }, [propostas, buscaPropostas, apenasNovos, apenasSemCompra6Meses, apenasHoje, filtroResposta, filtroFaixa, filtroProbabilidade, apenasMS, ordenarPorProbabilidade, faixasConfig]);
+  }, [propostas, buscaPropostas, apenasNovos, apenasSemCompra6Meses, apenasPendentesAcompanhamento, apenasHoje, filtroResposta, filtroFaixa, filtroProbabilidade, apenasMS, ordenarPorProbabilidade, faixasConfig]);
 
   const propostasHistorico = useMemo(() => propostas.filter(p => p.meta2Contatos), [propostas]);
   const showVendedor = !vendedor;
@@ -1142,6 +1167,7 @@ export default function CRM() {
     const hojeKey = toDateKey(new Date());
     const maxDias = faixasConfig[3].diasFim;
     return propostasAtivas.filter(p => {
+      if (p.meta2Contatos) return false;
       const dates = getDates(p.dataCriacao, maxDias);
       const contatosDatas = new Set<string>();
       if (p.contato1?.data) { const d = new Date(p.contato1.data); contatosDatas.add(toDateKey(d)); }
@@ -1161,6 +1187,7 @@ export default function CRM() {
     const faixa2: Proposta[] = [];
     const faixa3: Proposta[] = [];
     for (const p of propostasAtivas) {
+      if (p.meta2Contatos) continue;
       const dates = getDates(p.dataCriacao, maxDias); // D+1..D+maxDias (dias úteis)
       const contatosDatas = new Set<string>();
       if (p.contato1?.data) { const d = new Date(p.contato1.data); contatosDatas.add(toDateKey(d)); }
@@ -1281,18 +1308,35 @@ export default function CRM() {
       )}
 
       {/* Sub-abas do CRM */}
+      {modeloProbabilidade?.status === "amostra_insuficiente" && (
+        <div className="mb-4 flex items-start gap-3 bg-amber-50 border border-amber-300 rounded-xl p-3 shadow-sm" role="status">
+          <AlertTriangle className="w-4 h-4 text-amber-600 flex-shrink-0 mt-0.5" />
+          <p className="text-xs text-amber-800">
+            Probabilidades pausadas: há {modeloProbabilidade.propostasTreino ?? 0} propostas decididas. São necessárias pelo menos 300 e calibração temporal válida. O CRM não mostra o padrão de 20% como se fosse uma estimativa.
+          </p>
+        </div>
+      )}
+      {modeloProbabilidade?.status === "indisponivel" && (
+        <div className="mb-4 flex items-start gap-3 bg-amber-50 border border-amber-300 rounded-xl p-3 shadow-sm" role="status">
+          <AlertTriangle className="w-4 h-4 text-amber-600 flex-shrink-0 mt-0.5" />
+          <p className="text-xs text-amber-800">
+            Probabilidades indisponíveis: não foi possível carregar o histórico necessário. As propostas e os filtros continuam disponíveis; atualize a tela ou peça ao administrador para conferir a sincronização do histórico.
+          </p>
+        </div>
+      )}
+      {modeloProbabilidade?.status === "calibracao_indisponivel" && (
+        <div className="mb-4 flex items-start gap-3 bg-amber-50 border border-amber-300 rounded-xl p-3 shadow-sm" role="status">
+          <AlertTriangle className="w-4 h-4 text-amber-600 flex-shrink-0 mt-0.5" />
+          <p className="text-xs text-amber-800">
+            O histórico tem {modeloProbabilidade.propostasTreino ?? 0} propostas decididas, mas a calibração temporal não ficou válida. O CRM mantém as propostas e os filtros e oculta percentuais que poderiam induzir a erro.
+          </p>
+        </div>
+      )}
       <Tabs value={abaAtiva} onValueChange={setAbaAtiva} className="w-full">
         <TabsList className="grid w-full grid-cols-2 md:grid-cols-4 xl:grid-cols-7 mb-4 h-auto">
-          <TabsTrigger value="fila" className="gap-1.5">
-            <ListTodo className="w-3.5 h-3.5" /> Fila de trabalho
-            <Badge variant="secondary" className="text-[10px] px-1.5 py-0">{filaCounts.todas}</Badge>
-          </TabsTrigger>
           <TabsTrigger value="propostas" className="gap-1.5">
             Propostas
             <Badge variant="secondary" className="text-[10px] px-1.5 py-0">{propostasAtivas.length}</Badge>
-          </TabsTrigger>
-          <TabsTrigger value="desempenho" className="gap-1.5">
-            <BarChart3 className="w-3.5 h-3.5" /> Desempenho
           </TabsTrigger>
           <TabsTrigger value="agenda" className="gap-1.5">
             Agenda de Hoje
@@ -1300,9 +1344,9 @@ export default function CRM() {
           </TabsTrigger>
           <TabsTrigger value="sugestoes" className="gap-1.5">
             <Target className="w-3.5 h-3.5" />
-            Reativar clientes
-            {sugestoesData && sugestoesReativacaoCount > 0 && (
-              <Badge variant="secondary" className="text-[10px] px-1.5 py-0 bg-red-100 text-red-700">{sugestoesReativacaoCount}</Badge>
+            Sugestões de Contato
+            {sugestoesData && sugestoesData.sugestoes.length > 0 && (
+              <Badge variant="secondary" className="text-[10px] px-1.5 py-0 bg-indigo-100 text-indigo-700">{sugestoesData.sugestoes.length}</Badge>
             )}
           </TabsTrigger>
           <TabsTrigger value="historico" className="gap-1.5">
@@ -1312,6 +1356,13 @@ export default function CRM() {
           <TabsTrigger value="auditoria" className="gap-1.5">
             <Activity className="w-3.5 h-3.5" />
             Auditoria
+          </TabsTrigger>
+          <TabsTrigger value="fila" className="gap-1.5">
+            <ListTodo className="w-3.5 h-3.5" /> Fila de trabalho
+            <Badge variant="secondary" className="text-[10px] px-1.5 py-0">{filaCounts.todas}</Badge>
+          </TabsTrigger>
+          <TabsTrigger value="desempenho" className="gap-1.5">
+            <BarChart3 className="w-3.5 h-3.5" /> Desempenho
           </TabsTrigger>
         </TabsList>
 
@@ -1385,7 +1436,7 @@ export default function CRM() {
           placeholder="Buscar cliente, telefone, vendedor ou número da proposta"
           className="h-10 w-full rounded-xl border bg-white pl-9 pr-3 text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
       </label>
-      <details className="group rounded-xl border bg-white shadow-sm">
+      <details open className="group rounded-xl border bg-white shadow-sm">
         <summary className="flex cursor-pointer list-none items-center gap-2 px-4 py-3 text-sm font-semibold text-slate-700">
           <SlidersHorizontal className="h-4 w-4" /> Filtros avançados
           <span className="text-xs font-normal text-muted-foreground">vendedor, datas, perfil de cliente, acompanhamento</span>
@@ -1433,6 +1484,14 @@ export default function CRM() {
             </button>
           ))}
         </div>
+        <button
+          onClick={() => setApenasPendentesAcompanhamento(v => !v)}
+          className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-full border transition-all ${apenasPendentesAcompanhamento ? "bg-slate-700 text-white border-slate-700" : "bg-white text-gray-600 border-gray-300 hover:border-slate-500"}`}>
+          {apenasPendentesAcompanhamento ? "Todas as abertas" : "Pendentes de acompanhamento"}
+          <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-bold ${apenasPendentesAcompanhamento ? "bg-white text-slate-700" : "bg-slate-100 text-slate-700"}`}>
+            {apenasPendentesAcompanhamento ? propostas.length : propostas.filter(p => !p.meta2Contatos).length}
+          </span>
+        </button>
         {/* Filtro Contatar Hoje */}
         {(() => {
           const hojeKey = toDateKey(new Date());
@@ -1820,7 +1879,7 @@ export default function CRM() {
         <div className="bg-white border rounded-xl shadow-sm overflow-hidden">
           <button className="w-full px-5 py-3 border-b flex items-center justify-between hover:bg-gray-50 transition-colors" onClick={() => setVerHistorico(v => !v)}>
             <h2 className="font-semibold text-sm text-muted-foreground flex items-center gap-2">
-              Histórico — 2 contatos realizados <Badge variant="outline">{propostasHistorico.length}</Badge>
+              Histórico de contato — propostas abertas que chegaram a dois contatos <Badge variant="outline">{propostasHistorico.length}</Badge>
             </h2>
             {verHistorico ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
           </button>

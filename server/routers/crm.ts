@@ -20,6 +20,7 @@ import {
 import {
   construirModeloProbabilidadeCrm,
   calcularProbabilidadeCrmAprendida,
+  CRM_PROBABILITY_MIN_TRAINING_EXAMPLES,
   CRM_PROBABILITY_MODEL_VERSION,
   classificarDesfechoExplicito,
 } from "../services/crmProbabilidadeModel";
@@ -542,6 +543,11 @@ export const crmRouter = router({
         abertosAtualizadoEm,
         abertosSyncStatus,
         modeloProbabilidade: modeloProbabilidade ? {
+          status: modeloProbabilidade.nTreino < CRM_PROBABILITY_MIN_TRAINING_EXAMPLES
+            ? "amostra_insuficiente"
+            : modeloProbabilidade.modelo.calibrador
+              ? "disponivel"
+              : "calibracao_indisponivel",
           metodo: "regressão logística com calibração temporal e sinais RFM/coorte",
           propostasTreinoAte: modeloProbabilidade.ultimaPropostaTreino?.toISOString() ?? null,
           propostasHistoricoAte: modeloProbabilidade.ultimaPropostaHistorico?.toISOString() ?? null,
@@ -552,7 +558,7 @@ export const crmRouter = router({
           clientesHistoricos: modeloProbabilidade.coberturaIdadeEmpresarial.clientesHistoricos,
           propostasComIdadeCnpj: modeloProbabilidade.coberturaIdadeEmpresarial.propostasComIdade,
           previsoesUsadasNaCalibracao: modeloProbabilidade.modelo.calibrador?.n ?? 0,
-        } : null,
+        } : { status: "indisponivel", propostasTreino: 0 },
         stats: {
           totalAberto: propostasComTelefone.length,
           totalFechado: qtdFechadas,
