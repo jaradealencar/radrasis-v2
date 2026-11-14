@@ -83,8 +83,25 @@ banco e mantém uma fila sem substituir execuções pendentes. Antes do checkout
 da migration, exige as variáveis de ambiente `DB_MIGRATION_RESOURCE_ID` e
 `DB_MIGRATION_ENVIRONMENT_READY` com os valores correspondentes ao alvo, projeto
 e recurso. Um ambiente criado implicitamente pelo GitHub não terá esse marcador
-e falhará antes de acessar o banco. O marcador não substitui revisores obrigatórios:
-eles e a opção de impedir autoaprovação precisam ser ativados no painel.
+e falhará antes de acessar o banco.
+
+### Operação com um único administrador
+
+Este repositório pode ser operado por uma única pessoa administradora. Nos
+ambientes de produção do GitHub, configure essa própria conta como revisora
+obrigatória e deixe a opção de impedir autoaprovação desativada. Assim, a mesma
+pessoa que inicia o workflow consegue aprovar a execução. Não é necessário
+adicionar um segundo revisor.
+
+A aprovação do ambiente não substitui as confirmações do workflow: para produção,
+o administrador ainda informa a identidade do destino, a confirmação
+`MIGRATE:production:<host>:<porta>/<banco>` e a autorização
+`AUTHORIZE_PRODUCTION_MIGRATION:<host>:<porta>/<banco>`. O workflow só aplica a
+migration ao SHA completo de `main` que passou no Quality. Mantenha a branch
+permitida como `main`, o segredo `DATABASE_URL` e as variáveis de identidade
+exclusivos para cada banco, e não habilite bypass de aprovação. Essas validações
+mantêm a separação dos bancos e a confirmação explícita mesmo sem revisão por
+outra pessoa.
 
 Os workflows locais não alteram configurações no GitHub ou na Vercel. Para
 ativá-los com segurança, um administrador deve configurar separadamente os
@@ -96,7 +113,8 @@ ambientes GitHub abaixo, usando host/porta/banco esperados e segredo
 - `staging-radrasis-v2-wts-deploy`
 - `production-radrasis-v2-wts-deploy`
 
-O ambiente de produção deve exigir revisores. Antes de cadastrar qualquer
+O ambiente de produção deve exigir a aprovação da conta administradora única,
+com autoaprovação permitida conforme descrito acima. Antes de cadastrar qualquer
 segredo, confirme no painel de cada projeto Vercel e no provedor de Postgres se
 os bancos de preview/staging e produção são destinos distintos. Não reutilize
 um segredo entre projetos por conveniência.
@@ -107,17 +125,18 @@ Em cada ambiente, configure os valores não secretos `DB_MIGRATION_EXPECTED_HOST
 projeto/alvo apontar ao mesmo recurso físico, pois é a chave de serialização.
 Configure também `DB_MIGRATION_ENVIRONMENT_READY` exatamente como
 `MIGRATION_ENVIRONMENT_READY:<alvo>:<projeto>:<resource-id>`. Este marcador só
-deve ser cadastrado no ambiente GitHub correspondente depois de confirmar os
-revisores, a branch permitida e o bloqueio de autoaprovação. A credencial
+deve ser cadastrado no ambiente GitHub correspondente depois de confirmar a
+aprovação da conta administradora única e a branch permitida. A credencial
 `DATABASE_URL` fica como secret de ambiente, própria daquele destino.
 
 As verificações manuais de 22/10/2026 encontraram ambientes chamados
 `Production – radrasis-v2`, `Preview – radrasis-v2`, `Production` e `Preview`,
 sem secrets ou variables de ambiente. Esses nomes não correspondem aos quatro ambientes
 dinâmicos requeridos pelo workflow. Não execute `migrate.yml` até que os quatro
-ambientes corretos existam e tenham branches permitidas, revisores independentes
-para produção, autoaprovação impedida, bypass de administrador desativado e
-secrets/variables exclusivos do recurso correspondente.
+ambientes corretos existam e tenham branches permitidas, a conta administradora
+única configurada como revisora de produção com autoaprovação permitida, bypass
+de administrador desativado e secrets/variables exclusivos do recurso
+correspondente.
 
 ## Configuração externa pendente
 
@@ -141,7 +160,9 @@ Para cada projeto Vercel, um administrador deve verificar:
 
 No GitHub, proteja `main` e configure como checks obrigatórios os jobs
 `Quality / build-and-typecheck` e `Quality / isolated-database-tests`. Configure
-revisores obrigatórios nos dois ambientes de produção. Configure a proteção de
+a conta administradora única como revisora obrigatória nos dois ambientes de
+produção, permitindo que ela própria aprove a execução e mantendo o bypass de
+administrador desativado. Configure a proteção de
 deploy da Vercel para aguardar os checks correspondentes antes da promoção. A
 Vercel documenta que uma promoção forçada pode contornar Deployment Checks; trate
 esse recurso como acesso administrativo de exceção e audite seu uso. Para cada

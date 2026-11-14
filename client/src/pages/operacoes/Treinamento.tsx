@@ -1,0 +1,3397 @@
+import { useEffect, useMemo, useRef, useState } from "react";
+import {
+  BookOpen,
+  Check,
+  CheckCircle2,
+  ChevronDown,
+  ChevronUp,
+  Download,
+  FileText,
+  GraduationCap,
+  LockKeyhole,
+  Play,
+  Plus,
+  RotateCcw,
+  Save,
+  ShieldCheck,
+  Upload,
+} from "lucide-react";
+import PageHeader from "@/components/PageHeader";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Progress } from "@/components/ui/progress";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Textarea } from "@/components/ui/textarea";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import { useAuth } from "@/hooks/useAuth";
+import { enviarArquivo } from "@/lib/upload";
+import { trpc } from "@/lib/trpc";
+import { toast } from "sonner";
+
+type AttemptView = {
+  assessmentId: number;
+  attemptId: number;
+  assignmentStudentId?: number;
+  initialQuestionIndex?: number;
+  currentQuestionAnswered?: boolean;
+  mode: "practice" | "formal";
+  title: string;
+  version: number;
+  questions: Array<{
+    key: string;
+    type: string;
+    prompt: string;
+    points: number;
+    config: any;
+  }>;
+};
+
+type SimulatedAttempt = {
+  id: string;
+  assessment: string;
+  subject: string;
+  score: number;
+  startedAt: string;
+};
+
+type SimulatedStudent = {
+  id: string;
+  name: string;
+  attempts: SimulatedAttempt[];
+};
+
+const QUESTIONS_PER_MODULE = 10;
+
+const EMPTY_SECTOR = {
+  name: "",
+  slug: "",
+  description: "",
+  position: 0,
+  isPublished: false,
+  archived: false,
+};
+const EMPTY_SUBJECT = {
+  sectorId: 0,
+  title: "",
+  slug: "",
+  description: "",
+  sourceReference: "",
+  position: 0,
+  isPublished: false,
+  archived: false,
+};
+const EMPTY_LESSON = {
+  subjectId: 0,
+  title: "",
+  summary: "",
+  content: "",
+  position: 0,
+  isPublished: false,
+  archived: false,
+};
+const EMPTY_ASSESSMENT = {
+  subjectId: 0,
+  title: "",
+  description: "",
+  allowPractice: true,
+  allowFormal: true,
+  position: 0,
+  isPublished: false,
+  archived: false,
+};
+
+const QUESTION_PROFILES = [
+  { type: "multiple_choice", label: "Múltipla escolha" },
+  { type: "multiple_select", label: "Múltipla seleção" },
+  { type: "matching", label: "Conectar elementos" },
+  { type: "sum", label: "Somatório" },
+  { type: "fill_blank", label: "Completar palavras" },
+  { type: "ordering", label: "Ordenar etapas" },
+  { type: "best_response", label: "Melhor resposta" },
+  { type: "negotiation", label: "Simulação de negociação" },
+  { type: "true_false", label: "Verdadeiro ou falso" },
+  { type: "short_answer", label: "Resposta curta" },
+] as const;
+type QuestionProfile = (typeof QUESTION_PROFILES)[number]["type"];
+
+function questionProfileTemplate(type: QuestionProfile) {
+  const templates: Record<
+    QuestionProfile,
+    { label: string; prompt: string; config: Record<string, unknown> }
+  > = {
+    multiple_choice: {
+      label: "Múltipla escolha",
+      prompt: "Escreva a pergunta de múltipla escolha.",
+      config: {
+        options: [
+          { id: "a", text: "Alternativa correta", correct: true },
+          { id: "b", text: "Outra alternativa", correct: false },
+        ],
+        explanation: "Explique por que essa é a resposta esperada.",
+      },
+    },
+    multiple_select: {
+      label: "Múltipla seleção",
+      prompt: "Selecione todas as alternativas corretas.",
+      config: {
+        allowPartialCredit: true,
+        options: [
+          { id: "a", text: "Alternativa correta", correct: true },
+          { id: "b", text: "Alternativa incorreta", correct: false },
+          { id: "c", text: "Outra alternativa correta", correct: true },
+        ],
+        explanation: "Explique o critério de seleção.",
+      },
+    },
+    matching: {
+      label: "Conectar elementos",
+      prompt: "Relacione cada etapa à sua descrição correspondente.",
+      config: {
+        allowPartialCredit: true,
+        leftItems: [
+          { id: "etapa-1", text: "Etapa 1" },
+          { id: "etapa-2", text: "Etapa 2" },
+        ],
+        rightItems: [
+          { id: "descricao-1", text: "Descrição 1" },
+          { id: "descricao-2", text: "Descrição 2" },
+        ],
+        correctPairs: [
+          { leftId: "etapa-1", rightId: "descricao-1" },
+          { leftId: "etapa-2", rightId: "descricao-2" },
+        ],
+      },
+    },
+    sum: {
+      label: "Somatório",
+      prompt: "Selecione os itens corretos e some os valores indicados.",
+      config: {
+        options: [
+          { id: "1", text: "Afirmação 1", value: 1, correct: true },
+          { id: "2", text: "Afirmação 2", value: 2, correct: false },
+          { id: "4", text: "Afirmação 3", value: 4, correct: true },
+        ],
+      },
+    },
+    fill_blank: {
+      label: "Completar palavras",
+      prompt: "Complete: O closer primeiro {{1}} o cliente.",
+      config: {
+        allowPartialCredit: true,
+        blanks: [{ id: "1", acceptedAnswers: ["escuta"] }],
+      },
+    },
+    ordering: {
+      label: "Ordenar etapas",
+      prompt: "Organize as etapas na ordem correta.",
+      config: {
+        steps: [
+          { id: "etapa-1", text: "Primeira etapa" },
+          { id: "etapa-2", text: "Segunda etapa" },
+          { id: "etapa-3", text: "Terceira etapa" },
+        ],
+        correctOrder: ["etapa-1", "etapa-2", "etapa-3"],
+      },
+    },
+    best_response: {
+      label: "Melhor resposta",
+      prompt: "Qual é a melhor resposta para a situação apresentada?",
+      config: {
+        options: [
+          { id: "a", text: "Resposta mais adequada", correct: true },
+          { id: "b", text: "Resposta menos adequada", correct: false },
+        ],
+        explanation: "Explique o que torna essa resposta mais adequada.",
+      },
+    },
+    negotiation: {
+      label: "Simulação de negociação",
+      prompt: "Como você conduziria esta conversa com o cliente?",
+      config: {
+        nodes: [
+          {
+            id: "inicio",
+            clientText: "O cliente apresenta uma situação para você conduzir.",
+            options: [
+              {
+                id: "adequada",
+                text: "Resposta adequada",
+                score: 100,
+                feedback: "Explique por que essa condução funciona.",
+              },
+              {
+                id: "inadequada",
+                text: "Resposta a revisar",
+                score: 0,
+                feedback: "Explique o que pode ser melhorado.",
+              },
+            ],
+          },
+        ],
+        finalFeedback: "Descreva os critérios gerais da simulação.",
+      },
+    },
+    true_false: {
+      label: "Verdadeiro ou falso",
+      prompt: "A afirmação apresentada está correta?",
+      config: { correctBoolean: true },
+    },
+    short_answer: {
+      label: "Resposta curta",
+      prompt: "Responda com uma frase curta.",
+      config: { acceptedAnswers: ["resposta aceita"] },
+    },
+  };
+  return templates[type];
+}
+
+function formatDate(value: Date | string | null | undefined) {
+  if (!value) return "—";
+  return new Intl.DateTimeFormat("pt-BR", {
+    dateStyle: "short",
+    timeStyle: "short",
+  }).format(new Date(value));
+}
+
+function formatFileSize(bytes: number) {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
+  return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+}
+
+function TrainingLoadError({
+  errorCode,
+  onRetry,
+  isRetrying,
+}: {
+  errorCode?: string;
+  onRetry: () => void;
+  isRetrying: boolean;
+}) {
+  return (
+    <Card className="m-6 max-w-2xl border-amber-300">
+      <CardHeader>
+        <CardTitle>Não foi possível carregar o treinamento</CardTitle>
+        <CardDescription>
+          Este ambiente pode ainda não ter recebido as tabelas da Escola
+          Corporativa. Depois que o banco for atualizado, tente novamente.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        {errorCode && (
+          <p className="text-xs text-muted-foreground">
+            Código do erro: {errorCode}
+          </p>
+        )}
+        <Button
+          type="button"
+          variant="outline"
+          onClick={onRetry}
+          disabled={isRetrying}
+        >
+          {isRetrying ? "Tentando novamente…" : "Tentar novamente"}
+        </Button>
+      </CardContent>
+    </Card>
+  );
+}
+
+async function downloadAssessmentMaterial(url: string, name: string) {
+  try {
+    const response = await fetch(url);
+    if (!response.ok) throw new Error("O arquivo não pôde ser acessado.");
+    const objectUrl = URL.createObjectURL(await response.blob());
+    const link = document.createElement("a");
+    link.href = objectUrl;
+    link.download = name;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    window.setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
+  } catch {
+    toast.error("Não foi possível baixar o arquivo. Tente consultá-lo online.");
+  }
+}
+
+function localDateTimeDaysFromNow(days: number) {
+  const value = new Date();
+  value.setDate(value.getDate() + days);
+  return new Date(value.getTime() - value.getTimezoneOffset() * 60_000)
+    .toISOString()
+    .slice(0, 16);
+}
+
+function slugify(value: string) {
+  return value
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-|-$/g, "");
+}
+
+function ContentParagraphs({ content }: { content: string }) {
+  return (
+    <div className="space-y-4 text-sm leading-7 text-slate-700">
+      {content.split(/\n\s*\n/).map((paragraph, index) => (
+        <p key={index} className="whitespace-pre-line">
+          {paragraph}
+        </p>
+      ))}
+    </div>
+  );
+}
+
+function FeedbackPanel({ feedback }: { feedback: any }) {
+  if (!feedback) return null;
+  return (
+    <div
+      className={`mt-5 rounded-xl border p-4 ${feedback.isCorrect ? "border-emerald-200 bg-emerald-50" : "border-amber-200 bg-amber-50"}`}
+    >
+      <div className="flex items-center gap-2 font-semibold">
+        {feedback.isCorrect ? (
+          <CheckCircle2 className="h-5 w-5 text-emerald-700" />
+        ) : (
+          <ShieldCheck className="h-5 w-5 text-amber-700" />
+        )}
+        {feedback.isCorrect ? "Boa escolha" : "Vamos revisar o raciocínio"}
+      </div>
+      {feedback.selectedText && (
+        <p className="mt-2 text-sm text-slate-700">
+          Sua escolha: {feedback.selectedText}
+        </p>
+      )}
+      {feedback.expectedAnswer && (
+        <p className="mt-2 text-sm text-slate-700">
+          <strong>Resposta esperada:</strong> {feedback.expectedAnswer}
+        </p>
+      )}
+      {feedback.explanation && (
+        <p className="mt-2 text-sm leading-6 text-slate-700">
+          {feedback.explanation}
+        </p>
+      )}
+      {feedback.details?.length > 0 && (
+        <ul className="mt-3 list-inside list-disc space-y-1 text-sm text-slate-600">
+          {feedback.details.map((item: string, index: number) => (
+            <li key={index}>{item}</li>
+          ))}
+        </ul>
+      )}
+      {feedback.criteria && Object.keys(feedback.criteria).length > 0 && (
+        <div className="mt-3 flex flex-wrap gap-2">
+          {Object.entries(feedback.criteria).map(([name, value]) => (
+            <Badge key={name} variant="outline">
+              {name}: {String(value)}%
+            </Badge>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function TrainingAdmin({ onChanged }: { onChanged: () => void }) {
+  const utils = trpc.useUtils();
+  const { data, isLoading, error, refetch, isRefetching } =
+    trpc.treinamento.adminCatalog.useQuery();
+  const [sectorId, setSectorId] = useState<number | undefined>();
+  const [subjectId, setSubjectId] = useState<number | undefined>();
+  const [lessonId, setLessonId] = useState<number | undefined>();
+  const [assessmentId, setAssessmentId] = useState<number | undefined>();
+  const [sector, setSector] = useState<any>(EMPTY_SECTOR);
+  const [subject, setSubject] = useState<any>(EMPTY_SUBJECT);
+  const [lesson, setLesson] = useState<any>(EMPTY_LESSON);
+  const [assessment, setAssessment] = useState<any>(EMPTY_ASSESSMENT);
+  const [questionJson, setQuestionJson] = useState("[]");
+  const [questionProfile, setQuestionProfile] =
+    useState<QuestionProfile>("multiple_choice");
+  const [newQuestionPrompt, setNewQuestionPrompt] = useState("");
+  const [newQuestionPoints, setNewQuestionPoints] = useState(1);
+  const [uploadingMaterial, setUploadingMaterial] = useState(false);
+  const [materialUploadProgress, setMaterialUploadProgress] = useState(0);
+  const materialInputRef = useRef<HTMLInputElement>(null);
+  const [reportFilter, setReportFilter] = useState<number | undefined>();
+  const [assignmentAssessmentId, setAssignmentAssessmentId] = useState<
+    number | undefined
+  >();
+  const [assignmentDeadline, setAssignmentDeadline] = useState(() =>
+    localDateTimeDaysFromNow(7)
+  );
+  const [assignmentMaxAttempts, setAssignmentMaxAttempts] = useState(1);
+  const [assignmentStudentIds, setAssignmentStudentIds] = useState<string[]>(
+    []
+  );
+  const { data: lessonVersions = [] } =
+    trpc.treinamento.lessonVersions.useQuery(
+      { lessonId: lessonId ?? 0 },
+      { enabled: Boolean(lessonId) }
+    );
+  const {
+    data: assessmentMaterials = [],
+    isLoading: assessmentMaterialsLoading,
+  } = trpc.treinamento.listAssessmentMaterials.useQuery(
+    { assessmentId: assessmentId ?? 0 },
+    { enabled: Boolean(assessmentId) }
+  );
+
+  const saveSector = trpc.treinamento.saveSector.useMutation({
+    onSuccess: async () => {
+      await utils.treinamento.adminCatalog.invalidate();
+      await utils.treinamento.catalog.invalidate();
+      toast.success("Setor salvo.");
+      onChanged();
+    },
+  });
+  const saveSubject = trpc.treinamento.saveSubject.useMutation({
+    onSuccess: async () => {
+      await utils.treinamento.adminCatalog.invalidate();
+      await utils.treinamento.catalog.invalidate();
+      toast.success("Matéria salva.");
+      onChanged();
+    },
+  });
+  const saveLesson = trpc.treinamento.saveLesson.useMutation({
+    onSuccess: async () => {
+      await utils.treinamento.adminCatalog.invalidate();
+      await utils.treinamento.catalog.invalidate();
+      toast.success("Aula salva.");
+      onChanged();
+    },
+  });
+  const saveAssessment = trpc.treinamento.saveAssessment.useMutation({
+    onSuccess: async () => {
+      await utils.treinamento.adminCatalog.invalidate();
+      await utils.treinamento.catalog.invalidate();
+      toast.success("Avaliação salva em nova versão.");
+      onChanged();
+    },
+  });
+  const addAssessmentMaterial =
+    trpc.treinamento.addAssessmentMaterial.useMutation({
+      onSuccess: async () => {
+        if (assessmentId)
+          await utils.treinamento.listAssessmentMaterials.invalidate({
+            assessmentId,
+          });
+        if (assessment?.subjectId)
+          await utils.treinamento.subject.invalidate({
+            id: assessment.subjectId,
+          });
+        toast.success("Material de apoio anexado à avaliação.");
+      },
+    });
+  const createExamAssignment =
+    trpc.treinamento.createExamAssignment.useMutation({
+      onSuccess: async result => {
+        await utils.treinamento.assignmentReport.invalidate();
+        setAssignmentStudentIds([]);
+        toast.success(
+          "Prova aplicada a " +
+            result.assigned +
+            " aluno(s). Prazo e limite de tentativas configurados."
+        );
+      },
+      onError: error => toast.error(error.message),
+    });
+  const { data: results = [], isLoading: resultsLoading } =
+    trpc.treinamento.resultsReport.useQuery({ subjectId: reportFilter });
+  const { data: leaderboards = [], isLoading: leaderboardsLoading } =
+    trpc.treinamento.leaderboardReport.useQuery({ subjectId: reportFilter });
+  const assignmentAssessment = data?.assessments.find(
+    item => item.id === assignmentAssessmentId
+  );
+  const { data: enrolledStudents = [], isLoading: enrolledStudentsLoading } =
+    trpc.treinamento.enrolledStudents.useQuery(
+      { subjectId: assignmentAssessment?.subjectId ?? 0 },
+      { enabled: Boolean(assignmentAssessment?.subjectId) }
+    );
+  const { data: examAssignments = [], isLoading: examAssignmentsLoading } =
+    trpc.treinamento.assignmentReport.useQuery({});
+  const [simulationStudents, setSimulationStudents] = useState<
+    SimulatedStudent[]
+  >([]);
+  const [simulationStudentCount, setSimulationStudentCount] = useState(12);
+  const [simulationMaxAttempts, setSimulationMaxAttempts] = useState(4);
+  const [simulationDays, setSimulationDays] = useState(30);
+  const studentSummaries = useMemo(() => {
+    const grouped = new Map<
+      string,
+      { name: string; attempts: typeof results }
+    >();
+    for (const attempt of results) {
+      const student = grouped.get(attempt.userId) ?? {
+        name: attempt.userName,
+        attempts: [],
+      };
+      student.attempts.push(attempt);
+      grouped.set(attempt.userId, student);
+    }
+    return [...grouped.entries()]
+      .map(([userId, student]) => ({ userId, ...student }))
+      .sort((a, b) => a.name.localeCompare(b.name, "pt-BR"));
+  }, [results]);
+
+  useEffect(() => {
+    if (!data) return;
+    if (sectorId === undefined && data.sectors[0])
+      setSectorId(data.sectors[0].id);
+    if (subjectId === undefined && data.subjects[0])
+      setSubjectId(data.subjects[0].id);
+    if (lessonId === undefined && data.lessons[0])
+      setLessonId(data.lessons[0].id);
+    if (assessmentId === undefined && data.assessments[0])
+      setAssessmentId(data.assessments[0].id);
+  }, [data, sectorId, subjectId, lessonId, assessmentId]);
+
+  useEffect(() => {
+    if (assignmentAssessmentId !== undefined || !data) return;
+    const firstFormalAssessment = data.assessments.find(
+      item => item.allowFormal && item.isPublished && !item.archivedAt
+    );
+    if (firstFormalAssessment)
+      setAssignmentAssessmentId(firstFormalAssessment.id);
+  }, [data, assignmentAssessmentId]);
+
+  useEffect(() => {
+    if (!data) return;
+    const selected = data.sectors.find(row => row.id === sectorId);
+    if (selected)
+      setSector({
+        id: selected.id,
+        name: selected.name,
+        slug: selected.slug,
+        description: selected.description,
+        position: selected.position,
+        isPublished: selected.isPublished,
+        archived: Boolean(selected.archivedAt),
+      });
+  }, [data, sectorId]);
+  useEffect(() => {
+    if (!data) return;
+    const selected = data.subjects.find(row => row.id === subjectId);
+    if (selected)
+      setSubject({
+        id: selected.id,
+        sectorId: selected.sectorId,
+        title: selected.title,
+        slug: selected.slug,
+        description: selected.description,
+        sourceReference: selected.sourceReference ?? "",
+        position: selected.position,
+        isPublished: selected.isPublished,
+        archived: Boolean(selected.archivedAt),
+      });
+  }, [data, subjectId]);
+  useEffect(() => {
+    if (!data) return;
+    const selected = data.lessons.find(row => row.id === lessonId);
+    if (selected)
+      setLesson({
+        id: selected.id,
+        subjectId: selected.subjectId,
+        title: selected.title,
+        summary: selected.summary,
+        content: selected.content,
+        position: selected.position,
+        isPublished: selected.isPublished,
+        archived: Boolean(selected.archivedAt),
+      });
+  }, [data, lessonId]);
+  useEffect(() => {
+    if (!data) return;
+    const selected = data.assessments.find(row => row.id === assessmentId);
+    if (selected) {
+      setAssessment({
+        id: selected.id,
+        subjectId: selected.subjectId,
+        title: selected.title,
+        description: selected.description,
+        allowPractice: selected.allowPractice,
+        allowFormal: selected.allowFormal,
+        position: selected.position,
+        isPublished: selected.isPublished,
+        archived: Boolean(selected.archivedAt),
+      });
+      setQuestionJson(
+        JSON.stringify(
+          data.questions
+            .filter(q => q.assessmentId === selected.id)
+            .map(q => ({
+              key: q.questionKey,
+              type: q.type,
+              prompt: q.prompt,
+              points: q.points,
+              position: q.position,
+              config: q.config,
+            })),
+          null,
+          2
+        )
+      );
+    }
+  }, [data, assessmentId]);
+
+  if (isLoading)
+    return (
+      <p className="p-6 text-sm text-slate-500">
+        Carregando conteúdo de autoria…
+      </p>
+    );
+  if (error || !data)
+    return (
+      <TrainingLoadError
+        errorCode={error?.data?.code}
+        onRetry={() => void refetch()}
+        isRetrying={isRefetching}
+      />
+    );
+
+  const checkboxes = (
+    value: boolean,
+    update: (next: boolean) => void,
+    label: string
+  ) => (
+    <label className="flex items-center gap-2 text-sm">
+      <input
+        type="checkbox"
+        checked={value}
+        onChange={event => update(event.target.checked)}
+      />
+      {label}
+    </label>
+  );
+  const saveQuestions = () => {
+    let parsed: any[];
+    try {
+      parsed = JSON.parse(questionJson);
+      if (!Array.isArray(parsed))
+        throw new Error("O conteúdo deve ser uma lista JSON.");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "JSON inválido.");
+      return;
+    }
+    saveAssessment.mutate({ ...assessment, questions: parsed });
+  };
+
+  const uploadAssessmentMaterial = async (
+    event: React.ChangeEvent<HTMLInputElement>
+  ) => {
+    const file = event.currentTarget.files?.[0];
+    event.currentTarget.value = "";
+    if (!file) return;
+    if (!assessmentId) {
+      toast.error("Salve a avaliação antes de anexar materiais.");
+      return;
+    }
+    if (!/\.(pdf|docx?|pptx?|xlsx?|txt|png|jpe?g|webp)$/i.test(file.name)) {
+      toast.error(
+        "Envie PDF, Word, PowerPoint, Excel, TXT ou uma imagem PNG/JPG/WEBP."
+      );
+      return;
+    }
+    if (file.size > 32 * 1024 * 1024) {
+      toast.error("O arquivo pode ter no máximo 32 MB.");
+      return;
+    }
+
+    setUploadingMaterial(true);
+    setMaterialUploadProgress(0);
+    let uploaded = false;
+    try {
+      const uploadedFile = await enviarArquivo("materialAvaliacao", file, {
+        onProgress: setMaterialUploadProgress,
+      });
+      uploaded = true;
+      await addAssessmentMaterial.mutateAsync({
+        assessmentId,
+        name: uploadedFile.fileName,
+        url: uploadedFile.url,
+        fileKey: uploadedFile.key,
+        mimeType: uploadedFile.mimeType,
+        sizeBytes: uploadedFile.fileSize,
+      });
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Erro desconhecido.";
+      toast.error(
+        uploaded
+          ? `O arquivo foi enviado, mas não foi vinculado à avaliação: ${message}`
+          : `Não foi possível enviar o material: ${message}`
+      );
+    } finally {
+      setUploadingMaterial(false);
+      setMaterialUploadProgress(0);
+    }
+  };
+
+  const addQuestionProfile = () => {
+    let parsed: any[];
+    try {
+      parsed = JSON.parse(questionJson);
+      if (!Array.isArray(parsed))
+        throw new Error("O conteúdo deve ser uma lista JSON.");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "JSON inválido.");
+      return;
+    }
+    const template = questionProfileTemplate(questionProfile);
+    const nextPosition =
+      parsed.reduce(
+        (maximum, question) =>
+          Math.max(maximum, Number(question?.position) || 0),
+        0
+      ) + 10;
+    parsed.push({
+      key: `questao-${Date.now()}-${parsed.length + 1}`,
+      type: questionProfile,
+      prompt: newQuestionPrompt.trim() || template.prompt,
+      points: newQuestionPoints,
+      position: nextPosition,
+      config: template.config,
+    });
+    setQuestionJson(JSON.stringify(parsed, null, 2));
+    setNewQuestionPrompt("");
+    toast.success(
+      `Modelo “${template.label}” adicionado. Revise alternativas, respostas corretas e instruções no JSON.`
+    );
+  };
+
+  const generateSimulation = () => {
+    const assessments = data.assessments.filter(
+      item =>
+        !item.archivedAt && (!reportFilter || item.subjectId === reportFilter)
+    );
+    if (assessments.length === 0) {
+      toast.error("Não há avaliações disponíveis para este filtro.");
+      return;
+    }
+
+    const studentCount = Math.min(100, Math.max(1, simulationStudentCount));
+    const maxAttempts = Math.min(20, Math.max(1, simulationMaxAttempts));
+    const days = Math.min(365, Math.max(1, simulationDays));
+    const now = Date.now();
+    const generated = Array.from({ length: studentCount }, (_, index) => {
+      const attemptCount = 1 + Math.floor(Math.random() * maxAttempts);
+      const attempts = Array.from(
+        { length: attemptCount },
+        (_, attemptIndex) => {
+          const assessment =
+            assessments[Math.floor(Math.random() * assessments.length)];
+          const startedAt = new Date(
+            now - Math.random() * days * 24 * 60 * 60 * 1000
+          ).toISOString();
+          return {
+            id: `sim-${index}-${attemptIndex}-${now}`,
+            assessment: assessment.title,
+            subject:
+              data.subjects.find(subject => subject.id === assessment.subjectId)
+                ?.title ?? "Matéria",
+            score: Math.round((3.5 + Math.random() * 6.5) * 100) / 100,
+            startedAt,
+          };
+        }
+      ).sort(
+        (a, b) =>
+          new Date(b.startedAt).getTime() - new Date(a.startedAt).getTime()
+      );
+      return {
+        id: `sim-aluno-${index}-${now}`,
+        name: `Aluno de teste ${String(index + 1).padStart(2, "0")}`,
+        attempts,
+      };
+    });
+    setSimulationStudents(generated);
+    toast.success(`${studentCount} alunos fictícios simulados.`);
+  };
+
+  return (
+    <div className="space-y-6">
+      <Card>
+        <CardHeader>
+          <CardTitle>Manutenção do conteúdo</CardTitle>
+          <CardDescription>
+            Setores, matérias, aulas e avaliações têm publicação e ordem
+            próprias. Arquivar mantém o histórico. Salvar uma avaliação cria uma
+            nova versão; tentativas anteriores preservam o snapshot usado.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="grid gap-6 xl:grid-cols-2">
+          <section className="space-y-3 rounded-xl border p-4">
+            <div className="flex items-center justify-between">
+              <h3 className="font-semibold">Setores</h3>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => {
+                  setSectorId(0);
+                  setSector({ ...EMPTY_SECTOR });
+                }}
+              >
+                <Plus className="mr-1 h-4 w-4" />
+                Novo
+              </Button>
+            </div>
+            <select
+              className="w-full rounded-md border bg-background px-3 py-2 text-sm"
+              value={sectorId ?? ""}
+              onChange={event => setSectorId(Number(event.target.value) || 0)}
+            >
+              <option value="0">Novo setor</option>
+              {data.sectors.map(row => (
+                <option key={row.id} value={row.id}>
+                  {row.name}
+                  {row.archivedAt ? " (arquivado)" : ""}
+                </option>
+              ))}
+            </select>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div>
+                <Label>Nome</Label>
+                <Input
+                  value={sector.name}
+                  onChange={e =>
+                    setSector({
+                      ...sector,
+                      name: e.target.value,
+                      slug: sector.id ? sector.slug : slugify(e.target.value),
+                    })
+                  }
+                />
+              </div>
+              <div>
+                <Label>Slug</Label>
+                <Input
+                  value={sector.slug}
+                  onChange={e => setSector({ ...sector, slug: e.target.value })}
+                />
+              </div>
+            </div>
+            <div>
+              <Label>Descrição</Label>
+              <Textarea
+                value={sector.description}
+                onChange={e =>
+                  setSector({ ...sector, description: e.target.value })
+                }
+              />
+            </div>
+            <div className="flex flex-wrap gap-4">
+              {checkboxes(
+                sector.isPublished,
+                v => setSector({ ...sector, isPublished: v }),
+                "Publicado"
+              )}
+              {checkboxes(
+                sector.archived,
+                v => setSector({ ...sector, archived: v }),
+                "Arquivado"
+              )}
+            </div>
+            <div className="flex items-center gap-3">
+              <Label>Ordem</Label>
+              <Input
+                className="w-24"
+                type="number"
+                value={sector.position}
+                onChange={e =>
+                  setSector({ ...sector, position: Number(e.target.value) })
+                }
+              />
+              <Button
+                size="sm"
+                onClick={() => saveSector.mutate(sector)}
+                disabled={saveSector.isPending}
+              >
+                <Save className="mr-1 h-4 w-4" />
+                Salvar setor
+              </Button>
+            </div>
+          </section>
+
+          <section className="space-y-3 rounded-xl border p-4">
+            <div className="flex items-center justify-between">
+              <h3 className="font-semibold">Matérias</h3>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => {
+                  setSubjectId(0);
+                  setSubject({
+                    ...EMPTY_SUBJECT,
+                    sectorId: data.sectors[0]?.id ?? 0,
+                  });
+                }}
+              >
+                <Plus className="mr-1 h-4 w-4" />
+                Nova
+              </Button>
+            </div>
+            <select
+              className="w-full rounded-md border bg-background px-3 py-2 text-sm"
+              value={subjectId ?? ""}
+              onChange={event => setSubjectId(Number(event.target.value) || 0)}
+            >
+              <option value="0">Nova matéria</option>
+              {data.subjects.map(row => (
+                <option key={row.id} value={row.id}>
+                  {row.title}
+                  {row.archivedAt ? " (arquivada)" : ""}
+                </option>
+              ))}
+            </select>
+            <div>
+              <Label>Setor</Label>
+              <select
+                className="w-full rounded-md border bg-background px-3 py-2 text-sm"
+                value={subject.sectorId}
+                onChange={e =>
+                  setSubject({ ...subject, sectorId: Number(e.target.value) })
+                }
+              >
+                {data.sectors.map(row => (
+                  <option key={row.id} value={row.id}>
+                    {row.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div>
+                <Label>Nome da matéria</Label>
+                <Input
+                  value={subject.title}
+                  onChange={e =>
+                    setSubject({
+                      ...subject,
+                      title: e.target.value,
+                      slug: subject.id ? subject.slug : slugify(e.target.value),
+                    })
+                  }
+                />
+              </div>
+              <div>
+                <Label>Slug</Label>
+                <Input
+                  value={subject.slug}
+                  onChange={e =>
+                    setSubject({ ...subject, slug: e.target.value })
+                  }
+                />
+              </div>
+            </div>
+            <div>
+              <Label>Descrição</Label>
+              <Textarea
+                value={subject.description}
+                onChange={e =>
+                  setSubject({ ...subject, description: e.target.value })
+                }
+              />
+            </div>
+            <div>
+              <Label>Fonte de conteúdo</Label>
+              <Input
+                value={subject.sourceReference}
+                onChange={e =>
+                  setSubject({ ...subject, sourceReference: e.target.value })
+                }
+              />
+            </div>
+            <div className="flex flex-wrap gap-4">
+              {checkboxes(
+                subject.isPublished,
+                v => setSubject({ ...subject, isPublished: v }),
+                "Publicado"
+              )}
+              {checkboxes(
+                subject.archived,
+                v => setSubject({ ...subject, archived: v }),
+                "Arquivado"
+              )}
+            </div>
+            <div className="flex items-center gap-3">
+              <Label>Ordem</Label>
+              <Input
+                className="w-24"
+                type="number"
+                value={subject.position}
+                onChange={e =>
+                  setSubject({ ...subject, position: Number(e.target.value) })
+                }
+              />
+              <Button
+                size="sm"
+                onClick={() => saveSubject.mutate(subject)}
+                disabled={saveSubject.isPending}
+              >
+                <Save className="mr-1 h-4 w-4" />
+                Salvar matéria
+              </Button>
+            </div>
+          </section>
+
+          <section className="space-y-3 rounded-xl border p-4">
+            <div className="flex items-center justify-between">
+              <h3 className="font-semibold">Aulas</h3>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => {
+                  setLessonId(0);
+                  setLesson({
+                    ...EMPTY_LESSON,
+                    subjectId: data.subjects[0]?.id ?? 0,
+                  });
+                }}
+              >
+                <Plus className="mr-1 h-4 w-4" />
+                Nova
+              </Button>
+            </div>
+            <select
+              className="w-full rounded-md border bg-background px-3 py-2 text-sm"
+              value={lessonId ?? ""}
+              onChange={event => setLessonId(Number(event.target.value) || 0)}
+            >
+              <option value="0">Nova aula</option>
+              {data.lessons.map(row => (
+                <option key={row.id} value={row.id}>
+                  {row.title}
+                  {row.archivedAt ? " (arquivada)" : ""}
+                </option>
+              ))}
+            </select>
+            <div>
+              <Label>Matéria</Label>
+              <select
+                className="w-full rounded-md border bg-background px-3 py-2 text-sm"
+                value={lesson.subjectId}
+                onChange={e =>
+                  setLesson({ ...lesson, subjectId: Number(e.target.value) })
+                }
+              >
+                {data.subjects.map(row => (
+                  <option key={row.id} value={row.id}>
+                    {row.title}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <Label>Título</Label>
+              <Input
+                value={lesson.title}
+                onChange={e => setLesson({ ...lesson, title: e.target.value })}
+              />
+            </div>
+            <div>
+              <Label>Resumo</Label>
+              <Textarea
+                value={lesson.summary}
+                onChange={e =>
+                  setLesson({ ...lesson, summary: e.target.value })
+                }
+              />
+            </div>
+            <div>
+              <Label>Conteúdo (parágrafos separados por linha em branco)</Label>
+              <Textarea
+                className="min-h-44"
+                value={lesson.content}
+                onChange={e =>
+                  setLesson({ ...lesson, content: e.target.value })
+                }
+              />
+            </div>
+            {lessonId && lessonVersions.length > 0 && (
+              <div className="space-y-2 rounded-lg bg-muted/40 p-3">
+                <p className="text-sm font-medium">
+                  Histórico de versões do conteúdo
+                </p>
+                {lessonVersions.map(version => (
+                  <details
+                    key={version.version}
+                    className="rounded-md border bg-background p-2"
+                  >
+                    <summary className="cursor-pointer text-sm">
+                      v{version.version} · {formatDate(version.createdAt)}
+                      {version.author ? ` · ${version.author}` : ""}
+                    </summary>
+                    <p className="mt-2 text-sm font-medium">{version.title}</p>
+                    {version.summary && (
+                      <p className="mt-1 text-sm text-muted-foreground">
+                        {version.summary}
+                      </p>
+                    )}
+                    <div className="mt-2 max-h-56 overflow-auto">
+                      <ContentParagraphs content={version.content} />
+                    </div>
+                  </details>
+                ))}
+              </div>
+            )}
+            <div className="flex flex-wrap gap-4">
+              {checkboxes(
+                lesson.isPublished,
+                v => setLesson({ ...lesson, isPublished: v }),
+                "Publicado"
+              )}
+              {checkboxes(
+                lesson.archived,
+                v => setLesson({ ...lesson, archived: v }),
+                "Arquivado"
+              )}
+            </div>
+            <div className="flex items-center gap-3">
+              <Label>Ordem</Label>
+              <Input
+                className="w-24"
+                type="number"
+                value={lesson.position}
+                onChange={e =>
+                  setLesson({ ...lesson, position: Number(e.target.value) })
+                }
+              />
+              <Button
+                size="sm"
+                onClick={() => saveLesson.mutate(lesson)}
+                disabled={saveLesson.isPending}
+              >
+                <Save className="mr-1 h-4 w-4" />
+                Salvar aula
+              </Button>
+            </div>
+          </section>
+
+          <section className="space-y-3 rounded-xl border p-4">
+            <div className="flex items-center justify-between">
+              <h3 className="font-semibold">Avaliações e questões</h3>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => {
+                  setAssessmentId(0);
+                  setAssessment({
+                    ...EMPTY_ASSESSMENT,
+                    subjectId: data.subjects[0]?.id ?? 0,
+                  });
+                  setQuestionJson("[]");
+                }}
+              >
+                <Plus className="mr-1 h-4 w-4" />
+                Nova
+              </Button>
+            </div>
+            <select
+              className="w-full rounded-md border bg-background px-3 py-2 text-sm"
+              value={assessmentId ?? ""}
+              onChange={event =>
+                setAssessmentId(Number(event.target.value) || 0)
+              }
+            >
+              <option value="0">Nova avaliação</option>
+              {data.assessments.map(row => (
+                <option key={row.id} value={row.id}>
+                  {row.title}
+                  {row.archivedAt ? " (arquivada)" : ""}
+                </option>
+              ))}
+            </select>
+            <div>
+              <Label>Matéria</Label>
+              <select
+                className="w-full rounded-md border bg-background px-3 py-2 text-sm"
+                value={assessment.subjectId}
+                onChange={e =>
+                  setAssessment({
+                    ...assessment,
+                    subjectId: Number(e.target.value),
+                  })
+                }
+              >
+                {data.subjects.map(row => (
+                  <option key={row.id} value={row.id}>
+                    {row.title}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <Label>Título</Label>
+              <Input
+                value={assessment.title}
+                onChange={e =>
+                  setAssessment({ ...assessment, title: e.target.value })
+                }
+              />
+            </div>
+            <div>
+              <Label>Descrição</Label>
+              <Textarea
+                value={assessment.description}
+                onChange={e =>
+                  setAssessment({ ...assessment, description: e.target.value })
+                }
+              />
+            </div>
+            <div className="flex flex-wrap gap-4">
+              {checkboxes(
+                assessment.allowPractice,
+                v => setAssessment({ ...assessment, allowPractice: v }),
+                "Modo prática"
+              )}
+              {checkboxes(
+                assessment.allowFormal,
+                v => setAssessment({ ...assessment, allowFormal: v }),
+                "Modo formal"
+              )}
+              {checkboxes(
+                assessment.isPublished,
+                v => setAssessment({ ...assessment, isPublished: v }),
+                "Publicado"
+              )}
+              {checkboxes(
+                assessment.archived,
+                v => setAssessment({ ...assessment, archived: v }),
+                "Arquivado"
+              )}
+            </div>
+            <div className="flex items-center gap-3">
+              <Label>Ordem</Label>
+              <Input
+                className="w-24"
+                type="number"
+                value={assessment.position}
+                onChange={e =>
+                  setAssessment({
+                    ...assessment,
+                    position: Number(e.target.value),
+                  })
+                }
+              />
+            </div>
+            <div>
+              <section className="mb-4 space-y-3 rounded-lg border p-4">
+                <div>
+                  <h3 className="font-semibold">
+                    Adicionar questão por perfil
+                  </h3>
+                  <p className="text-sm text-muted-foreground">
+                    Escolha um dos 10 modelos. O sistema insere uma estrutura
+                    inicial para você completar e revisar no editor abaixo.
+                  </p>
+                </div>
+                <div className="grid gap-3 md:grid-cols-[1fr_2fr_120px_auto] md:items-end">
+                  <div className="space-y-2">
+                    <Label htmlFor="question-profile">Perfil da questão</Label>
+                    <select
+                      id="question-profile"
+                      className="w-full rounded-md border bg-background px-3 py-2 text-sm"
+                      value={questionProfile}
+                      onChange={event =>
+                        setQuestionProfile(
+                          event.target.value as QuestionProfile
+                        )
+                      }
+                    >
+                      {QUESTION_PROFILES.map(profile => (
+                        <option key={profile.type} value={profile.type}>
+                          {profile.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="new-question-prompt">Enunciado</Label>
+                    <Input
+                      id="new-question-prompt"
+                      value={newQuestionPrompt}
+                      onChange={event =>
+                        setNewQuestionPrompt(event.target.value)
+                      }
+                      placeholder={
+                        questionProfileTemplate(questionProfile).prompt
+                      }
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="new-question-points">Pontos</Label>
+                    <Input
+                      id="new-question-points"
+                      type="number"
+                      min={1}
+                      max={100}
+                      value={newQuestionPoints}
+                      onChange={event =>
+                        setNewQuestionPoints(
+                          Math.min(
+                            100,
+                            Math.max(
+                              1,
+                              Math.floor(Number(event.target.value) || 1)
+                            )
+                          )
+                        )
+                      }
+                    />
+                  </div>
+                  <Button type="button" onClick={addQuestionProfile}>
+                    <Plus className="mr-1 h-4 w-4" />
+                    Adicionar
+                  </Button>
+                </div>
+              </section>
+              <Label>Questões em JSON</Label>
+              <Textarea
+                className="min-h-72 font-mono text-xs"
+                value={questionJson}
+                onChange={e => setQuestionJson(e.target.value)}
+              />
+              <p className="mt-2 text-xs text-slate-500">
+                Os modelos cobrem múltipla escolha, múltipla seleção, conectar
+                elementos, somatório, completar palavras, ordenar etapas, melhor
+                resposta, negociação, verdadeiro ou falso e resposta curta. Cada
+                item usa key, type, prompt, points, position e config. O
+                gabarito nunca é enviado ao aluno antes da correção.
+              </p>
+            </div>
+            <Button onClick={saveQuestions} disabled={saveAssessment.isPending}>
+              <Save className="mr-1 h-4 w-4" />
+              Salvar avaliação e nova versão
+            </Button>
+            <section className="space-y-3 rounded-lg border p-4">
+              <div>
+                <h3 className="font-semibold">
+                  Material de apoio da avaliação
+                </h3>
+                <p className="text-sm text-muted-foreground">
+                  Envie arquivos para os alunos consultarem online ou baixarem.
+                  Aceita PDF, Word, PowerPoint, Excel, TXT e imagens
+                  PNG/JPG/WEBP de até 32 MB.
+                </p>
+              </div>
+              {!assessmentId ? (
+                <p className="text-sm text-amber-700">
+                  Salve a avaliação primeiro; depois selecione-a para anexar os
+                  materiais.
+                </p>
+              ) : (
+                <>
+                  <input
+                    ref={materialInputRef}
+                    type="file"
+                    className="hidden"
+                    accept=".pdf,.doc,.docx,.ppt,.pptx,.xls,.xlsx,.txt,.png,.jpg,.jpeg,.webp"
+                    onChange={uploadAssessmentMaterial}
+                  />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => materialInputRef.current?.click()}
+                    disabled={
+                      uploadingMaterial || addAssessmentMaterial.isPending
+                    }
+                  >
+                    <Upload className="mr-2 h-4 w-4" />
+                    {uploadingMaterial
+                      ? `Enviando ${Math.round(materialUploadProgress)}%`
+                      : "Enviar material"}
+                  </Button>
+                  {assessmentMaterialsLoading ? (
+                    <p className="text-sm text-muted-foreground">
+                      Carregando materiais...
+                    </p>
+                  ) : assessmentMaterials.length > 0 ? (
+                    <ul className="space-y-2">
+                      {assessmentMaterials.map(material => (
+                        <li
+                          key={material.id}
+                          className="flex flex-wrap items-center gap-2 rounded-md bg-muted/40 p-3 text-sm"
+                        >
+                          <FileText className="h-4 w-4 shrink-0 text-muted-foreground" />
+                          <span className="min-w-0 flex-1 break-all">
+                            {material.name}
+                            <span className="ml-2 text-muted-foreground">
+                              {formatFileSize(material.sizeBytes)}
+                            </span>
+                          </span>
+                          <a
+                            className="inline-flex items-center gap-1 font-medium text-primary hover:underline"
+                            href={material.url}
+                            target="_blank"
+                            rel="noreferrer"
+                          >
+                            <FileText className="h-4 w-4" />
+                            Abrir online
+                          </a>
+                          <button
+                            type="button"
+                            className="inline-flex items-center gap-1 font-medium text-primary hover:underline"
+                            onClick={() =>
+                              downloadAssessmentMaterial(
+                                material.url,
+                                material.name
+                              )
+                            }
+                          >
+                            <Download className="h-4 w-4" />
+                            Baixar
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <p className="text-sm text-muted-foreground">
+                      Nenhum material anexado a esta avaliação.
+                    </p>
+                  )}
+                </>
+              )}
+            </section>
+          </section>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Aplicar prova</CardTitle>
+          <CardDescription>
+            Escolha uma avaliação formal publicada, selecione alunos já
+            matriculados e defina o prazo e o limite de tentativas.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-5">
+          <div className="grid gap-4 md:grid-cols-3">
+            <div className="space-y-2">
+              <Label htmlFor="assignment-assessment">Avaliação formal</Label>
+              <select
+                id="assignment-assessment"
+                className="w-full rounded-md border bg-background px-3 py-2 text-sm"
+                value={assignmentAssessmentId ?? ""}
+                onChange={event => {
+                  setAssignmentAssessmentId(
+                    Number(event.target.value) || undefined
+                  );
+                  setAssignmentStudentIds([]);
+                }}
+              >
+                <option value="">Selecione uma avaliação</option>
+                {data.assessments
+                  .filter(
+                    item =>
+                      item.allowFormal && item.isPublished && !item.archivedAt
+                  )
+                  .map(item => (
+                    <option key={item.id} value={item.id}>
+                      {item.title}
+                    </option>
+                  ))}
+              </select>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="assignment-deadline">Data limite</Label>
+              <Input
+                id="assignment-deadline"
+                type="datetime-local"
+                value={assignmentDeadline}
+                onChange={event => setAssignmentDeadline(event.target.value)}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="assignment-max-attempts">
+                Tentativas permitidas por aluno
+              </Label>
+              <Input
+                id="assignment-max-attempts"
+                type="number"
+                min={1}
+                max={20}
+                value={assignmentMaxAttempts}
+                onChange={event =>
+                  setAssignmentMaxAttempts(
+                    Math.min(20, Math.max(1, Number(event.target.value) || 1))
+                  )
+                }
+              />
+            </div>
+          </div>
+          {assignmentAssessment && (
+            <section className="space-y-3 rounded-xl border p-4">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div>
+                  <h3 className="font-semibold">Alunos matriculados</h3>
+                  <p className="text-sm text-muted-foreground">
+                    Matéria:{" "}
+                    {data.subjects.find(
+                      item => item.id === assignmentAssessment.subjectId
+                    )?.title ?? "—"}
+                  </p>
+                </div>
+                <div className="flex gap-2">
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    onClick={() =>
+                      setAssignmentStudentIds(
+                        enrolledStudents.map(student => student.userId)
+                      )
+                    }
+                    disabled={
+                      enrolledStudentsLoading || enrolledStudents.length === 0
+                    }
+                  >
+                    Selecionar todos
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    onClick={() => setAssignmentStudentIds([])}
+                    disabled={assignmentStudentIds.length === 0}
+                  >
+                    Limpar seleção
+                  </Button>
+                </div>
+              </div>
+              {enrolledStudentsLoading ? (
+                <p className="text-sm text-muted-foreground">
+                  Carregando alunos matriculados…
+                </p>
+              ) : enrolledStudents.length === 0 ? (
+                <p className="text-sm text-muted-foreground">
+                  Ainda não há alunos matriculados nesta matéria.
+                </p>
+              ) : (
+                <div className="max-h-64 space-y-2 overflow-y-auto">
+                  {enrolledStudents.map(student => (
+                    <label
+                      key={student.userId}
+                      className="flex cursor-pointer items-center gap-3 rounded-md border p-3 text-sm"
+                    >
+                      <input
+                        type="checkbox"
+                        checked={assignmentStudentIds.includes(student.userId)}
+                        onChange={event =>
+                          setAssignmentStudentIds(previous =>
+                            event.target.checked
+                              ? [...previous, student.userId]
+                              : previous.filter(id => id !== student.userId)
+                          )
+                        }
+                      />
+                      <span className="flex-1">{student.name}</span>
+                      <span className="text-muted-foreground">
+                        Matriculado em {formatDate(student.enrolledAt)}
+                      </span>
+                    </label>
+                  ))}
+                </div>
+              )}
+              <div className="flex flex-wrap items-center gap-3">
+                <span className="text-sm text-muted-foreground">
+                  {assignmentStudentIds.length} selecionado(s)
+                </span>
+                <Button
+                  onClick={() =>
+                    createExamAssignment.mutate({
+                      assessmentId: assignmentAssessment.id,
+                      dueAt: new Date(assignmentDeadline),
+                      maxAttempts: assignmentMaxAttempts,
+                      userIds: assignmentStudentIds,
+                    })
+                  }
+                  disabled={
+                    assignmentStudentIds.length === 0 ||
+                    !assignmentDeadline ||
+                    new Date(assignmentDeadline).getTime() <= Date.now() ||
+                    createExamAssignment.isPending
+                  }
+                >
+                  {createExamAssignment.isPending
+                    ? "Aplicando prova…"
+                    : "Aplicar prova"}
+                </Button>
+              </div>
+            </section>
+          )}
+          <section className="space-y-3 border-t pt-5">
+            <h3 className="font-semibold">Provas aplicadas e notas</h3>
+            {examAssignmentsLoading ? (
+              <p className="text-sm text-muted-foreground">
+                Carregando aplicações…
+              </p>
+            ) : examAssignments.length === 0 ? (
+              <p className="text-sm text-muted-foreground">
+                Nenhuma prova formal foi aplicada ainda.
+              </p>
+            ) : (
+              <div className="space-y-4">
+                {examAssignments.map((assignment: any) => (
+                  <div
+                    key={assignment.id}
+                    className="space-y-3 rounded-xl border p-4"
+                  >
+                    <div className="flex flex-wrap justify-between gap-2">
+                      <div>
+                        <p className="font-medium">
+                          {assignment.assessmentTitle} ·{" "}
+                          {assignment.subjectTitle}
+                        </p>
+                        <p className="text-sm text-muted-foreground">
+                          Aplicada em {formatDate(assignment.createdAt)} · prazo{" "}
+                          {formatDate(assignment.dueAt)} ·{" "}
+                          {assignment.maxAttempts} tentativa(s) permitida(s)
+                        </p>
+                      </div>
+                    </div>
+                    <div className="overflow-x-auto">
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead>Aluno</TableHead>
+                            <TableHead>Tentativas usadas</TableHead>
+                            <TableHead>Notas e datas</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {assignment.students.map((student: any) => (
+                            <TableRow key={student.id}>
+                              <TableCell className="font-medium">
+                                {student.name}
+                              </TableCell>
+                              <TableCell>
+                                {student.attempts.length} /{" "}
+                                {assignment.maxAttempts}
+                              </TableCell>
+                              <TableCell>
+                                {student.attempts.length === 0 ? (
+                                  <span className="text-sm text-muted-foreground">
+                                    Ainda não iniciou
+                                  </span>
+                                ) : (
+                                  <div className="space-y-2">
+                                    {student.attempts.map((attempt: any) => (
+                                      <div
+                                        key={attempt.id}
+                                        className="flex flex-wrap items-center gap-2 text-sm"
+                                      >
+                                        <span>
+                                          {formatDate(attempt.startedAt)}
+                                        </span>
+                                        {attempt.status === "completed" ? (
+                                          <Badge variant="secondary">
+                                            {Number(attempt.score ?? 0).toFixed(
+                                              2
+                                            )}
+                                            /10
+                                          </Badge>
+                                        ) : (
+                                          <Badge variant="outline">
+                                            Em andamento
+                                          </Badge>
+                                        )}
+                                      </div>
+                                    ))}
+                                  </div>
+                                )}
+                              </TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </section>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <div className="flex flex-wrap items-center gap-2">
+            <CardTitle>Simulacro do painel de alunos</CardTitle>
+            <Badge variant="outline">Fictício · não salva</Badge>
+          </div>
+          <CardDescription>
+            Gere alunos, datas, quantidade de provas e notas para conferir a
+            apresentação dos resultados sem registrar uma tentativa real.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-5">
+          <div className="flex flex-wrap items-center gap-3">
+            <Label htmlFor="training-report-filter">Filtrar matéria</Label>
+            <select
+              id="training-report-filter"
+              className="max-w-sm rounded-md border bg-background px-3 py-2 text-sm"
+              value={reportFilter ?? ""}
+              onChange={event => {
+                setReportFilter(Number(event.target.value) || undefined);
+                setSimulationStudents([]);
+              }}
+            >
+              <option value="">Todas</option>
+              {data.subjects.map(subject => (
+                <option key={subject.id} value={subject.id}>
+                  {subject.title}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="grid gap-4 md:grid-cols-3">
+            <div className="space-y-2">
+              <Label htmlFor="sim-students">Alunos fictícios</Label>
+              <Input
+                id="sim-students"
+                type="number"
+                min={1}
+                max={100}
+                value={simulationStudentCount}
+                onChange={event =>
+                  setSimulationStudentCount(Number(event.target.value) || 1)
+                }
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="sim-attempts">Máximo de provas por aluno</Label>
+              <Input
+                id="sim-attempts"
+                type="number"
+                min={1}
+                max={20}
+                value={simulationMaxAttempts}
+                onChange={event =>
+                  setSimulationMaxAttempts(Number(event.target.value) || 1)
+                }
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="sim-days">
+                Distribuir datas nos últimos dias
+              </Label>
+              <Input
+                id="sim-days"
+                type="number"
+                min={1}
+                max={365}
+                value={simulationDays}
+                onChange={event =>
+                  setSimulationDays(Number(event.target.value) || 1)
+                }
+              />
+            </div>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <Button onClick={generateSimulation}>Gerar simulacro</Button>
+            <Button
+              variant="outline"
+              disabled={simulationStudents.length === 0}
+              onClick={() => setSimulationStudents([])}
+            >
+              Limpar simulacro
+            </Button>
+          </div>
+          {simulationStudents.length > 0 && (
+            <>
+              <div className="grid gap-3 sm:grid-cols-3">
+                <Card>
+                  <CardContent className="pt-5">
+                    <p className="text-sm text-muted-foreground">
+                      Alunos simulados
+                    </p>
+                    <p className="text-2xl font-semibold">
+                      {simulationStudents.length}
+                    </p>
+                  </CardContent>
+                </Card>
+                <Card>
+                  <CardContent className="pt-5">
+                    <p className="text-sm text-muted-foreground">
+                      Provas simuladas
+                    </p>
+                    <p className="text-2xl font-semibold">
+                      {simulationStudents.reduce(
+                        (total, student) => total + student.attempts.length,
+                        0
+                      )}
+                    </p>
+                  </CardContent>
+                </Card>
+                <Card>
+                  <CardContent className="pt-5">
+                    <p className="text-sm text-muted-foreground">
+                      Média das pontuações
+                    </p>
+                    <p className="text-2xl font-semibold">
+                      {(
+                        simulationStudents
+                          .flatMap(student => student.attempts)
+                          .reduce((sum, attempt) => sum + attempt.score, 0) /
+                        Math.max(
+                          1,
+                          simulationStudents.reduce(
+                            (total, student) => total + student.attempts.length,
+                            0
+                          )
+                        )
+                      ).toFixed(2)}
+                      /10
+                    </p>
+                  </CardContent>
+                </Card>
+              </div>
+              <div className="overflow-x-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Aluno</TableHead>
+                      <TableHead>Provas</TableHead>
+                      <TableHead>Provas distintas</TableHead>
+                      <TableHead>Data mais recente</TableHead>
+                      <TableHead>Pontuações por prova</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {simulationStudents.map(student => (
+                      <TableRow key={student.id}>
+                        <TableCell className="font-medium">
+                          {student.name}
+                        </TableCell>
+                        <TableCell>{student.attempts.length}</TableCell>
+                        <TableCell>
+                          {
+                            new Set(
+                              student.attempts.map(item => item.assessment)
+                            ).size
+                          }
+                        </TableCell>
+                        <TableCell>
+                          {formatDate(student.attempts[0]?.startedAt)}
+                        </TableCell>
+                        <TableCell>
+                          <div className="space-y-2">
+                            {student.attempts.map(attempt => (
+                              <div
+                                key={attempt.id}
+                                className="flex flex-wrap items-center gap-2 text-sm"
+                              >
+                                <span>
+                                  {attempt.assessment} · {attempt.subject}
+                                </span>
+                                <span className="text-muted-foreground">
+                                  {formatDate(attempt.startedAt)}
+                                </span>
+                                <Badge variant="secondary">
+                                  {attempt.score.toFixed(2)}/10
+                                </Badge>
+                              </div>
+                            ))}
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            </>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Ranking das provas formais</CardTitle>
+          <CardDescription>
+            Cada aluno aparece pela sua melhor nota concluída em cada avaliação.
+            Empates recebem a mesma posição; a data desempata a ordem visual.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-5">
+          {leaderboardsLoading ? (
+            <p className="text-sm text-slate-500">Carregando rankings…</p>
+          ) : leaderboards.length === 0 ? (
+            <p className="text-sm text-slate-500">
+              Ainda não há provas formais concluídas para classificar.
+            </p>
+          ) : (
+            leaderboards.map(exam => (
+              <section
+                key={exam.assessmentId}
+                className="space-y-3 rounded-xl border p-4"
+              >
+                <div>
+                  <h3 className="font-semibold">{exam.assessment}</h3>
+                  <p className="text-sm text-muted-foreground">
+                    {exam.sector} · {exam.subject}
+                  </p>
+                </div>
+                <div className="overflow-x-auto">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Posição</TableHead>
+                        <TableHead>Aluno</TableHead>
+                        <TableHead>Melhor nota</TableHead>
+                        <TableHead>Data da nota</TableHead>
+                        <TableHead>Tentativas concluídas</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {exam.students.map(student => (
+                        <TableRow key={student.userId}>
+                          <TableCell>
+                            <Badge
+                              variant={
+                                student.rank <= 3 ? "secondary" : "outline"
+                              }
+                            >
+                              {student.rank}º
+                            </Badge>
+                          </TableCell>
+                          <TableCell className="font-medium">
+                            {student.userName}
+                          </TableCell>
+                          <TableCell>
+                            <Badge variant="secondary">
+                              {student.score.toFixed(2)}/10
+                            </Badge>
+                          </TableCell>
+                          <TableCell>
+                            {formatDate(student.completedAt)}
+                          </TableCell>
+                          <TableCell>{student.completedAttempts}</TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+              </section>
+            ))
+          )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Painel dos alunos</CardTitle>
+          <CardDescription>
+            Resumo das avaliações reais: quantidade de provas, atividade mais
+            recente e pontuação de cada tentativa.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          {resultsLoading ? (
+            <p className="text-sm text-slate-500">Carregando painel…</p>
+          ) : studentSummaries.length === 0 ? (
+            <p className="text-sm text-slate-500">
+              Ainda não há alunos com tentativas registradas.
+            </p>
+          ) : (
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Aluno</TableHead>
+                    <TableHead>Provas concluídas / tentativas</TableHead>
+                    <TableHead>Data mais recente</TableHead>
+                    <TableHead>Pontuações por prova</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {studentSummaries.map(student => (
+                    <TableRow key={student.userId}>
+                      <TableCell className="font-medium">
+                        {student.name}
+                      </TableCell>
+                      <TableCell>
+                        {
+                          student.attempts.filter(
+                            attempt => attempt.status === "completed"
+                          ).length
+                        }{" "}
+                        / {student.attempts.length}
+                      </TableCell>
+                      <TableCell>
+                        {formatDate(student.attempts[0]?.startedAt)}
+                      </TableCell>
+                      <TableCell>
+                        <div className="max-h-56 space-y-2 overflow-y-auto">
+                          {student.attempts.map(attempt => (
+                            <div
+                              key={attempt.attemptId}
+                              className="flex flex-wrap items-center gap-2 text-sm"
+                            >
+                              <span>
+                                {attempt.assessment} · {attempt.subject}
+                              </span>
+                              <span className="text-muted-foreground">
+                                {formatDate(attempt.startedAt)}
+                              </span>
+                              {attempt.status === "completed" ? (
+                                <Badge variant="secondary">
+                                  {Number(attempt.score ?? 0).toFixed(2)}/10
+                                </Badge>
+                              ) : (
+                                <Badge variant="outline">Em andamento</Badge>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Tentativas reais detalhadas</CardTitle>
+          <CardDescription>
+            Consulta administrativa; tentativas próprias do aluno também ficam
+            disponíveis no histórico da matéria.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          {resultsLoading ? (
+            <p className="text-sm text-slate-500">Carregando resultados…</p>
+          ) : results.length === 0 ? (
+            <p className="text-sm text-slate-500">
+              Ainda não há tentativas registradas.
+            </p>
+          ) : (
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Pessoa</TableHead>
+                    <TableHead>Setor / matéria</TableHead>
+                    <TableHead>Avaliação</TableHead>
+                    <TableHead>Modo</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead>Nota</TableHead>
+                    <TableHead>Início</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {results.map(row => (
+                    <TableRow key={row.attemptId}>
+                      <TableCell>{row.userName}</TableCell>
+                      <TableCell>
+                        {row.sector} / {row.subject}
+                      </TableCell>
+                      <TableCell>
+                        {row.assessment} · v{row.version}
+                      </TableCell>
+                      <TableCell>
+                        {row.mode === "practice" ? "Prática" : "Formal"}
+                      </TableCell>
+                      <TableCell>
+                        {row.status === "completed"
+                          ? "Concluída"
+                          : "Em andamento"}
+                      </TableCell>
+                      <TableCell>
+                        {row.score == null
+                          ? "—"
+                          : `${Number(row.score).toFixed(2)}/10`}
+                      </TableCell>
+                      <TableCell>{formatDate(row.startedAt)}</TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
+export default function Treinamento() {
+  const { user } = useAuth();
+  const canManage = ["admin", "master", "gestor"].includes(user?.role ?? "");
+  const utils = trpc.useUtils();
+  const {
+    data: sectors = [],
+    isLoading,
+    error: catalogError,
+    refetch: retryCatalog,
+    isRefetching: isCatalogRefetching,
+  } = trpc.treinamento.catalog.useQuery();
+  const { data: progress = [] } = trpc.treinamento.myProgress.useQuery();
+  const [subjectId, setSubjectId] = useState<number | undefined>();
+  const [lessonId, setLessonId] = useState<number | undefined>();
+  const [tab, setTab] = useState("study");
+  const [attempt, setAttempt] = useState<AttemptView | null>(null);
+  const [questionIndex, setQuestionIndex] = useState(0);
+  const [selected, setSelected] = useState<string | string[]>("");
+  const [orderedIds, setOrderedIds] = useState<string[]>([]);
+  const [scenarioNode, setScenarioNode] = useState<any>(null);
+  const [answerResult, setAnswerResult] = useState<any>(null);
+  const [moduleCheckpoint, setModuleCheckpoint] = useState(false);
+  const [finalResult, setFinalResult] = useState<any>(null);
+  const [savingLesson, setSavingLesson] = useState(false);
+  const [reviewAttemptId, setReviewAttemptId] = useState<number | undefined>();
+
+  useEffect(() => {
+    if (!subjectId && sectors[0]?.subjects[0])
+      setSubjectId(sectors[0].subjects[0].id);
+  }, [sectors, subjectId]);
+  const currentSector = useMemo(
+    () =>
+      sectors.find(sector =>
+        sector.subjects.some((subject: any) => subject.id === subjectId)
+      ),
+    [sectors, subjectId]
+  );
+  const { data: subject, isLoading: subjectLoading } =
+    trpc.treinamento.subject.useQuery(
+      { id: subjectId ?? 0 },
+      { enabled: Boolean(subjectId) }
+    );
+  const { data: history = [] } = trpc.treinamento.history.useQuery(
+    { subjectId: subjectId ?? 0 },
+    { enabled: Boolean(subjectId) }
+  );
+  const { data: reviewedAttempt } = trpc.treinamento.reviewAttempt.useQuery(
+    { attemptId: reviewAttemptId ?? 0 },
+    { enabled: Boolean(reviewAttemptId) }
+  );
+  const currentProgress = progress.find(row => row.subjectId === subjectId);
+  const activeLesson = subject?.lessons.find(
+    (item: any) => item.id === lessonId
+  );
+  const currentQuestion = attempt?.questions[questionIndex];
+  const currentModuleNumber =
+    Math.floor(questionIndex / QUESTIONS_PER_MODULE) + 1;
+  const moduleCount = attempt
+    ? Math.ceil(attempt.questions.length / QUESTIONS_PER_MODULE)
+    : 0;
+  const moduleStartQuestion =
+    (currentModuleNumber - 1) * QUESTIONS_PER_MODULE + 1;
+  const moduleEndQuestion = attempt
+    ? Math.min(
+        currentModuleNumber * QUESTIONS_PER_MODULE,
+        attempt.questions.length
+      )
+    : 0;
+  const activeScenario = scenarioNode ?? currentQuestion?.config;
+  const enrollSubject = trpc.treinamento.enrollSubject.useMutation({
+    onSuccess: async () => {
+      await utils.treinamento.subject.invalidate({ id: subjectId ?? 0 });
+      toast.success("Matrícula confirmada. As avaliações foram liberadas.");
+    },
+    onError: error => toast.error(error.message),
+  });
+  const startAttempt = trpc.treinamento.startAttempt.useMutation({
+    onError: error => toast.error(error.message),
+    onSuccess: async data => {
+      setAttempt(data as AttemptView);
+      setQuestionIndex(data.initialQuestionIndex ?? 0);
+      setSelected("");
+      setOrderedIds([]);
+      setScenarioNode(null);
+      setAnswerResult(
+        data.currentQuestionAnswered ? { questionComplete: true } : null
+      );
+      setFinalResult(null);
+      setModuleCheckpoint(false);
+      await utils.treinamento.subject.invalidate({ id: subjectId ?? 0 });
+    },
+  });
+  const submitAnswer = trpc.treinamento.submitAnswer.useMutation({
+    onSuccess: data => {
+      setAnswerResult(data);
+      if (data.nextQuestion?.config) setScenarioNode(data.nextQuestion.config);
+    },
+  });
+  const completeAttempt = trpc.treinamento.completeAttempt.useMutation({
+    onSuccess: async data => {
+      setFinalResult(data);
+      await Promise.all([
+        utils.treinamento.history.invalidate(),
+        utils.treinamento.myProgress.invalidate(),
+        utils.treinamento.subject.invalidate({ id: subjectId ?? 0 }),
+        utils.treinamento.resultsReport.invalidate(),
+        utils.treinamento.assignmentReport.invalidate(),
+        utils.treinamento.leaderboardReport.invalidate(),
+        utils.treinamento.subject.invalidate({ id: subjectId ?? 0 }),
+      ]);
+    },
+  });
+  const markComplete = trpc.treinamento.markLessonComplete.useMutation({
+    onSuccess: async () => {
+      await utils.treinamento.myProgress.invalidate();
+      toast.success("Aula marcada como concluída.");
+      setSavingLesson(false);
+    },
+  });
+
+  useEffect(() => {
+    setLessonId(subject?.lessons[0]?.id);
+  }, [subject?.id]);
+  useEffect(() => {
+    if (currentQuestion?.type === "ordering")
+      setOrderedIds(currentQuestion.config.steps.map((step: any) => step.id));
+    else setOrderedIds([]);
+    if (currentQuestion?.type === "matching")
+      setSelected(Array(currentQuestion.config.leftItems.length).fill(""));
+    else if (currentQuestion?.type === "fill_blank")
+      setSelected(Array(currentQuestion.config.blanks.length).fill(""));
+    else if (
+      currentQuestion?.type === "multiple_select" ||
+      currentQuestion?.type === "sum"
+    )
+      setSelected([]);
+    else setSelected("");
+    setScenarioNode(
+      currentQuestion?.type === "negotiation" ? currentQuestion.config : null
+    );
+    setAnswerResult(
+      attempt?.currentQuestionAnswered &&
+        attempt.initialQuestionIndex === questionIndex
+        ? { questionComplete: true }
+        : null
+    );
+  }, [attempt?.attemptId, questionIndex, currentQuestion?.key]);
+
+  const lessonComplete = (id: number) =>
+    (currentProgress as any)?.completedLessonIds?.includes(id) ?? false;
+
+  const start = (
+    assessmentId: number,
+    mode: "practice" | "formal",
+    assignmentStudentId?: number
+  ) => startAttempt.mutate({ assessmentId, mode, assignmentStudentId });
+  const sendAnswer = () => {
+    if (!attempt || !currentQuestion) return;
+    let response: any = selected;
+    if (currentQuestion.type === "ordering") response = orderedIds;
+    if (currentQuestion.type === "negotiation")
+      response = { nodeId: activeScenario.nodeId, optionId: selected };
+    const requiresEveryValue = ["matching", "fill_blank"].includes(
+      currentQuestion.type
+    );
+    if (
+      (Array.isArray(response) &&
+        (response.length === 0 ||
+          (requiresEveryValue &&
+            response.some(value => !String(value).trim())))) ||
+      response === ""
+    ) {
+      toast.error("Escolha ou organize sua resposta antes de continuar.");
+      return;
+    }
+    submitAnswer.mutate({
+      attemptId: attempt.attemptId,
+      questionKey: currentQuestion.key,
+      response,
+    });
+  };
+  const nextQuestion = () => {
+    if (!attempt || !currentQuestion) return;
+    if (questionIndex + 1 >= attempt.questions.length)
+      completeAttempt.mutate({ attemptId: attempt.attemptId });
+    else if ((questionIndex + 1) % QUESTIONS_PER_MODULE === 0)
+      setModuleCheckpoint(true);
+    else {
+      setQuestionIndex(questionIndex + 1);
+      setSelected("");
+      setScenarioNode(null);
+      setAnswerResult(null);
+    }
+  };
+  const closeAttempt = () => {
+    setAttempt(null);
+    setFinalResult(null);
+    setAnswerResult(null);
+    setModuleCheckpoint(false);
+    void utils.treinamento.subject.invalidate({ id: subjectId ?? 0 });
+  };
+  const continueToNextModule = () => {
+    setQuestionIndex(questionIndex + 1);
+    setSelected("");
+    setOrderedIds([]);
+    setScenarioNode(null);
+    setAnswerResult(null);
+    setModuleCheckpoint(false);
+  };
+  const toggleMulti = (id: string) =>
+    setSelected(previous =>
+      Array.isArray(previous)
+        ? previous.includes(id)
+          ? previous.filter(value => value !== id)
+          : [...previous, id]
+        : [id]
+    );
+  const moveStep = (index: number, direction: -1 | 1) => {
+    const target = index + direction;
+    if (target < 0 || target >= orderedIds.length) return;
+    const next = [...orderedIds];
+    [next[index], next[target]] = [next[target], next[index]];
+    setOrderedIds(next);
+  };
+  const markLesson = (id: number) => {
+    setSavingLesson(true);
+    markComplete.mutate({ lessonId: id });
+  };
+
+  const studentBody = () => {
+    if (attempt && finalResult)
+      return (
+        <Card className="mx-auto max-w-4xl">
+          <CardHeader>
+            <div className="flex flex-wrap items-center gap-2">
+              <Badge variant="outline">
+                {finalResult.mode === "practice"
+                  ? "Prática"
+                  : "Avaliação formal"}
+              </Badge>
+              <Badge variant="outline">Versão {finalResult.version}</Badge>
+            </div>
+            <CardTitle className="text-2xl">
+              Tentativa concluída · {finalResult.score.toFixed(2)}/10
+            </CardTitle>
+            <CardDescription>
+              {finalResult.pointsEarned} de {finalResult.pointsPossible} pontos.{" "}
+              {finalResult.scoreMeaning}
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-5">
+            {finalResult.feedback.map((item: any, index: number) => (
+              <div key={item.key} className="rounded-xl border p-4">
+                <p className="font-medium">
+                  {index + 1}. {item.prompt}
+                </p>
+                {Array.isArray(item.selected) &&
+                  item.selected.length > 0 &&
+                  typeof item.selected[0] === "object" && (
+                    <div className="mt-3 space-y-2">
+                      {item.selected.map((step: any, stepIndex: number) => (
+                        <div
+                          key={stepIndex}
+                          className="rounded-lg bg-muted/50 p-3 text-sm"
+                        >
+                          <p className="font-medium">{step.prompt}</p>
+                          <p className="mt-1">Sua resposta: {step.selected}</p>
+                          {step.feedback && (
+                            <p className="mt-1 text-muted-foreground">
+                              {step.feedback}
+                            </p>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                {item.selected &&
+                  (!Array.isArray(item.selected) ||
+                    typeof item.selected[0] !== "object") && (
+                    <p className="mt-2 text-sm text-slate-600">
+                      <strong>Sua resposta:</strong>{" "}
+                      {Array.isArray(item.selected)
+                        ? item.selected.join(" → ")
+                        : item.selected}
+                    </p>
+                  )}
+                <p className="mt-2 text-sm text-slate-600">
+                  <strong>Resposta esperada / orientação:</strong>{" "}
+                  {item.expectedAnswer}
+                </p>
+                {item.explanation && (
+                  <p className="mt-2 text-sm text-slate-600">
+                    {item.explanation}
+                  </p>
+                )}
+                {item.details?.length > 0 && (
+                  <ul className="mt-3 list-inside list-disc space-y-1 text-sm text-slate-600">
+                    {item.details.map((detail: string, detailIndex: number) => (
+                      <li key={detailIndex}>{detail}</li>
+                    ))}
+                  </ul>
+                )}
+                {item.criteria && (
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    {Object.entries(item.criteria).map(([name, value]) => (
+                      <Badge key={name} variant="outline">
+                        {name}: {String(value)}%
+                      </Badge>
+                    ))}
+                  </div>
+                )}
+              </div>
+            ))}
+            <div className="flex flex-wrap gap-2">
+              <Button onClick={closeAttempt}>Voltar à matéria</Button>
+              <Button
+                variant="outline"
+                onClick={() => {
+                  const id = attempt.assessmentId;
+                  const assignmentStudentId = attempt.assignmentStudentId;
+                  closeAttempt();
+                  if (id) start(id, attempt.mode, assignmentStudentId);
+                }}
+              >
+                <RotateCcw className="mr-2 h-4 w-4" />
+                Refazer{" "}
+                {finalResult.mode === "practice" ? "prática" : "avaliação"}
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      );
+    if (attempt && moduleCheckpoint)
+      return (
+        <Card className="mx-auto max-w-4xl">
+          <CardHeader>
+            <Badge variant="secondary" className="w-fit">
+              Módulo {currentModuleNumber} concluído
+            </Badge>
+            <CardTitle className="text-2xl">Seu progresso foi salvo</CardTitle>
+            <CardDescription>
+              Você concluiu as questões {moduleStartQuestion} a{" "}
+              {moduleEndQuestion}. A nota final será calculada quando todos os
+              módulos forem concluídos.
+            </CardDescription>
+            <Progress
+              value={(moduleEndQuestion / attempt.questions.length) * 100}
+            />
+          </CardHeader>
+          <CardContent className="flex flex-wrap gap-2">
+            <Button onClick={continueToNextModule}>
+              Continuar para o módulo {currentModuleNumber + 1}
+            </Button>
+            <Button variant="outline" onClick={closeAttempt}>
+              Sair e retomar depois
+            </Button>
+          </CardContent>
+        </Card>
+      );
+    if (attempt && currentQuestion) {
+      const options =
+        currentQuestion.type === "negotiation"
+          ? (activeScenario?.options ?? [])
+          : (currentQuestion.config.options ?? []);
+      const isMulti =
+        currentQuestion.type === "multiple_select" ||
+        currentQuestion.type === "sum";
+      const isOrdering = currentQuestion.type === "ordering";
+      const isMatching = currentQuestion.type === "matching";
+      const isFillBlank = currentQuestion.type === "fill_blank";
+      const isShortAnswer = currentQuestion.type === "short_answer";
+      const isScenario = currentQuestion.type === "negotiation";
+      const submitted = Boolean(
+        answerResult &&
+        (currentQuestion.type !== "negotiation" ||
+          answerResult.questionComplete)
+      );
+      return (
+        <Card className="mx-auto max-w-4xl">
+          <CardHeader>
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="flex gap-2">
+                <Badge variant="outline">
+                  {attempt.mode === "practice"
+                    ? "Modo prática"
+                    : "Avaliação formal"}
+                </Badge>
+                <Badge variant="outline">v{attempt.version}</Badge>
+                <Badge variant="secondary">
+                  Módulo {currentModuleNumber} de {moduleCount}
+                </Badge>
+              </div>
+              <Button variant="ghost" size="sm" onClick={closeAttempt}>
+                Sair e retomar depois
+              </Button>
+            </div>
+            <CardTitle>{attempt.title}</CardTitle>
+            <CardDescription>
+              Módulo {currentModuleNumber} de {moduleCount} · questões{" "}
+              {moduleStartQuestion}–{moduleEndQuestion}
+              <span className="block">
+                Questão {questionIndex + 1} de {attempt.questions.length} ·{" "}
+                {currentQuestion.points} ponto(s)
+              </span>
+            </CardDescription>
+            <Progress
+              value={(questionIndex / attempt.questions.length) * 100}
+            />
+            <p className="mt-2 text-xs text-muted-foreground">
+              Cada resposta enviada fica salva. Você pode sair e retomar esta
+              tentativa; a nota só aparece ao concluir todos os módulos.
+            </p>
+          </CardHeader>
+          <CardContent>
+            <h3 className="text-lg font-semibold leading-7">
+              {isFillBlank
+                ? currentQuestion.prompt.replace(/\{\{([^}]+)\}\}/g, "_____")
+                : currentQuestion.prompt}
+            </h3>
+            {isScenario && (
+              <div className="mt-4 rounded-lg border-l-4 border-primary bg-muted/60 p-4 text-sm leading-6">
+                {activeScenario?.clientText}
+              </div>
+            )}
+            {isOrdering && (
+              <div className="mt-5 space-y-2">
+                {currentQuestion.config.steps.map((step: any) => {
+                  const index = orderedIds.indexOf(step.id);
+                  return (
+                    <div
+                      key={step.id}
+                      className="flex items-center gap-3 rounded-lg border p-3"
+                    >
+                      <div className="flex flex-col">
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-7 w-7"
+                          disabled={index === 0}
+                          onClick={() => moveStep(index, -1)}
+                          aria-label="Mover para cima"
+                        >
+                          <ChevronUp className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-7 w-7"
+                          disabled={index === orderedIds.length - 1}
+                          onClick={() => moveStep(index, 1)}
+                          aria-label="Mover para baixo"
+                        >
+                          <ChevronDown className="h-4 w-4" />
+                        </Button>
+                      </div>
+                      <Badge variant="secondary">{index + 1}</Badge>
+                      <span className="text-sm">{step.text}</span>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+            {isMatching && (
+              <div className="mt-5 space-y-3">
+                {currentQuestion.config.leftItems.map(
+                  (item: any, index: number) => (
+                    <div
+                      key={item.id}
+                      className="grid gap-2 rounded-lg border p-3 md:grid-cols-2 md:items-center"
+                    >
+                      <span className="text-sm font-medium">{item.text}</span>
+                      <select
+                        className="w-full rounded-md border bg-background px-3 py-2 text-sm"
+                        value={
+                          Array.isArray(selected) ? (selected[index] ?? "") : ""
+                        }
+                        disabled={submitted || Boolean(answerResult)}
+                        onChange={event =>
+                          setSelected(previous => {
+                            const values = Array.isArray(previous)
+                              ? [...previous]
+                              : Array(
+                                  currentQuestion.config.leftItems.length
+                                ).fill("");
+                            values[index] = event.target.value;
+                            return values;
+                          })
+                        }
+                      >
+                        <option value="">Selecione a associação</option>
+                        {currentQuestion.config.rightItems.map((right: any) => (
+                          <option
+                            key={right.id}
+                            value={right.id}
+                            disabled={
+                              Array.isArray(selected) &&
+                              selected.includes(right.id) &&
+                              selected[index] !== right.id
+                            }
+                          >
+                            {right.text}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  )
+                )}
+              </div>
+            )}
+            {isFillBlank && (
+              <div className="mt-5 grid gap-3 sm:grid-cols-2">
+                {currentQuestion.config.blanks.map(
+                  (blank: any, index: number) => (
+                    <div key={blank.id} className="space-y-2">
+                      <Label htmlFor={`blank-${blank.id}`}>
+                        Lacuna {index + 1}
+                      </Label>
+                      <Input
+                        id={`blank-${blank.id}`}
+                        value={
+                          Array.isArray(selected) ? (selected[index] ?? "") : ""
+                        }
+                        disabled={submitted || Boolean(answerResult)}
+                        onChange={event =>
+                          setSelected(previous => {
+                            const values = Array.isArray(previous)
+                              ? [...previous]
+                              : Array(
+                                  currentQuestion.config.blanks.length
+                                ).fill("");
+                            values[index] = event.target.value;
+                            return values;
+                          })
+                        }
+                      />
+                    </div>
+                  )
+                )}
+              </div>
+            )}
+            {isShortAnswer && (
+              <div className="mt-5 space-y-2">
+                <Label htmlFor="short-answer-response">Sua resposta</Label>
+                <Input
+                  id="short-answer-response"
+                  value={typeof selected === "string" ? selected : ""}
+                  disabled={submitted || Boolean(answerResult)}
+                  onChange={event => setSelected(event.target.value)}
+                />
+              </div>
+            )}
+            {!isOrdering && !isMatching && !isFillBlank && !isShortAnswer && (
+              <div className="mt-5 space-y-2">
+                {options.map((option: any) => {
+                  const checked = isMulti
+                    ? Array.isArray(selected) && selected.includes(option.id)
+                    : selected === option.id;
+                  return (
+                    <label
+                      key={option.id}
+                      className={`flex cursor-pointer items-start gap-3 rounded-lg border p-3 transition ${checked ? "border-primary bg-primary/5" : "hover:bg-muted/50"}`}
+                    >
+                      <input
+                        className="mt-1 accent-primary"
+                        type={isMulti ? "checkbox" : "radio"}
+                        name={`q-${currentQuestion.key}`}
+                        checked={checked}
+                        disabled={
+                          submitted || Boolean(answerResult && !isScenario)
+                        }
+                        onChange={() =>
+                          isMulti
+                            ? toggleMulti(option.id)
+                            : setSelected(option.id)
+                        }
+                      />
+                      <span className="text-sm leading-6">
+                        {currentQuestion.type === "sum" && (
+                          <strong className="mr-1">{option.value}.</strong>
+                        )}
+                        {option.text}
+                      </span>
+                    </label>
+                  );
+                })}
+              </div>
+            )}
+            {currentQuestion.type === "sum" && (
+              <p className="mt-3 text-sm text-muted-foreground">
+                Somatório selecionado:{" "}
+                {options
+                  .filter(
+                    (option: any) =>
+                      Array.isArray(selected) && selected.includes(option.id)
+                  )
+                  .reduce(
+                    (sum: number, option: any) =>
+                      sum + (Number(option.value) || 0),
+                    0
+                  )}
+              </p>
+            )}
+            {answerResult?.feedback && (
+              <FeedbackPanel feedback={answerResult.feedback} />
+            )}
+            {attempt.mode === "formal" && !finalResult && answerResult && (
+              <div className="mt-4 rounded-lg bg-slate-50 p-3 text-sm text-slate-600">
+                Resposta registrada. A correção detalhada será exibida ao
+                concluir a avaliação.
+              </div>
+            )}
+            <div className="mt-6 flex flex-wrap justify-between gap-2">
+              {answerResult?.questionComplete &&
+                attempt.mode === "practice" &&
+                answerResult.feedback?.isCorrect === false &&
+                currentQuestion.type !== "negotiation" && (
+                  <Button
+                    variant="outline"
+                    onClick={() => {
+                      if (currentQuestion.type === "matching")
+                        setSelected(
+                          Array(currentQuestion.config.leftItems.length).fill(
+                            ""
+                          )
+                        );
+                      else if (currentQuestion.type === "fill_blank")
+                        setSelected(
+                          Array(currentQuestion.config.blanks.length).fill("")
+                        );
+                      else
+                        setSelected(
+                          currentQuestion.type === "multiple_select" ||
+                            currentQuestion.type === "sum"
+                            ? []
+                            : ""
+                        );
+                      setAnswerResult(null);
+                    }}
+                  >
+                    <RotateCcw className="mr-2 h-4 w-4" />
+                    Tentar novamente
+                  </Button>
+                )}
+              {!answerResult ||
+              (isScenario && !answerResult.questionComplete) ? (
+                <Button onClick={sendAnswer} disabled={submitAnswer.isPending}>
+                  {submitAnswer.isPending
+                    ? "Registrando…"
+                    : isScenario
+                      ? "Enviar resposta"
+                      : "Responder"}
+                </Button>
+              ) : (
+                <Button
+                  onClick={nextQuestion}
+                  disabled={completeAttempt.isPending}
+                >
+                  {completeAttempt.isPending
+                    ? "Concluindo…"
+                    : questionIndex + 1 === attempt.questions.length
+                      ? "Concluir e ver resultado"
+                      : "Próxima questão"}
+                </Button>
+              )}
+            </div>
+            <p className="mt-4 text-xs text-slate-500">
+              Nota final de 0 a 10: (pontos obtidos ÷ pontos possíveis) × 10. Em
+              múltipla seleção, a pontuação parcial usa respostas corretas
+              selecionadas menos incorretas, divididas pelo total de corretas,
+              com mínimo zero.
+            </p>
+          </CardContent>
+        </Card>
+      );
+    }
+
+    return (
+      <div className="grid gap-6 lg:grid-cols-[260px_minmax(0,1fr)]">
+        <Card className="h-fit">
+          <CardHeader>
+            <CardTitle className="text-base">Setores e matérias</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-5">
+            {sectors.map(sector => (
+              <div key={sector.id}>
+                <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                  {sector.name}
+                </p>
+                <div className="space-y-1">
+                  {sector.subjects.map((item: any) => (
+                    <button
+                      key={item.id}
+                      onClick={() => {
+                        setSubjectId(item.id);
+                        setLessonId(undefined);
+                      }}
+                      className={`w-full rounded-lg px-3 py-2 text-left text-sm ${subjectId === item.id ? "bg-primary text-primary-foreground" : "hover:bg-muted"}`}
+                    >
+                      {item.title}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ))}
+            {sectors.length === 0 && (
+              <p className="text-sm text-muted-foreground">
+                Nenhuma matéria publicada ainda.
+              </p>
+            )}
+          </CardContent>
+        </Card>
+        <div className="space-y-5">
+          {!subjectId && (
+            <Card>
+              <CardContent className="py-10 text-center text-muted-foreground">
+                Selecione uma matéria para começar.
+              </CardContent>
+            </Card>
+          )}
+          {subjectId && subjectLoading && (
+            <Card>
+              <CardContent className="py-10 text-center text-muted-foreground">
+                Carregando matéria…
+              </CardContent>
+            </Card>
+          )}
+          {subject && (
+            <>
+              <Card>
+                <CardHeader>
+                  <div className="flex flex-wrap items-start justify-between gap-4">
+                    <div>
+                      <div className="mb-2 text-sm text-muted-foreground">
+                        {currentSector?.name} / Matéria
+                      </div>
+                      <CardTitle className="text-2xl">
+                        {subject.title}
+                      </CardTitle>
+                      <CardDescription className="mt-2 max-w-3xl">
+                        {subject.description}
+                      </CardDescription>
+                    </div>
+                    <div className="flex flex-col items-end gap-2">
+                      <Badge variant="outline">
+                        {currentProgress?.progressPercent ?? 0}% concluído
+                      </Badge>
+                      {subject.isEnrolled ? (
+                        <Badge variant="secondary">
+                          Matriculado · {formatDate(subject.enrolledAt)}
+                        </Badge>
+                      ) : (
+                        <Button
+                          onClick={() =>
+                            enrollSubject.mutate({ subjectId: subject.id })
+                          }
+                          disabled={enrollSubject.isPending}
+                        >
+                          {enrollSubject.isPending
+                            ? "Matriculando…"
+                            : "Matricular-se"}
+                        </Button>
+                      )}
+                    </div>
+                  </div>
+                </CardHeader>
+                <CardContent>
+                  <Progress value={currentProgress?.progressPercent ?? 0} />
+                  <div className="mt-3 flex flex-wrap gap-4 text-sm text-muted-foreground">
+                    <span>
+                      {currentProgress?.completedLessons ?? 0}/
+                      {currentProgress?.totalLessons ?? subject.lessons.length}{" "}
+                      aulas
+                    </span>
+                    <span>
+                      {currentProgress?.attemptCount ?? 0} avaliações concluídas
+                    </span>
+                    <span>
+                      Última nota:{" "}
+                      {currentProgress?.lastScore == null
+                        ? "—"
+                        : `${currentProgress.lastScore.toFixed(2)}/10`}
+                    </span>
+                    <span>
+                      Melhor nota:{" "}
+                      {currentProgress?.bestScore == null
+                        ? "—"
+                        : `${currentProgress.bestScore.toFixed(2)}/10`}
+                    </span>
+                  </div>
+                  <p className="mt-3 text-xs text-muted-foreground">
+                    A nota reflete o desempenho naquela tentativa e não define
+                    capacidade profissional.{" "}
+                    {subject.sourceReference &&
+                      `Fonte: ${subject.sourceReference}.`}
+                  </p>
+                </CardContent>
+              </Card>
+              <div className="grid gap-5 xl:grid-cols-2">
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2">
+                      <BookOpen className="h-5 w-5" />
+                      Módulos
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-2">
+                    {subject.lessons.map((lesson: any, index: number) => (
+                      <button
+                        key={lesson.id}
+                        onClick={() => setLessonId(lesson.id)}
+                        className={`flex w-full items-center gap-3 rounded-lg border p-3 text-left ${lessonId === lesson.id ? "border-primary bg-primary/5" : "hover:bg-muted/40"}`}
+                      >
+                        <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-muted text-xs font-semibold">
+                          {index + 1}
+                        </span>
+                        <span className="min-w-0 flex-1">
+                          <span className="block font-medium">
+                            {lesson.title}
+                          </span>
+                          <span className="block truncate text-xs text-muted-foreground">
+                            {lesson.summary}
+                          </span>
+                        </span>
+                        {lessonComplete(lesson.id) && (
+                          <CheckCircle2 className="h-4 w-4 text-emerald-600" />
+                        )}
+                      </button>
+                    ))}
+                    {subject.lessons.length === 0 && (
+                      <p className="text-sm text-muted-foreground">
+                        Não há aulas publicadas.
+                      </p>
+                    )}
+                  </CardContent>
+                </Card>
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Avaliações</CardTitle>
+                    <CardDescription>
+                      Prática mostra a correção após cada resposta. Avaliação
+                      formal exibe feedback depois da conclusão.
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent className="space-y-3">
+                    {!subject.isEnrolled && (
+                      <div className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-950">
+                        Matricule-se nesta matéria para liberar as provas. As
+                        aulas continuam disponíveis.
+                      </div>
+                    )}
+                    {subject.assessments.map((assessment: any) => (
+                      <div
+                        key={assessment.id}
+                        className="rounded-lg border p-4"
+                      >
+                        <p className="font-medium">{assessment.title}</p>
+                        <p className="mt-1 text-sm text-muted-foreground">
+                          {assessment.description}
+                        </p>
+                        {subject.isEnrolled && (
+                          <div className="mt-3 space-y-2 rounded-lg bg-muted/40 p-3">
+                            <p className="flex items-center gap-2 text-sm font-medium">
+                              <FileText className="h-4 w-4" />
+                              Material de apoio
+                            </p>
+                            {assessment.materials?.length ? (
+                              <ul className="space-y-2">
+                                {assessment.materials.map((material: any) => (
+                                  <li
+                                    key={material.id}
+                                    className="flex flex-wrap items-center gap-2 text-sm"
+                                  >
+                                    <span className="min-w-0 flex-1 break-all">
+                                      {material.name}
+                                      <span className="ml-2 text-muted-foreground">
+                                        {formatFileSize(material.sizeBytes)}
+                                      </span>
+                                    </span>
+                                    <a
+                                      className="inline-flex items-center gap-1 font-medium text-primary hover:underline"
+                                      href={material.url}
+                                      target="_blank"
+                                      rel="noreferrer"
+                                    >
+                                      <FileText className="h-4 w-4" />
+                                      Consultar online
+                                    </a>
+                                    <button
+                                      type="button"
+                                      className="inline-flex items-center gap-1 font-medium text-primary hover:underline"
+                                      onClick={() =>
+                                        downloadAssessmentMaterial(
+                                          material.url,
+                                          material.name
+                                        )
+                                      }
+                                    >
+                                      <Download className="h-4 w-4" />
+                                      Baixar
+                                    </button>
+                                  </li>
+                                ))}
+                              </ul>
+                            ) : (
+                              <p className="text-sm text-muted-foreground">
+                                Nenhum material de apoio disponível.
+                              </p>
+                            )}
+                          </div>
+                        )}
+                        <div className="mt-3 flex flex-wrap gap-2">
+                          {assessment.allowPractice && (
+                            <Button
+                              size="sm"
+                              onClick={() => start(assessment.id, "practice")}
+                              disabled={
+                                !subject.isEnrolled || startAttempt.isPending
+                              }
+                            >
+                              <Play className="mr-1 h-4 w-4" />
+                              {assessment.hasActivePracticeAttempt
+                                ? "Retomar prática"
+                                : "Praticar"}
+                            </Button>
+                          )}
+                          {assessment.allowFormal &&
+                            subject.assignedExams
+                              .filter(
+                                (item: any) =>
+                                  item.assessmentId === assessment.id
+                              )
+                              .map((assigned: any) => {
+                                const activeAttempt = assigned.attempts.find(
+                                  (item: any) => item.status === "in_progress"
+                                );
+                                const attemptsLeft =
+                                  assigned.maxAttempts -
+                                  assigned.attempts.length;
+                                const deadlinePassed =
+                                  new Date(assigned.deadlineAt).getTime() <
+                                  Date.now();
+                                const canStart =
+                                  subject.isEnrolled &&
+                                  (Boolean(activeAttempt) ||
+                                    (!deadlinePassed && attemptsLeft > 0));
+                                return (
+                                  <div
+                                    key={assigned.assignmentStudentId}
+                                    className="mt-3 w-full rounded-lg bg-muted/40 p-3"
+                                  >
+                                    <div className="flex flex-wrap items-center gap-2">
+                                      <Badge variant="outline">
+                                        Prova formal aplicada
+                                      </Badge>
+                                      <span className="text-sm">
+                                        Prazo: {formatDate(assigned.deadlineAt)}
+                                      </span>
+                                      <span className="text-sm text-muted-foreground">
+                                        Tentativas: {assigned.attempts.length}/
+                                        {assigned.maxAttempts}
+                                      </span>
+                                    </div>
+                                    {assigned.attempts.length > 0 && (
+                                      <div className="mt-2 flex flex-wrap gap-2">
+                                        {assigned.attempts.map(
+                                          (attempt: any, index: number) => (
+                                            <Badge
+                                              key={attempt.id}
+                                              variant={
+                                                attempt.status === "completed"
+                                                  ? "secondary"
+                                                  : "outline"
+                                              }
+                                            >
+                                              Tentativa{" "}
+                                              {assigned.attempts.length - index}
+                                              :{" "}
+                                              {attempt.status === "completed"
+                                                ? Number(
+                                                    attempt.score ?? 0
+                                                  ).toFixed(2) + "/10"
+                                                : "Em andamento"}
+                                            </Badge>
+                                          )
+                                        )}
+                                      </div>
+                                    )}
+                                    <Button
+                                      className="mt-3"
+                                      size="sm"
+                                      variant="outline"
+                                      onClick={() =>
+                                        start(
+                                          assessment.id,
+                                          "formal",
+                                          assigned.assignmentStudentId
+                                        )
+                                      }
+                                      disabled={
+                                        !canStart || startAttempt.isPending
+                                      }
+                                    >
+                                      <LockKeyhole className="mr-1 h-4 w-4" />
+                                      {activeAttempt
+                                        ? "Continuar prova"
+                                        : attemptsLeft <= 0
+                                          ? "Tentativas esgotadas"
+                                          : deadlinePassed
+                                            ? "Prazo encerrado"
+                                            : "Iniciar prova formal"}
+                                    </Button>
+                                  </div>
+                                );
+                              })}
+                          {assessment.allowFormal &&
+                            subject.isEnrolled &&
+                            !subject.assignedExams.some(
+                              (item: any) => item.assessmentId === assessment.id
+                            ) && (
+                              <p className="mt-3 text-sm text-muted-foreground">
+                                A prova formal será liberada quando o instrutor
+                                aplicá-la a você.
+                              </p>
+                            )}
+                        </div>
+                      </div>
+                    ))}
+                    {subject.assessments.length === 0 && (
+                      <p className="text-sm text-muted-foreground">
+                        Não há avaliações publicadas.
+                      </p>
+                    )}
+                  </CardContent>
+                </Card>
+              </div>
+              {activeLesson && (
+                <Card>
+                  <CardHeader>
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                      <div>
+                        <CardTitle>{activeLesson.title}</CardTitle>
+                        <CardDescription>
+                          {activeLesson.summary}
+                        </CardDescription>
+                      </div>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => markLesson(activeLesson.id)}
+                        disabled={savingLesson || markComplete.isPending}
+                      >
+                        <Check className="mr-1 h-4 w-4" />
+                        Marcar como estudada
+                      </Button>
+                    </div>
+                  </CardHeader>
+                  <CardContent>
+                    <ContentParagraphs content={activeLesson.content} />
+                  </CardContent>
+                </Card>
+              )}
+              <Card>
+                <CardHeader>
+                  <CardTitle>Histórico de tentativas</CardTitle>
+                  <CardDescription>
+                    Última nota, melhor nota e tentativas individuais permanecem
+                    visíveis.
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  {history.length ? (
+                    <div className="overflow-x-auto">
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead>Avaliação</TableHead>
+                            <TableHead>Modo</TableHead>
+                            <TableHead>Versão</TableHead>
+                            <TableHead>Status</TableHead>
+                            <TableHead>Nota</TableHead>
+                            <TableHead>Data</TableHead>
+                            <TableHead>Feedback</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {history.map((row: any) => (
+                            <TableRow key={row.id}>
+                              <TableCell>{row.assessmentTitle}</TableCell>
+                              <TableCell>
+                                {row.mode === "practice" ? "Prática" : "Formal"}
+                              </TableCell>
+                              <TableCell>v{row.assessmentVersion}</TableCell>
+                              <TableCell>
+                                {row.status === "completed"
+                                  ? "Concluída"
+                                  : "Em andamento"}
+                              </TableCell>
+                              <TableCell>
+                                {row.score == null
+                                  ? "—"
+                                  : `${Number(row.score).toFixed(2)}/10`}
+                              </TableCell>
+                              <TableCell>{formatDate(row.startedAt)}</TableCell>
+                              <TableCell>
+                                {row.status === "completed" && (
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    onClick={() => setReviewAttemptId(row.id)}
+                                  >
+                                    Rever
+                                  </Button>
+                                )}
+                              </TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    </div>
+                  ) : (
+                    <p className="text-sm text-muted-foreground">
+                      As tentativas que você iniciar aparecerão aqui.
+                    </p>
+                  )}
+                </CardContent>
+              </Card>
+              {reviewedAttempt && (
+                <Card>
+                  <CardHeader>
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <CardTitle>Revisão · {reviewedAttempt.title}</CardTitle>
+                        <CardDescription>
+                          {reviewedAttempt.mode === "practice"
+                            ? "Prática"
+                            : "Avaliação formal"}{" "}
+                          · versão {reviewedAttempt.version} ·{" "}
+                          {reviewedAttempt.score.toFixed(2)}/10
+                        </CardDescription>
+                      </div>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => setReviewAttemptId(undefined)}
+                      >
+                        Fechar
+                      </Button>
+                    </div>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    {reviewedAttempt.feedback.map(
+                      (item: any, index: number) => (
+                        <div key={item.key} className="rounded-xl border p-4">
+                          <p className="font-medium">
+                            {index + 1}. {item.prompt}
+                          </p>
+                          {Array.isArray(item.selected) &&
+                          typeof item.selected[0] === "object" ? (
+                            <div className="mt-2 space-y-2">
+                              {item.selected.map(
+                                (step: any, stepIndex: number) => (
+                                  <div
+                                    key={stepIndex}
+                                    className="rounded-lg bg-muted/50 p-3 text-sm"
+                                  >
+                                    <p className="font-medium">{step.prompt}</p>
+                                    <p className="mt-1">
+                                      Sua resposta: {step.selected}
+                                    </p>
+                                    {step.feedback && (
+                                      <p className="mt-1 text-muted-foreground">
+                                        {step.feedback}
+                                      </p>
+                                    )}
+                                  </div>
+                                )
+                              )}
+                            </div>
+                          ) : (
+                            item.selected && (
+                              <p className="mt-2 text-sm text-muted-foreground">
+                                <strong>Sua resposta:</strong>{" "}
+                                {Array.isArray(item.selected)
+                                  ? item.selected.join(" → ")
+                                  : item.selected}
+                              </p>
+                            )
+                          )}
+                          <p className="mt-2 text-sm">
+                            <strong>Esperado:</strong> {item.expectedAnswer}
+                          </p>
+                          {item.explanation && (
+                            <p className="mt-2 text-sm text-muted-foreground">
+                              {item.explanation}
+                            </p>
+                          )}
+                          {item.details?.length > 0 && (
+                            <ul className="mt-2 list-inside list-disc space-y-1 text-sm text-muted-foreground">
+                              {item.details.map(
+                                (detail: string, detailIndex: number) => (
+                                  <li key={detailIndex}>{detail}</li>
+                                )
+                              )}
+                            </ul>
+                          )}
+                        </div>
+                      )
+                    )}
+                    <p className="text-xs text-muted-foreground">
+                      {reviewedAttempt.scoreMeaning}
+                    </p>
+                  </CardContent>
+                </Card>
+              )}
+            </>
+          )}
+        </div>
+      </div>
+    );
+  };
+
+  return (
+    <div className="space-y-6">
+      <PageHeader
+        title="Escola Corporativa"
+        description="Aprenda, pratique e acompanhe sua evolução por setor e matéria."
+      />
+      <Tabs value={tab} onValueChange={setTab}>
+        <TabsList>
+          <TabsTrigger value="study">Estudar</TabsTrigger>
+          {canManage && (
+            <TabsTrigger value="manage">Administrar conteúdo</TabsTrigger>
+          )}
+        </TabsList>
+        <TabsContent value="study" className="mt-5">
+          {isLoading ? (
+            <Card>
+              <CardContent className="py-12 text-center text-muted-foreground">
+                Carregando matérias…
+              </CardContent>
+            </Card>
+          ) : catalogError ? (
+            <TrainingLoadError
+              errorCode={catalogError.data?.code}
+              onRetry={() => void retryCatalog()}
+              isRetrying={isCatalogRefetching}
+            />
+          ) : (
+            studentBody()
+          )}
+        </TabsContent>
+        {canManage && (
+          <TabsContent value="manage" className="mt-5">
+            <TrainingAdmin
+              onChanged={() => {
+                utils.treinamento.myProgress.invalidate();
+              }}
+            />
+          </TabsContent>
+        )}
+      </Tabs>
+    </div>
+  );
+}

@@ -125,3 +125,5 @@ scripts/_orcamentos-raw/
 
 .vercel
 .env*
+playwright-report/
+test-results/

@@ -101,11 +101,14 @@ yarn dev         # servidor de desenvolvimento (Vite + Express na mesma porta)
 yarn build       # build de produção (client via Vite, server via esbuild)
 yarn build:vercel # build do client e API para Vercel; não aplica migrations
 yarn start       # roda o build de produção
-yarn run check   # tsc --noEmit (app) + tsc -p tsconfig.cpq3d.json (client/src/cpq3d,
+yarn run check   # tsc --noEmit (app) + tsc -p tsconfig.cpq3d.json (client/src/cpq3d)
+                 # + tsc -p tsconfig.e2e.json (Playwright/fixtures), ver o comentário abaixo;
                  # ver "CPQ renderização 3D") — precisa do "run"! `yarn check`
                  # sozinho dispara o comando nativo do Yarn (valida lockfile),
                  # não o script do package.json, e retorna resultado errado
 yarn test        # wrapper seguro; exige TEST_DATABASE_URL local de teste
+yarn test:e2e:school # Playwright no Chromium; exige banco de teste migrado e seed E2E
+yarn e2e:seed     # cria fixtures da Escola somente no TEST_DATABASE_URL local
 yarn test:safety # testes unitários de guardas; não acessa banco
 yarn format      # prettier --write .
 yarn db:generate # drizzle-kit generate, sem alterar banco
@@ -122,6 +125,13 @@ testes exigem `TEST_DATABASE_URL` em loopback e com nome de banco de teste/CI.
 Ver `docs/protecao-ambientes-banco-publicacao.md`.
 
 ## Banco de dados — sempre via migration
+
+Publicação em produção pode seguir o fluxo de administrador único descrito em
+`docs/protecao-ambientes-banco-publicacao.md`: a conta administradora configura
+a si própria como revisora obrigatória do ambiente, permite autoaprovação e
+confirma explicitamente a identidade do banco e a migration. Não relaxe as
+validações de alvo, recurso, branch `main` ou Quality para remover a necessidade
+de um segundo revisor.
 
 No runtime normal, consultas avulsas por `getPool().query()` usam HTTP via
 Neon. Transações Drizzle (`db.transaction`) reservam um `PoolClient` por
@@ -275,6 +285,7 @@ assumir que continua certo.
 ```
 client/src/          frontend (Vite root = client/)
   pages/              uma pasta por módulo (logistica/, admin/, comercial/, ...)
+                       operacoes/Treinamento.tsx é a Escola Corporativa em /treinamento
   components/         componentes compartilhados entre páginas
   hooks/               hooks do app, incluindo useAuth.ts (identidade/permissões)
   lib/                 trpc.ts, auth-client.ts (client do Better Auth)
@@ -284,6 +295,8 @@ server/
   routers.ts          appRouter raiz do tRPC — registra todos os sub-routers
                        `price.listModelCatalog`/`price.saveModelMapping` mantêm produtividade de solda e IDs de faixa por modelo nas tabelas antiga/nova (`price_table_model_mappings`).
   routers/             sub-routers por domínio (logistica.ts, admin.ts, ...)
+                       treinamento.ts controla catálogo, matérias, matrículas, aplicação de provas, materiais de apoio, os 10 perfis de questão, tentativas, resultados e ranking da Escola Corporativa; notas finais são normalizadas de 0 a 10, independentemente da quantidade de questões; avaliações são divididas em módulos sequenciais de até 10 questões, com retomada da tentativa aberta; a avaliação Closer cobre as 14 seções e os anexos A–F do POP, com matriz em `docs/escola-corporativa.md` e questões adicionais na migration `0120_closer_full_coverage`;
+                       o simulacro do painel de alunos é somente client-side e nunca grava tentativas fictícias
   db/                  acesso a dados (Drizzle + pg puro via getPool()): db.ts, db-connection.ts,
                        db-helpers*.ts, storage.ts
   integrations/        clientes de APIs externas: mubisys-client.ts, mubisys-frete.ts,
@@ -391,6 +404,11 @@ suíte completa com `vitest run` direto, pois isso ignora o wrapper e sua guarda
 Não use um banco de produção para testes.
 Os testes com banco usam fixtures SQL reais e devem rodar apenas num banco
 descartável isolado, como o serviço Postgres do workflow de qualidade.
+`yarn test:e2e:school` valida no Chromium a matrícula, o bloqueio pré-matrícula,
+o início e retomada de provas, a aplicação formal e o painel/ranking da Escola.
+O comando inicia a aplicação via Vite/Express e só aceita `TEST_DATABASE_URL`
+local; `yarn e2e:seed` também exige que `DATABASE_URL` seja o mesmo banco
+descartável. O workflow `Quality` executa essa suíte em um serviço Postgres CI.
 
 ## docs/ — quais valem como fonte de verdade
 
@@ -404,6 +422,8 @@ descartável isolado, como o serviço Postgres do workflow de qualidade.
   cadência/quarentena/pós-venda, modelo de dados e contrato dos webhooks REST.
 - `docs/protecao-ambientes-banco-publicacao.md` — separação entre build,
   migrations e testes; confirmações locais e configurações externas de Vercel/GitHub pendentes.
+- `docs/escola-corporativa.md` — modelo de conteúdo, modos de avaliação,
+  pontuação, permissões e formato de questões da Escola Corporativa.
 - `docs/cpq-cores-materiais-pre-nesting.md` — análise, aprovação e custo de cores do CPQ antes do nesting.
 - `docs/webdev-template-guide.md` — guia original do template Manus
   webdev fullstack. Descreve o template genérico (MySQL, só OAuth) — várias

@@ -58,6 +58,7 @@ const PAGE_GROUPS = [
       { key: "pops", label: "POPs" },
       { key: "pops-relatorio", label: "Relatório de Acessos POPs" },
       { key: "cargos-funcoes", label: "Cargos e Funções" },
+      { key: "treinamento", label: "Escola Corporativa" },
       { key: "operacoes-performance", label: "Visão de Performance" },
       { key: "operacoes-custo-solda", label: "Custo de Solda" },
     ],
@@ -96,13 +97,13 @@ const PAGE_GROUPS = [
 // Permissões padrão por role
 const DEFAULT_PERMISSIONS: Record<string, string[]> = {
   master: PAGE_GROUPS.flatMap(g => g.pages.map(p => p.key)),
-  admin: ["painel","retrabalhos","inserir","biblioteca","reincidencia","relatorio","insights","auditoria","conhecimento","fornecedores","rotinas","regulamentos","pops","pops-relatorio","cargos-funcoes","operacoes-performance","operacoes-custo-solda","tabela-preco","crm-auditoria","crm-monitoramento","logistica-dashboard","logistica-solicitacoes","logistica-transportadoras","logistica-consulta","logistica-importar-cte","logistica-assertividade","logistica-empacotamento","admin","admin-usuarios"],
-  vendas: ["painel","conhecimento","tabela-preco","logistica-minhas-cotacoes"],
-  logistica: ["painel","logistica-dashboard","logistica-solicitacoes","logistica-transportadoras","logistica-consulta","logistica-importar-cte","logistica-assertividade","logistica-empacotamento"],
-  producao: ["painel","retrabalhos","inserir","biblioteca","reincidencia","rotinas","regulamentos","pops","cargos-funcoes","operacoes-performance","operacoes-custo-solda"],
-  financeiro: ["painel","retrabalhos","relatorio","insights","tabela-preco","operacoes-custo-solda"],
-  gestor: ["painel","retrabalhos","inserir","biblioteca","reincidencia","relatorio","insights","auditoria","rotinas","regulamentos","pops","operacoes-performance"],
-  empacotamento: ["logistica-empacotamento"],
+  admin: ["painel","retrabalhos","inserir","biblioteca","reincidencia","relatorio","insights","auditoria","conhecimento","fornecedores","rotinas","regulamentos","pops","pops-relatorio","cargos-funcoes","treinamento","operacoes-performance","operacoes-custo-solda","tabela-preco","crm-auditoria","crm-monitoramento","logistica-dashboard","logistica-solicitacoes","logistica-transportadoras","logistica-consulta","logistica-importar-cte","logistica-assertividade","logistica-empacotamento","admin","admin-usuarios"],
+  vendas: ["painel","conhecimento","treinamento","tabela-preco","logistica-minhas-cotacoes"],
+  logistica: ["painel","treinamento","logistica-dashboard","logistica-solicitacoes","logistica-transportadoras","logistica-consulta","logistica-importar-cte","logistica-assertividade","logistica-empacotamento"],
+  producao: ["painel","treinamento","retrabalhos","inserir","biblioteca","reincidencia","rotinas","regulamentos","pops","cargos-funcoes","operacoes-performance","operacoes-custo-solda"],
+  financeiro: ["painel","treinamento","retrabalhos","relatorio","insights","tabela-preco","operacoes-custo-solda"],
+  gestor: ["painel","treinamento","retrabalhos","inserir","biblioteca","reincidencia","relatorio","insights","auditoria","rotinas","regulamentos","pops","operacoes-performance"],
+  empacotamento: ["treinamento","logistica-empacotamento"],
 };
 
 function RoleBadge({ role }: { role: string }) {

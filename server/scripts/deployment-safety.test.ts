@@ -10,6 +10,7 @@ const vercelJson = JSON.parse(readFileSync(resolve("vercel.json"), "utf8")) as {
   buildCommand: string;
 };
 const workflowDirectory = resolve(".github/workflows");
+const protectionGuide = readFileSync(resolve("docs/protecao-ambientes-banco-publicacao.md"), "utf8");
 const workflowNames = readdirSync(workflowDirectory)
   .filter(name => /\.ya?ml$/i.test(name))
   .sort();
@@ -76,6 +77,13 @@ describe("deployment and migration separation", () => {
     expect(migrationWorkflow).toContain("MIGRATION_ENVIRONMENT_READY:${MIGRATION_TARGET}:${VERCEL_PROJECT}:${REQUESTED_RESOURCE_ID}");
     expect(migrationWorkflow).toContain("DB_MIGRATION_PRODUCTION_APPROVAL");
     expect(migrationWorkflow).not.toMatch(/continue-on-error:\s*true/i);
+  });
+
+  it("documents the single-admin production approval flow", () => {
+    expect(protectionGuide).toContain("Operação com um único administrador");
+    expect(protectionGuide).toContain("deixe a opção de impedir autoaprovação desativada");
+    expect(protectionGuide).toContain("AUTHORIZE_PRODUCTION_MIGRATION:<host>:<porta>/<banco>");
+    expect(migrationWorkflow).toContain("administrador unico em producao");
   });
 
   it("requires the exact Quality jobs before database integration tests and migrations", () => {

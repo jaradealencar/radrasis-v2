@@ -12,6 +12,7 @@ import { auditoriaRouter } from "./routers/auditoria";
 import { cargosRouter } from "./routers/cargos";
 import { curriculosRouter } from "./routers/curriculos";
 import { desempenhoColabMensalRouter } from "./routers/desempenhoColabMensal";
+import { treinamentoRouter } from "./routers/treinamento";
 import { empacotamentoRouter } from "./routers/empacotamento";
 import { metaProdutosRouter } from "./routers/metaProdutos";
 import { produtosRouter } from "./routers/produtos";
@@ -1612,6 +1613,7 @@ O POP deve:
   marketingFinanceiro: marketingFinanceiroRouter,
   observacoesFinanceiras: observacoesFinanceirasRouter,
   desempenhoColabMensal: desempenhoColabMensalRouter,
+  treinamento: treinamentoRouter,
   // LOGISTICA ────────────────────────────────────────────────────────────────────
   transportadoras: transportadorasRouter,
   cotacoesFrete: cotacoesFreteRouter,
