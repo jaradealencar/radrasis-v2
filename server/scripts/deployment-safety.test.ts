@@ -76,6 +76,7 @@ describe("deployment and migration separation", () => {
     expect(migrationWorkflow).toContain("DB_MIGRATION_ENVIRONMENT_READY");
     expect(migrationWorkflow).toContain("MIGRATION_ENVIRONMENT_READY:${MIGRATION_TARGET}:${VERCEL_PROJECT}:${REQUESTED_RESOURCE_ID}");
     expect(migrationWorkflow).toContain("DB_MIGRATION_PRODUCTION_APPROVAL");
+    expect(migrationWorkflow).toContain("yarn install --frozen-lockfile --production=false");
     expect(migrationWorkflow).not.toMatch(/continue-on-error:\s*true/i);
   });
 

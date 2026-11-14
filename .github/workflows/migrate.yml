@@ -105,6 +105,6 @@ jobs:
       - name: Activate Yarn classic
         run: corepack prepare yarn@1.22.22 --activate
       - name: Install dependencies
-        run: yarn install --frozen-lockfile
+        run: yarn install --frozen-lockfile --production=false
       - name: Apply only after environment approval and target confirmation
         run: yarn db:migrate
