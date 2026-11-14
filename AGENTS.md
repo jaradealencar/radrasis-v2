@@ -101,11 +101,14 @@ yarn dev         # servidor de desenvolvimento (Vite + Express na mesma porta)
 yarn build       # build de produção (client via Vite, server via esbuild)
 yarn build:vercel # build do client e API para Vercel; não aplica migrations
 yarn start       # roda o build de produção
-yarn run check   # tsc --noEmit (app) + tsc -p tsconfig.cpq3d.json (client/src/cpq3d,
+yarn run check   # tsc --noEmit (app) + tsc -p tsconfig.cpq3d.json (client/src/cpq3d)
+                 # + tsc -p tsconfig.e2e.json (Playwright/fixtures), ver o comentário abaixo;
                  # ver "CPQ renderização 3D") — precisa do "run"! `yarn check`
                  # sozinho dispara o comando nativo do Yarn (valida lockfile),
                  # não o script do package.json, e retorna resultado errado
 yarn test        # wrapper seguro; exige TEST_DATABASE_URL local de teste
+yarn test:e2e:school # Playwright no Chromium; exige banco de teste migrado e seed E2E
+yarn e2e:seed     # cria fixtures da Escola somente no TEST_DATABASE_URL local
 yarn test:safety # testes unitários de guardas; não acessa banco
 yarn format      # prettier --write .
 yarn db:generate # drizzle-kit generate, sem alterar banco
@@ -122,6 +125,13 @@ testes exigem `TEST_DATABASE_URL` em loopback e com nome de banco de teste/CI.
 Ver `docs/protecao-ambientes-banco-publicacao.md`.
 
 ## Banco de dados — sempre via migration
+
+Publicação em produção pode seguir o fluxo de administrador único descrito em
+`docs/protecao-ambientes-banco-publicacao.md`: a conta administradora configura
+a si própria como revisora obrigatória do ambiente, permite autoaprovação e
+confirma explicitamente a identidade do banco e a migration. Não relaxe as
+validações de alvo, recurso, branch `main` ou Quality para remover a necessidade
+de um segundo revisor.
 
 No runtime normal, consultas avulsas por `getPool().query()` usam HTTP via
 Neon. Transações Drizzle (`db.transaction`) reservam um `PoolClient` por
@@ -275,6 +285,7 @@ assumir que continua certo.
 ```
 client/src/          frontend (Vite root = client/)
   pages/              uma pasta por módulo (logistica/, admin/, comercial/, ...)
+                       operacoes/Treinamento.tsx é a Escola Corporativa em /treinamento
   components/         componentes compartilhados entre páginas
   hooks/               hooks do app, incluindo useAuth.ts (identidade/permissões)
   lib/                 trpc.ts, auth-client.ts (client do Better Auth)
@@ -284,6 +295,8 @@ server/
   routers.ts          appRouter raiz do tRPC — registra todos os sub-routers
                        `price.listModelCatalog`/`price.saveModelMapping` mantêm produtividade de solda e IDs de faixa por modelo nas tabelas antiga/nova (`price_table_model_mappings`).
   routers/             sub-routers por domínio (logistica.ts, admin.ts, ...)
+                       treinamento.ts controla catálogo, matérias, matrículas, aplicação de provas, materiais de apoio, os 10 perfis de questão, tentativas, resultados e ranking da Escola Corporativa; notas finais são normalizadas de 0 a 10, independentemente da quantidade de questões; avaliações são divididas em módulos sequenciais de até 10 questões, com retomada da tentativa aberta; a avaliação Closer cobre as 14 seções e os anexos A–F do POP, com matriz em `docs/escola-corporativa.md` e questões adicionais na migration `0120_closer_full_coverage`;
+                       o simulacro do painel de alunos é somente client-side e nunca grava tentativas fictícias
   db/                  acesso a dados (Drizzle + pg puro via getPool()): db.ts, db-connection.ts,
                        db-helpers*.ts, storage.ts
   integrations/        clientes de APIs externas: mubisys-client.ts, mubisys-frete.ts,
@@ -380,6 +393,7 @@ em vez de reescrever o padrão:
 - Tabela de Preços > Pág. 4 (Fontes Chaveadas), compartilhada pelas abas Clientes Antigos e Novo Cliente, tem a **Calculadora de fontes**: o vendedor escolhe até dois LEDs (fitas 12/24 V e módulos) e suas quantidades, usando as mesmas tabelas da página, com os nomes editados. Cargas da mesma tensão são somadas; tensões diferentes geram circuitos e resultados separados, e cada LED usa exclusivamente fontes da própria tensão. Os módulos IP68 24 V e 7025 12 V usam 1,7 W por módulo. As tabelas de fontes blindadas 24 V para módulos e para a Fita LED 3030s de 17 W/m têm modelos de 2,5/5/6/15/25/30 A, sem preços visíveis e sem observações de kit. Para módulos e fitas 24 V, a calculadora mostra numa única janela as opções chaveada e blindada para a mesma carga e compara o total pelos preços de venda direta (`valor_preco_final`) sincronizados do MubiSys. A lógica pura de `shared/led-fontes-calculo.ts` (testes em
   `server/__tests__/led-fontes-calculo.test.ts`) enumera as combinações de até dez fontes, escolhe primeiro o menor valor de venda direta e desempata por menos fontes e menor potência instalada; todas trabalham até 85%, com uma única fonte autorizada a chegar a 92%. Preço ausente impede afirmar que a combinação é a mais barata e aciona o fallback operacional por menos fontes. As chaveadas 24 V de 30/50 A usam as faixas por demanda registradas em `server/services/ledPowerSources.ts`; as chaveadas 12 V (IDs 1015/1017/1018/1020) também retornam preço final zero na API, mas suas faixas ainda precisam ser transcritas do MubiSys. O consumo vem de
   `LedModuleTable.wattsPerModule` ou `LedTapeTable.wattsPerMeter` (`server/services/ledPowerSources.ts`), não do texto do subtítulo.
+- Tabela de Preços > Pág. 3 e 13: as tabelas de **Serviço de Pintura Galvanizado** e **Serviço de Pintura PVC** recebem o ajuste de -3,5 pontos percentuais por `shared/price-table-pintura.ts`, de forma idempotente, compartilhada pela tela, exportação e dados de margem do CPQ. Galvanizado também mostra `Branco + Colorido` como Tinta Branca -3 p.p.; se não houver coluna Tinta Branca, usa 1 cor -8 p.p. (1 cor -5 p.p. para branco e mais -3 p.p.). Salvar a seção pelo editor persiste o conteúdo ajustado no histórico normal da Tabela de Preços.
 - Resultado que o vendedor mostra ao cliente (simuladores de cartão e de boletos, Tabela de Preços > Pág. 6) ganha
   `@/components/BotaoCopiarImagem`: desenha um PNG em canvas (`@/lib/imagemCopia`) e o coloca na área de transferência (sem
   permissão do navegador, baixa o arquivo). Não use `html2canvas` para isso — ele não lê as cores `oklch()` do Tailwind 4.
@@ -395,6 +409,11 @@ suíte completa com `vitest run` direto, pois isso ignora o wrapper e sua guarda
 Não use um banco de produção para testes.
 Os testes com banco usam fixtures SQL reais e devem rodar apenas num banco
 descartável isolado, como o serviço Postgres do workflow de qualidade.
+`yarn test:e2e:school` valida no Chromium a matrícula, o bloqueio pré-matrícula,
+o início e retomada de provas, a aplicação formal e o painel/ranking da Escola.
+O comando inicia a aplicação via Vite/Express e só aceita `TEST_DATABASE_URL`
+local; `yarn e2e:seed` também exige que `DATABASE_URL` seja o mesmo banco
+descartável. O workflow `Quality` executa essa suíte em um serviço Postgres CI.
 
 ## docs/ — quais valem como fonte de verdade
 
@@ -409,6 +428,8 @@ descartável isolado, como o serviço Postgres do workflow de qualidade.
   cadência/quarentena/pós-venda, modelo de dados e contrato dos webhooks REST.
 - `docs/protecao-ambientes-banco-publicacao.md` — separação entre build,
   migrations e testes; confirmações locais e configurações externas de Vercel/GitHub pendentes.
+- `docs/escola-corporativa.md` — modelo de conteúdo, modos de avaliação,
+  pontuação, permissões e formato de questões da Escola Corporativa.
 - `docs/cpq-cores-materiais-pre-nesting.md` — análise, aprovação e custo de cores do CPQ antes do nesting.
 - `docs/webdev-template-guide.md` — guia original do template Manus
   webdev fullstack. Descreve o template genérico (MySQL, só OAuth) — várias

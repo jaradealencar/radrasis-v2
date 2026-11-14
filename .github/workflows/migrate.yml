@@ -4,33 +4,33 @@ on:
   workflow_dispatch:
     inputs:
       project:
-        description: Vercel project whose database is being migrated
+        description: Projeto cujo banco sera atualizado
         type: choice
         required: true
         options:
           - radrasis-v2
           - radrasis-v2-wts-deploy
       database_resource_id:
-        description: Stable, non-secret ID assigned to this exact PostgreSQL resource
+        description: ID estavel e nao secreto deste banco PostgreSQL
         type: string
         required: true
       target:
-        description: Database environment
+        description: Ambiente do banco que sera atualizado
         type: choice
         required: true
         options:
           - staging
           - production
       release_sha:
-        description: Full main commit SHA selected for this release
+        description: SHA completo do commit de main que passou no Quality
         type: string
         required: true
       confirmation:
-        description: MIGRATE:<target>:<host>:<port>/<database>
+        description: Digite MIGRATE:<alvo>:<host>:<porta>/<banco> para confirmar o destino
         type: string
         required: true
       production_approval:
-        description: AUTHORIZE_PRODUCTION_MIGRATION:<host>:<port>/<database> (production only)
+        description: Autorizacao do administrador unico em producao; digite AUTHORIZE_PRODUCTION_MIGRATION:<host>:<porta>/<banco>
         type: string
         required: false
 

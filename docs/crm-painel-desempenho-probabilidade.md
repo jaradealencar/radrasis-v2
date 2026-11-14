@@ -31,4 +31,4 @@ Este benchmark fica separado das medições prospectivas. O painel não interpre
 
 ## Publicação
 
-A tabela foi adicionada pela migration `0117_gigantic_mordo.sql`, que inclui a região no snapshot. Gere e revise a migration junto com `drizzle/schema.ts`; não aplique direto ao banco de produção. A medição ao vivo só começa depois de a migration ser aplicada pelo fluxo protegido de banco. Se o código chegar antes, a aba informa que o armazenamento ainda está indisponível e mantém o benchmark histórico visível.
+A tabela foi adicionada pela migration `0122_watery_umar.sql`, que inclui a região no snapshot. Gere e revise a migration junto com `drizzle/schema.ts`; não aplique direto ao banco de produção. A medição ao vivo só começa depois de a migration ser aplicada pelo fluxo protegido de banco. Se o código chegar antes, a aba informa que o armazenamento ainda está indisponível e mantém o benchmark histórico visível.

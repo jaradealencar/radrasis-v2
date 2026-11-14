@@ -78,3 +78,28 @@ jobs:
         run: yarn db:migrate
       - name: Run test suite against disposable CI database
         run: yarn test
+      - name: Seed Escola E2E fixtures in the disposable database
+        env:
+          APP_ENV: test
+          NODE_ENV: test
+          RADRASYS_TEST_DB_DRIVER: pg
+          BETTER_AUTH_SECRET: school-e2e-only-secret-not-for-production
+          BETTER_AUTH_URL: http://127.0.0.1:4173
+        run: yarn e2e:seed
+      - name: Install Chromium for Escola E2E
+        run: yarn playwright install --with-deps chromium
+      - name: Run Escola Corporativa browser flows
+        env:
+          APP_ENV: test
+          NODE_ENV: test
+          RADRASYS_TEST_DB_DRIVER: pg
+          BETTER_AUTH_SECRET: school-e2e-only-secret-not-for-production
+          BETTER_AUTH_URL: http://127.0.0.1:4173
+        run: yarn test:e2e:school
+      - name: Upload Escola E2E report on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: escola-corporativa-playwright-report
+          path: playwright-report/
+          if-no-files-found: ignore

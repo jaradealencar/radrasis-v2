@@ -13,21 +13,27 @@ import { APP_ROLES } from "../../drizzle/schema";
 // resto do server.
 const db = createAppDatabase();
 
-/**
- * URL base do Better Auth.
- *
- * - Local e produção: `BETTER_AUTH_URL` explícita (é o domínio final, estável).
- * - Preview na Vercel: cada deploy ganha um host novo em `VERCEL_URL`, então
- *   não dá para fixar por variável — derivamos dele.
- *
- * Se as duas faltarem, `undefined` faz o Better Auth inferir a URL a partir
- * dos headers da requisição. Funciona, mas é o caminho menos previsível —
- * por isso `BETTER_AUTH_URL` está na tabela obrigatória da Fase 8.
- */
+/** Aceita somente hosts Vercel fornecidos pelo runtime, nunca uma origem da requisição. */
+function vercelOrigin(host: string | undefined): string | undefined {
+  const normalizedHost = host?.trim().toLowerCase();
+  if (!normalizedHost || !normalizedHost.endsWith(".vercel.app")) return undefined;
+  return `https://${normalizedHost}`;
+}
+
+const vercelDeploymentOrigin = vercelOrigin(process.env.VERCEL_URL);
+const vercelBranchOrigin = vercelOrigin(process.env.VERCEL_BRANCH_URL);
+
+/** Em Preview, prefere o alias estável da branch ao host exclusivo do deploy. */
 function resolveBaseURL(): string | undefined {
+  if (process.env.VERCEL_ENV === "preview") {
+    return (
+      vercelBranchOrigin ??
+      vercelDeploymentOrigin ??
+      process.env.BETTER_AUTH_URL
+    );
+  }
   if (process.env.BETTER_AUTH_URL) return process.env.BETTER_AUTH_URL;
-  if (process.env.VERCEL_URL) return `https://${process.env.VERCEL_URL}`;
-  return undefined;
+  return vercelDeploymentOrigin;
 }
 
 export const auth = betterAuth({
@@ -40,7 +46,8 @@ export const auth = betterAuth({
   // enquanto a função roda num deploy de preview.
   trustedOrigins: [
     ...(process.env.BETTER_AUTH_URL ? [process.env.BETTER_AUTH_URL] : []),
-    ...(process.env.VERCEL_URL ? [`https://${process.env.VERCEL_URL}`] : []),
+    ...(vercelDeploymentOrigin ? [vercelDeploymentOrigin] : []),
+    ...(vercelBranchOrigin ? [vercelBranchOrigin] : []),
   ],
   emailAndPassword: {
     enabled: true,

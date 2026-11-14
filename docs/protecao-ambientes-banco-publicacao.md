@@ -20,7 +20,7 @@ ou escrita foi feita em bancos, e nenhuma migration foi aplicada.
 O `main` usado como base foi verificado no GitHub em
 `f6ae1bf1d196737f1a36df0488aa600e82af8070`. A fase de proteção não alterou a
 migration `0115`; a PR do painel de desempenho do CRM adiciona a migration
-`0117_gigantic_mordo` e sua entrada no journal. Essa migration ainda não foi
+`0122_watery_umar` e sua entrada no journal. Essa migration ainda não foi
 aplicada em produção.
 
 ## Comandos

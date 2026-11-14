@@ -34,4 +34,6 @@ export interface ContentJson {
   rows?: MarginRow[];
   items?: ConfigItem[] | string[];
   html?: string;
+  /** Regras automáticas já aplicadas ao conteúdo para evitar reaplicação. */
+  appliedAdjustments?: string[];
 }
