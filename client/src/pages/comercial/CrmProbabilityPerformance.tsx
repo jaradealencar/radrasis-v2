@@ -288,6 +288,17 @@ export function CrmProbabilityPerformance({ active }: { active: boolean }) {
 
   const atual = painel.atual;
   const benchmark = data.benchmarkHistorico;
+  const modeloStatus = data.modelo?.status;
+  const modeloStatusLabel = modeloStatus === "disponivel"
+    ? "Estimativas liberadas"
+    : modeloStatus === "amostra_insuficiente"
+      ? "Score oculto: amostra insuficiente"
+      : modeloStatus === "calibracao_indisponivel"
+        ? "Score oculto: calibração indisponível"
+        : "Modelo indisponível";
+  const modeloStatusClass = modeloStatus === "disponivel"
+    ? "border-emerald-200 bg-emerald-50 text-emerald-800"
+    : "border-amber-200 bg-amber-50 text-amber-900";
   const benchmarkJanela =
     benchmark.janelas.find(item => item.dias === Number(dias)) ??
     benchmark.janelas.find(item => item.dias === 90)!;
@@ -354,6 +365,142 @@ export function CrmProbabilityPerformance({ active }: { active: boolean }) {
           </Button>
         </div>
       </div>
+
+      <Card className="overflow-hidden border-indigo-200 shadow-sm">
+        <CardHeader className="bg-gradient-to-r from-indigo-50 via-white to-sky-50 pb-3">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <CardTitle className="flex items-center gap-2 text-base">
+                <Activity className="size-5 text-indigo-700" />
+                Como calculamos as estatísticas e a chance de compra
+              </CardTitle>
+              <p className="mt-1 max-w-4xl text-sm text-muted-foreground">
+                Cada percentual pertence a uma proposta. Dois orçamentos do mesmo cliente podem receber estimativas diferentes.
+              </p>
+            </div>
+            <Badge variant="outline" className={modeloStatusClass}>
+              {modeloStatusLabel}
+            </Badge>
+          </div>
+        </CardHeader>
+        <CardContent className="space-y-4 pt-4">
+          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+            <div className="rounded-xl border border-slate-200 bg-white p-3">
+              <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">1 · Histórico</p>
+              <p className="mt-1 text-sm font-semibold text-slate-900">O que aconteceu com propostas anteriores?</p>
+              <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+                O treino usa orçamentos ganhos ou perdidos. Um orçamento antigo que ainda consta “Em aberto” pode ser tratado como perda presumida no treino, após a validade ou 30 dias quando ela não foi informada.
+              </p>
+            </div>
+            <div className="rounded-xl border border-blue-200 bg-blue-50/50 p-3">
+              <p className="text-[11px] font-semibold uppercase tracking-wide text-blue-700">2 · Perfil da proposta</p>
+              <p className="mt-1 text-sm font-semibold text-slate-900">Quais sinais existem nesta data?</p>
+              <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+                Valor e faixa do orçamento, idade do CNPJ quando vinculada, região, compras válidas anteriores e RFM: recência, frequência e valor nos 12 meses anteriores. A coorte e os orçamentos anteriores também entram.
+              </p>
+            </div>
+            <div className="rounded-xl border border-violet-200 bg-violet-50/50 p-3">
+              <p className="text-[11px] font-semibold uppercase tracking-wide text-violet-700">3 · Aprendizado</p>
+              <p className="mt-1 text-sm font-semibold text-slate-900">O modelo combina os sinais</p>
+              <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+                A versão ativa é uma regressão logística regularizada. Os dados são ordenados no tempo e a calibração de Platt usa previsões de blocos cronológicos fora do treino.
+              </p>
+            </div>
+            <div className="rounded-xl border border-emerald-200 bg-emerald-50/50 p-3">
+              <p className="text-[11px] font-semibold uppercase tracking-wide text-emerald-700">4 · Percentual exibido</p>
+              <p className="mt-1 text-sm font-semibold text-slate-900">Uma estimativa para este orçamento</p>
+              <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+                O CRM só mostra o score se houver ao menos 300 amostras rotuladas para treino e calibração temporal válida. Caso contrário, aparece “S/D”; o sistema não substitui a estimativa por 20%.
+              </p>
+            </div>
+          </div>
+
+          <div className="rounded-xl border border-indigo-200 bg-indigo-950 p-4 text-white">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-wide text-indigo-200">Do histórico ao score de cada proposta</p>
+                <p className="mt-1 text-sm text-indigo-50">Sinais da proposta → regressão logística → calibração temporal → percentual exibido</p>
+              </div>
+              <div className="rounded-lg bg-white/10 px-3 py-2 font-mono text-sm">
+                p = 1 / (1 + e<sup>−z</sup>)
+              </div>
+            </div>
+            <p className="mt-2 text-xs leading-relaxed text-indigo-100">
+              <span className="font-mono">z</span> combina o peso aprendido para cada sinal. A calibração de Platt ajusta o resultado usando previsões cronológicas feitas fora do treino, para aproximar os percentuais dos resultados observados.
+            </p>
+          </div>
+
+          <div className="grid gap-3 sm:grid-cols-3">
+            <div className="rounded-lg border bg-slate-50 p-3">
+              <p className="text-xs text-muted-foreground">Amostras rotuladas no treino</p>
+              <p className="mt-1 text-lg font-bold tabular-nums">{fmtNum(data.modelo?.propostasTreino)}</p>
+              <p className="mt-1 text-[11px] text-muted-foreground">Inclui perdas presumidas de propostas antigas ainda abertas.</p>
+            </div>
+            <div className="rounded-lg border bg-slate-50 p-3">
+              <p className="text-xs text-muted-foreground">Conversão usada no treino</p>
+              <p className="mt-1 text-lg font-bold tabular-nums">{fmtPct(data.modelo?.taxaGeralPct)}</p>
+              <p className="mt-1 text-[11px] text-muted-foreground">Ganhos ÷ amostras rotuladas; inclui as perdas presumidas.</p>
+            </div>
+            <div className="rounded-lg border bg-slate-50 p-3">
+              <p className="text-xs text-muted-foreground">Previsões fora da amostra usadas na calibração</p>
+              <p className="mt-1 text-lg font-bold tabular-nums">{fmtNum(data.modelo?.previsoesUsadasNaCalibracao)}</p>
+            </div>
+          </div>
+
+          <div className="grid gap-3 lg:grid-cols-4">
+            <div className="rounded-lg border border-blue-200 bg-blue-50/60 p-3">
+              <p className="text-xs font-semibold text-blue-900">Conversão real</p>
+              <p className="mt-1 font-mono text-xs text-blue-900">ganhos ÷ (ganhos + perdas)</p>
+              <p className="mt-1 text-xs text-blue-800">Só desfechos explícitos entram na taxa acompanhada.</p>
+            </div>
+            <div className="rounded-lg border border-indigo-200 bg-indigo-50/60 p-3">
+              <p className="text-xs font-semibold text-indigo-900">Conversão prevista</p>
+              <p className="mt-1 font-mono text-xs text-indigo-900">média dos scores das decididas</p>
+              <p className="mt-1 text-xs text-indigo-800">Compara as mesmas propostas que já têm resultado.</p>
+            </div>
+            <div className="rounded-lg border border-amber-200 bg-amber-50/60 p-3">
+              <p className="text-xs font-semibold text-amber-900">Brier e Log-loss</p>
+              <p className="mt-1 text-xs text-amber-900">Medem o erro do percentual previsto.</p>
+              <p className="mt-1 text-xs text-amber-800">Quanto menores, melhor; Log-loss penaliza previsões confiantes e erradas.</p>
+            </div>
+            <div className="rounded-lg border border-emerald-200 bg-emerald-50/60 p-3">
+              <p className="text-xs font-semibold text-emerald-900">AUC e calibração</p>
+              <p className="mt-1 text-xs text-emerald-900">Comparam ordenação e percentuais com os resultados.</p>
+              <p className="mt-1 text-xs text-emerald-800">AUC maior indica melhor separação; erro de calibração menor indica percentuais mais próximos do observado.</p>
+            </div>
+          </div>
+
+          <div className="grid gap-3 lg:grid-cols-2">
+            <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs leading-relaxed text-amber-950">
+              <p className="font-semibold">Treino histórico ≠ avaliação ao vivo</p>
+              <p className="mt-1">
+                A perda presumida de proposta vencida serve somente para o modelo aprender com o histórico. No painel de desempenho, propostas abertas, ambíguas ou ainda não sincronizadas ficam pendentes; só ganhos e perdas explícitos são avaliados.
+              </p>
+            </div>
+            <div className="rounded-lg border border-sky-200 bg-sky-50 p-3 text-xs leading-relaxed text-sky-950">
+              <p className="font-semibold">Como ler a evolução</p>
+              <p className="mt-1">
+                A diferença é conversão real menos prevista, em pontos percentuais. “Melhorando”, “piorando” ou “mantido” compara períodos e exige amostra suficiente; essa associação não prova que uma mudança comercial causou o resultado.
+              </p>
+            </div>
+          </div>
+
+          <details className="rounded-lg border bg-white px-3 py-2">
+            <summary className="cursor-pointer text-xs font-semibold text-slate-700">Limites do cálculo e da Curva ABC</summary>
+            <div className="space-y-2 py-3 text-xs leading-relaxed text-muted-foreground">
+              <p>
+                As compras anteriores vêm das O.S. consideradas válidas pela regra comercial; retrabalho, amostra, cortesia e cancelada não contam. A região usa o endereço da proposta ou, quando ausente, uma O.S. válida anterior. Sem vínculo confiável de CNPJ ou região, o dado fica desconhecido.
+              </p>
+              <p>
+                A Curva ABC deste painel descreve o faturamento de produtos vendidos no MubiSys no mês atual. Ela ainda não muda o score: o histórico de orçamentos não guarda os itens cotados, e usar só itens vendidos favoreceria propostas ganhas.
+              </p>
+              <p>
+                Árvores de decisão, Random Forest, boosting e Naive Bayes não geram o percentual atual. XGBoost e LightGBM também não fazem parte do modelo implantado.
+              </p>
+            </div>
+          </details>
+        </CardContent>
+      </Card>
 
       <div className="rounded-xl border border-blue-200 bg-blue-50/70 p-4 text-sm text-blue-950">
         <p className="font-semibold">Acompanhamento prospectivo das probabilidades</p>
