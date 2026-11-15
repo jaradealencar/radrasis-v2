@@ -148,9 +148,8 @@ test("instrutor edita alternativas e gabarito e revisa uma questão refeita com 
   await question
     .getByLabel("Texto da alternativa 3")
     .fill("Usar um prazo do mês passado sem conferir a produção.");
-  const answerKeys = question.getByRole("checkbox", { name: "Certa" });
+  const answerKeys = question.getByRole("radio", { name: "Certa" });
   await answerKeys.nth(2).check();
-  await answerKeys.nth(1).uncheck();
   await expect(answerKeys.nth(2)).toBeChecked();
   await expect(answerKeys.nth(1)).not.toBeChecked();
   await expect(question.getByText("Gabarito: 1 certa(s)")).toBeVisible();
