@@ -558,6 +558,8 @@ export const crmRouter = router({
           clientesHistoricos: modeloProbabilidade.coberturaIdadeEmpresarial.clientesHistoricos,
           propostasComIdadeCnpj: modeloProbabilidade.coberturaIdadeEmpresarial.propostasComIdade,
           previsoesUsadasNaCalibracao: modeloProbabilidade.modelo.calibrador?.n ?? 0,
+          calibracaoNovosClientesDisponivel: modeloProbabilidade.modelo.calibradorSemCompras !== null,
+          previsoesUsadasNaCalibracaoNovosClientes: modeloProbabilidade.modelo.calibradorSemCompras?.n ?? 0,
         } : { status: "indisponivel", propostasTreino: 0 },
         stats: {
           totalAberto: propostasComTelefone.length,
@@ -716,6 +718,8 @@ export const crmRouter = router({
         propostasTreino: modelo.nTreino,
         calibracaoTemporalDisponivel: modelo.modelo.calibrador !== null,
         previsoesUsadasNaCalibracao: modelo.modelo.calibrador?.n ?? 0,
+        calibracaoNovosClientesDisponivel: modelo.modelo.calibradorSemCompras !== null,
+        previsoesUsadasNaCalibracaoNovosClientes: modelo.modelo.calibradorSemCompras?.n ?? 0,
         ultimaPropostaTreino: modelo.ultimaPropostaTreino?.toISOString() ?? null,
         ultimaPropostaHistorico: modelo.ultimaPropostaHistorico?.toISOString() ?? null,
         propostasHistoricoSemDesfecho: modelo.propostasHistoricoSemDesfecho,

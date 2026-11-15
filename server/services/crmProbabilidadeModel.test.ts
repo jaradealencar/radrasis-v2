@@ -3,6 +3,7 @@ import {
   calcularProbabilidadeCrmAprendida,
   CRM_PROBABILITY_FEATURE_NAMES,
   CRM_PROBABILITY_MIN_TRAINING_EXAMPLES,
+  CRM_PROBABILITY_MIN_NEW_CUSTOMER_CALIBRATION_EXAMPLES,
   CRM_PROBABILITY_TICKET_BANDS,
   preverComLogistica,
   treinarRegressaoLogistica,
@@ -66,6 +67,7 @@ describe("modelo de probabilidade do CRM", () => {
       coeficiente: 1,
       intercepto: 0,
       n: 100,
+      taxaObservada: 0.2,
     };
 
     const result = calcularProbabilidadeCrmAprendida({
@@ -77,6 +79,65 @@ describe("modelo de probabilidade do CRM", () => {
 
     expect(result.probabilidade).toBeNull();
     expect(result.explicacao[0]).toContain("300");
+  });
+
+  it("não reutiliza a calibração geral para cliente sem compras anteriores", () => {
+    const modelo = modeloVazio();
+    modelo.nTreino = CRM_PROBABILITY_MIN_TRAINING_EXAMPLES;
+    modelo.modelo.calibrador = {
+      mediaLogit: 0,
+      escalaLogit: 1,
+      coeficiente: 1,
+      intercepto: 0,
+      n: 200,
+      taxaObservada: 0.24,
+    };
+
+    const result = calcularProbabilidadeCrmAprendida({
+      modelo,
+      nomeCliente: "Cliente sem compras",
+      valorProposta: 63.47,
+      dataProposta: new Date("2026-01-15T12:00:00Z"),
+    });
+
+    expect(CRM_PROBABILITY_MIN_NEW_CUSTOMER_CALIBRATION_EXAMPLES).toBe(100);
+    expect(result.probabilidade).toBeNull();
+    expect(result.explicacao[0]).toContain("clientes sem compras anteriores");
+    expect(result.explicacao[0]).toContain("100 previsões");
+  });
+
+  it("aplica a calibração própria e reduz scores altos sem histórico de compras", () => {
+    const modelo = modeloVazio();
+    modelo.nTreino = CRM_PROBABILITY_MIN_TRAINING_EXAMPLES;
+    modelo.modelo.intercepto = Math.log(0.72 / 0.28);
+    modelo.modelo.calibrador = {
+      mediaLogit: 0,
+      escalaLogit: 1,
+      coeficiente: 1,
+      intercepto: 0,
+      n: 200,
+      taxaObservada: 0.24,
+    };
+    modelo.modelo.calibradorSemCompras = {
+      mediaLogit: 0,
+      escalaLogit: 1,
+      coeficiente: 1,
+      intercepto: 0,
+      n: CRM_PROBABILITY_MIN_NEW_CUSTOMER_CALIBRATION_EXAMPLES,
+      taxaObservada: 0.15,
+    };
+
+    const result = calcularProbabilidadeCrmAprendida({
+      modelo,
+      nomeCliente: "Cliente sem compras",
+      valorProposta: 63.47,
+      dataProposta: new Date("2026-01-15T12:00:00Z"),
+    });
+
+    expect(result.probabilidade).not.toBeNull();
+    expect(result.probabilidade).toBe(30);
+    expect(result.explicacao.some((linha) => linha.includes("100 previsões históricas fora da amostra"))).toBe(true);
+    expect(result.explicacao.some((linha) => linha.includes("conversão observada do segmento 15.0% + 15 p.p., até 50%"))).toBe(true);
   });
 
   it("oculta o score se a calibração temporal não estiver disponível", () => {
@@ -91,7 +152,7 @@ describe("modelo de probabilidade do CRM", () => {
     });
 
     expect(result.probabilidade).toBeNull();
-    expect(result.explicacao[0]).toContain("calibração temporal válida");
+    expect(result.explicacao[0]).toContain("calibração temporal geral válida");
   });
 
   it("libera a previsão com amostra suficiente e calibração válida", () => {
@@ -103,6 +164,15 @@ describe("modelo de probabilidade do CRM", () => {
       coeficiente: 1,
       intercepto: 0,
       n: 100,
+      taxaObservada: 0.2,
+    };
+    modelo.modelo.calibradorSemCompras = {
+      mediaLogit: 0,
+      escalaLogit: 1,
+      coeficiente: 1,
+      intercepto: 0,
+      n: CRM_PROBABILITY_MIN_NEW_CUSTOMER_CALIBRATION_EXAMPLES,
+      taxaObservada: 0.2,
     };
 
     const result = calcularProbabilidadeCrmAprendida({

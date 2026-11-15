@@ -25,11 +25,15 @@ const FAIXAS_IDADE = ["menos de 1 ano", "1 a 3 anos", "3 a 10 anos", "10+ anos",
 const COORTES = ["sem compra anterior", "até 2022", "2023-2024", "2025+", "coorte desconhecida"];
 const REGIOES = ["Norte", "Nordeste", "Centro-Oeste", "Sudeste", "Sul", "região desconhecida"];
 
-export const CRM_PROBABILITY_MODEL_VERSION = "logit-platt-v1";
+export const CRM_PROBABILITY_MODEL_VERSION = "logit-platt-segmented-v2";
 // Não exibe o fallback matemático do modelo como uma probabilidade real.
 // A probabilidade só é apresentada quando o modelo consegue formar a
 // calibração temporal fora da amostra (treino mínimo de 300 decisões).
 export const CRM_PROBABILITY_MIN_TRAINING_EXAMPLES = 300;
+/** Score de cliente sem compras só é exibido com calibração temporal própria do segmento. */
+export const CRM_PROBABILITY_MIN_NEW_CUSTOMER_CALIBRATION_EXAMPLES = 100;
+const CRM_PROBABILITY_NEW_CUSTOMER_MAX_UPLIFT_PP = 15;
+const CRM_PROBABILITY_NEW_CUSTOMER_MAX_PCT = 50;
 
 const NUMERIC_FEATURES = [
   "ticketLog", "idadeEmpresaLog", "recenciaCompraMesesLog", "frequenciaRfm12mLog",
@@ -98,6 +102,7 @@ export interface CalibradorPlatt {
   coeficiente: number;
   intercepto: number;
   n: number;
+  taxaObservada: number;
 }
 
 export interface ModeloLogisticoCrm {
@@ -106,6 +111,7 @@ export interface ModeloLogisticoCrm {
   coeficientes: number[];
   intercepto: number;
   calibrador: CalibradorPlatt | null;
+  calibradorSemCompras: CalibradorPlatt | null;
 }
 
 export interface ModeloProbabilidadeCrm {
@@ -215,7 +221,9 @@ function featuresParaProposta(args: {
   const regiao = regiaoAnteriorConhecida(args.regiao, osAnteriores);
   const regiaoNormalizada = REGIOES.includes(regiao ?? "") ? regiao! : "região desconhecida";
   const idadeMeses = primeiraCompra ? mesesEntre(primeiraCompra, data) : 0;
-  const recenciaMeses = ultimaCompra ? Math.min(120, mesesEntre(ultimaCompra, data)) : 120;
+  // Ausência de compra não equivale a uma compra há 120 meses; o indicador
+  // cliente:novo/coorte já representa essa ausência sem inventar uma recência.
+  const recenciaMeses = ultimaCompra ? Math.min(120, mesesEntre(ultimaCompra, data)) : 0;
   const faixaTicket = faixaTicketDoValor(Math.max(0, valor));
   const idadeGrupo = faixaIdade(idadeAnos);
   const coorte = faixaCoorte(primeiraCompra);
@@ -266,7 +274,7 @@ export function treinarRegressaoLogistica(
   calibrar = true,
 ): ModeloLogisticoCrm {
   if (!exemplos.length) {
-    return { media: FEATURE_NAMES.map(() => 0), escala: FEATURE_NAMES.map(() => 1), coeficientes: FEATURE_NAMES.map(() => 0), intercepto: logit(0.2), calibrador: null };
+    return { media: FEATURE_NAMES.map(() => 0), escala: FEATURE_NAMES.map(() => 1), coeficientes: FEATURE_NAMES.map(() => 0), intercepto: logit(0.2), calibrador: null, calibradorSemCompras: null };
   }
   const { media, escala, x, y } = prepararMatriz(exemplos);
   const taxa = y.reduce<number>((s, v) => s + v, 0) / y.length;
@@ -290,8 +298,12 @@ export function treinarRegressaoLogistica(
       coeficientes[j] -= passo * (gradienteW[j] / x.length + l2 * coeficientes[j] / x.length);
     }
   }
-  const modelo: ModeloLogisticoCrm = { media, escala, coeficientes, intercepto, calibrador: null };
-  if (calibrar && exemplos.length >= 300) modelo.calibrador = treinarCalibradorTemporal(exemplos);
+  const modelo: ModeloLogisticoCrm = { media, escala, coeficientes, intercepto, calibrador: null, calibradorSemCompras: null };
+  if (calibrar && exemplos.length >= 300) {
+    const calibradores = treinarCalibradoresTemporais(exemplos);
+    modelo.calibrador = calibradores.geral;
+    modelo.calibradorSemCompras = calibradores.semCompras;
+  }
   return modelo;
 }
 
@@ -303,23 +315,11 @@ function logitBruto(modelo: ModeloLogisticoCrm, features: number[]): number {
   return z;
 }
 
-function treinarCalibradorTemporal(exemplos: ExemploProbabilidadeCrm[]): CalibradorPlatt | null {
-  const ordenados = [...exemplos].sort((a, b) => a.proposta.data.getTime() - b.proposta.data.getTime());
-  const inicio = Math.floor(ordenados.length * 0.45);
-  const preditos: Array<{ z: number; y: number }> = [];
-  const blocos = 5;
-  const tamanho = Math.max(1, Math.floor((ordenados.length - inicio) / blocos));
-  for (let bloco = 0; bloco < blocos; bloco++) {
-    const comecoTeste = inicio + bloco * tamanho;
-    const fimTeste = bloco === blocos - 1 ? ordenados.length : Math.min(ordenados.length, comecoTeste + tamanho);
-    if (fimTeste <= comecoTeste || comecoTeste < 100) continue;
-    const treinoPrefixo = ordenados.slice(0, comecoTeste);
-    const modeloPrefixo = treinarRegressaoLogistica(treinoPrefixo, false);
-    for (const exemplo of ordenados.slice(comecoTeste, fimTeste)) {
-      preditos.push({ z: logitBruto(modeloPrefixo, exemplo.features), y: exemplo.alvo });
-    }
-  }
-  if (preditos.length < 100) return null;
+function ajustarCalibradorPlatt(preditos: Array<{ z: number; y: number }>, minimo = 100): CalibradorPlatt | null {
+  if (preditos.length < minimo) return null;
+  const ganhos = preditos.reduce((total, item) => total + item.y, 0);
+  const perdas = preditos.length - ganhos;
+  if (ganhos < 10 || perdas < 10) return null;
   const mediaLogit = preditos.reduce((s, item) => s + item.z, 0) / preditos.length;
   const escalaLogit = Math.sqrt(preditos.reduce((s, item) => s + (item.z - mediaLogit) ** 2, 0) / preditos.length) || 1;
   const x = preditos.map((item) => (item.z - mediaLogit) / escalaLogit);
@@ -337,13 +337,46 @@ function treinarCalibradorTemporal(exemplos: ExemploProbabilidadeCrm[]): Calibra
     coeficiente -= 0.08 * (gradA / x.length + 0.05 * (coeficiente - 1));
     intercepto -= 0.08 * gradB / x.length;
   }
-  return { mediaLogit, escalaLogit, coeficiente, intercepto, n: preditos.length };
+  return { mediaLogit, escalaLogit, coeficiente, intercepto, n: preditos.length, taxaObservada: ganhos / preditos.length };
+}
+
+function treinarCalibradoresTemporais(exemplos: ExemploProbabilidadeCrm[]): {
+  geral: CalibradorPlatt | null;
+  semCompras: CalibradorPlatt | null;
+} {
+  const ordenados = [...exemplos].sort((a, b) => a.proposta.data.getTime() - b.proposta.data.getTime());
+  const inicio = Math.floor(ordenados.length * 0.45);
+  const preditos: Array<{ z: number; y: number; semCompras: boolean }> = [];
+  const blocos = 5;
+  const tamanho = Math.max(1, Math.floor((ordenados.length - inicio) / blocos));
+  for (let bloco = 0; bloco < blocos; bloco++) {
+    const comecoTeste = inicio + bloco * tamanho;
+    const fimTeste = bloco === blocos - 1 ? ordenados.length : Math.min(ordenados.length, comecoTeste + tamanho);
+    if (fimTeste <= comecoTeste || comecoTeste < 100) continue;
+    const treinoPrefixo = ordenados.slice(0, comecoTeste);
+    const modeloPrefixo = treinarRegressaoLogistica(treinoPrefixo, false);
+    for (const exemplo of ordenados.slice(comecoTeste, fimTeste)) {
+      preditos.push({
+        z: logitBruto(modeloPrefixo, exemplo.features),
+        y: exemplo.alvo,
+        semCompras: exemplo.features[FEATURE_NAMES.indexOf("cliente:novo")] > 0.5,
+      });
+    }
+  }
+  return {
+    geral: ajustarCalibradorPlatt(preditos),
+    semCompras: ajustarCalibradorPlatt(
+      preditos.filter((item) => item.semCompras),
+      CRM_PROBABILITY_MIN_NEW_CUSTOMER_CALIBRATION_EXAMPLES,
+    ),
+  };
 }
 
 export function preverComLogistica(modelo: ModeloLogisticoCrm, features: number[]): number {
   const z = logitBruto(modelo, features);
-  if (!modelo.calibrador) return sigmoide(z);
-  const c = modelo.calibrador;
+  const semCompras = features[FEATURE_NAMES.indexOf("cliente:novo")] > 0.5;
+  const c = semCompras ? modelo.calibradorSemCompras : modelo.calibrador;
+  if (!c) return sigmoide(z);
   return sigmoide(c.intercepto + c.coeficiente * ((z - c.mediaLogit) / c.escalaLogit));
 }
 
@@ -549,13 +582,27 @@ export function calcularProbabilidadeCrmAprendida(args: {
     osPorCliente: args.modelo.osPorCliente,
     inicioEmpresaPorCliente: args.modelo.inicioEmpresaPorCliente,
   });
+  const clienteSemCompras = features[FEATURE_NAMES.indexOf("cliente:novo")] > 0.5;
+  const calibradorAplicavel = clienteSemCompras
+    ? args.modelo.modelo.calibradorSemCompras
+    : args.modelo.modelo.calibrador;
   const amostraSuficiente = args.modelo.nTreino >= CRM_PROBABILITY_MIN_TRAINING_EXAMPLES
-    && args.modelo.modelo.calibrador !== null;
+    && args.modelo.modelo.calibrador !== null
+    && calibradorAplicavel !== null;
   const bruto = amostraSuficiente ? preverComLogistica(args.modelo.modelo, features) : null;
-  const probabilidade = bruto === null ? null : Math.max(1, Math.min(99, Math.round(bruto * 100)));
+  const limiteClienteNovo = clienteSemCompras && calibradorAplicavel
+    ? Math.min(
+        CRM_PROBABILITY_NEW_CUSTOMER_MAX_PCT,
+        Math.floor(calibradorAplicavel.taxaObservada * 100 + CRM_PROBABILITY_NEW_CUSTOMER_MAX_UPLIFT_PP),
+      )
+    : 99;
+  const probabilidade = bruto === null
+    ? null
+    : Math.max(1, Math.min(limiteClienteNovo, 99, Math.round(bruto * 100)));
   const idadeIndex = FEATURE_NAMES.indexOf("idade:disponivel");
   const ultimaCompra = osAnteriores.at(-1)?.data ?? null;
-  const recencia = ultimaCompra ? Math.min(120, mesesEntre(ultimaCompra, data)) : 120;
+  const recencia = ultimaCompra ? Math.min(120, mesesEntre(ultimaCompra, data)) : 0;
+  const recenciaDescricao = ultimaCompra ? `${recencia.toFixed(0)} meses` : "sem compra anterior";
   const corte12m = new Date(data.getTime() - DIAS_ANO * 86400000);
   const compras12m = osAnteriores.filter((os) => os.data >= corte12m);
   const valorComprasUltimos12m = compras12m.reduce((total, os) => total + os.valor, 0);
@@ -568,21 +615,29 @@ export function calcularProbabilidadeCrmAprendida(args: {
     : "12+ meses";
   const idadeGrupo = FAIXAS_IDADE.find((faixa) => features[FEATURE_NAMES.indexOf(`idade:${faixa}`)] > 0) ?? "idade desconhecida";
   const regiaoGrupo = REGIOES.find((item) => features[FEATURE_NAMES.indexOf(`regiao:${item}`)] > 0) ?? "região desconhecida";
-  const calibracao = args.modelo.modelo.calibrador;
+  const calibracao = calibradorAplicavel;
   const explicacao = [
     `Modelo: regressão logística recalibrada com ${args.modelo.nTreino} propostas decididas; conversão histórica da base ${(args.modelo.taxaGeral * 100).toFixed(1)}%.`,
     `Ticket da proposta: ${faixaTicketDoValor(args.valorProposta)} (R$ ${args.valorProposta.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}); faixa e valor entram no cálculo individual.`,
     `Região: ${regiaoGrupo} (${regiaoInformada ? "endereço do orçamento" : regiaoHistorica ? "O.S. válida anterior" : "não identificada"}); entra no cálculo individual.`,
-    `Perfil: ${idadeGrupo}; recência de compra ${recencia.toFixed(0)} meses; histórico RFM e coorte entram quando disponíveis.`,
+    `Perfil: ${idadeGrupo}; recência de compra ${recenciaDescricao}; histórico RFM e coorte entram quando disponíveis.`,
     features[idadeIndex] > 0
       ? `Idade da empresa: calculada na data da proposta; perfil identificado em ${args.modelo.coberturaIdadeEmpresarial.clientesComIdade}/${args.modelo.coberturaIdadeEmpresarial.clientesHistoricos} clientes do histórico.`
       : `Idade da empresa: cadastro CNPJ sem vínculo; o modelo não inventa esse dado.`,
   ];
   if (calibracao) explicacao.push(`Calibração temporal: automática, baseada em ${calibracao.n} previsões históricas fora da amostra.`);
+  if (clienteSemCompras && calibracao) {
+    explicacao.push(`Limite conservador para cliente sem compras: conversão observada do segmento ${(calibracao.taxaObservada * 100).toFixed(1)}% + ${CRM_PROBABILITY_NEW_CUSTOMER_MAX_UPLIFT_PP} p.p., até ${CRM_PROBABILITY_NEW_CUSTOMER_MAX_PCT}%.`);
+  }
   if (args.modelo.ultimaPropostaTreino) explicacao.push(`Desfechos até: ${args.modelo.ultimaPropostaTreino.toLocaleDateString("pt-BR")}.`);
   if (args.modelo.ultimaPropostaHistorico) explicacao.push(`Histórico de propostas: até ${args.modelo.ultimaPropostaHistorico.toLocaleDateString("pt-BR")}; ${args.modelo.propostasHistoricoSemDesfecho} ainda sem desfecho para treino.`);
   if (!amostraSuficiente) {
-    explicacao.splice(0, explicacao.length, `Sem estimativa confiável: o modelo precisa de pelo menos ${CRM_PROBABILITY_MIN_TRAINING_EXAMPLES} propostas decididas e calibração temporal válida. Base atual: ${args.modelo.nTreino} propostas. O valor padrão de 20% não é usado como previsão.`);
+    const motivo = args.modelo.nTreino < CRM_PROBABILITY_MIN_TRAINING_EXAMPLES || args.modelo.modelo.calibrador === null
+      ? `o modelo precisa de pelo menos ${CRM_PROBABILITY_MIN_TRAINING_EXAMPLES} propostas decididas e calibração temporal geral válida`
+      : clienteSemCompras
+        ? `clientes sem compras anteriores precisam de calibração temporal própria com pelo menos ${CRM_PROBABILITY_MIN_NEW_CUSTOMER_CALIBRATION_EXAMPLES} previsões, incluindo ganhos e perdas`
+        : "a calibração temporal aplicável não está disponível";
+    explicacao.splice(0, explicacao.length, `Sem estimativa confiável: ${motivo}. Base atual: ${args.modelo.nTreino} propostas. O valor padrão de 20% não é usado como previsão.`);
   }
   return {
     probabilidade,

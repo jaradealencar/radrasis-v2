@@ -32,7 +32,12 @@ const propostasAbertas = [
     ...propostaBase,
     id: "erp-30001",
     sequencial: 30001,
-    nomeCliente: "Proposta aberta sem contatos",
+    nomeCliente: "Cliente novo sem compras",
+    clienteNovo: true,
+    totalCotacoes: 2,
+    taxaConversao: 0,
+    probabilidadeCompra: null,
+    probabilidadeExplicacao: ["Sem estimativa confiável: clientes sem compras anteriores precisam de calibração temporal própria."],
   },
   {
     ...propostaBase,
@@ -167,7 +172,7 @@ async function instalarMocks(route: Route) {
   });
 }
 
-test("mantém propostas abertas e permite separar as pendentes sem esconder as já contatadas", async ({ page }) => {
+test("mantém propostas abertas e não inventa score para cliente novo sem calibração própria", async ({ page }) => {
   await page.route("**/api/auth/get-session**", async (route) => {
     const agora = new Date().toISOString();
     await route.fulfill({
@@ -212,6 +217,10 @@ test("mantém propostas abertas e permite separar as pendentes sem esconder as j
 
   await tabs.nth(1).click();
   await expect(page.getByText("#30001")).toBeVisible();
+  await expect(page.getByText("Cliente novo sem compras")).toBeVisible();
+  await expect(page.getByText("2 cotações", { exact: true })).toBeVisible();
+  await expect(page.getByText("0% conv.", { exact: true }).first()).toBeVisible();
+  await expect(page.getByText("S/D", { exact: true }).first()).toBeVisible();
 
   const filtrosAvancados = page.locator("details").filter({ hasText: "Filtros avançados" });
   await expect(filtrosAvancados).toHaveJSProperty("open", false);

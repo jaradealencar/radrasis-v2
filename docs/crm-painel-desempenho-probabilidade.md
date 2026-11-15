@@ -13,6 +13,7 @@ Na aba Propostas, a tabela mostra todas as propostas ainda abertas no MubiSys, i
 - Conversão prevista média e conversão real, incluindo a diferença em pontos percentuais e ganhos esperados contra ganhos observados.
 - Quadro executivo com 20 indicadores: volume de previsões e desfechos, conversão prevista/real, qualidade do score e valores/tickets das propostas decididas. Mostra o acumulado desde o início do acompanhamento, o histórico anterior, cada um dos três últimos meses completos e o agregado desses três meses.
 - Brier score, Brier skill contra um preditor constante com a conversão observada, log-loss, AUC e erro de calibração esperado por dez faixas de probabilidade.
+- Clientes sem O.S. válida anterior só recebem percentual com calibração temporal própria: no mínimo 100 previsões fora da amostra nesse grupo, com pelo menos 10 ganhos e 10 perdas. Além disso, o score fica limitado à conversão observada do segmento +15 pontos percentuais e a 50% no máximo. O painel do modelo mostra a disponibilidade e a quantidade usada nessa calibração.
 - Tendência dos últimos 30, 60, 90, 180 ou 365 dias contra uma janela anterior do mesmo tamanho. “Melhorando”, “piorando” e “mantido” só aparecem quando ambas as janelas têm no mínimo 30 propostas decididas; até lá, a amostra é insuficiente.
 - Evolução mensal e desempenho por vendedor, ticket, idade do CNPJ, região, coorte da primeira compra, recência, frequência e valor de compras em 12 meses. Os grupos monetários usam quartis do período escolhido.
 - Conversão histórica por região com ganhos, perdas, amostra e proporção. O painel também informa quantas O.S. do espelho completo entram como compras válidas, a cobertura de UF e a distribuição regional. O score histórico só usa região de O.S. anterior à proposta; propostas sem compra anterior ficam em “região desconhecida”.
@@ -28,7 +29,7 @@ Mudanças comerciais podem ser registradas com título, data de início e contex
 
 ## Benchmark anterior ao painel
 
-Os valores históricos no painel são um replay cronológico de 6.472 propostas decididas, validado em 13/11/2026 e documentado em `docs/crm-probabilidade-auto-calibracao.md`. O replay não foi mostrado aos vendedores e não é um A/B ao vivo. Para 90 dias, a regressão logística calibrada obteve Brier 0,1339, log-loss 0,4243 e AUC 0,743; o modelo bayesiano anterior obteve 0,1407, 0,4450 e 0,708. O histórico auditado chegava a 29/09/2026 e pode estar defasado.
+O benchmark histórico de 6.472 propostas, validado em 13/11/2026 e documentado em `docs/crm-probabilidade-auto-calibracao.md`, avaliou a versão anterior do score. A calibração específica de clientes sem compras é uma alteração posterior e ainda precisa de novo replay antes de atribuir a ela essas métricas. O replay anterior não foi mostrado aos vendedores e não é um A/B ao vivo; o histórico auditado chegava a 29/09/2026 e pode estar defasado.
 
 Este benchmark fica separado das medições prospectivas. O painel não interpreta associação ou melhora de métricas como prova de causalidade; um A/B exigiria randomização de versões de previsão e registro do grupo experimental.
 
