@@ -136,20 +136,24 @@ test("instrutor edita alternativas e gabarito e revisa uma questão refeita com 
     .getByTestId("assessment-editor-selector")
     .selectOption({ label: assessmentTitle });
 
-  const question = page.getByTestId("assessment-question-classificar_hibrido");
+  const question = page.getByTestId("assessment-question-prazo_confirmado");
   await expect(question).toBeVisible();
-  await expect(question.getByText("Gabarito: 3 certa(s)")).toBeVisible();
+  await expect(question.getByText("Gabarito: 1 certa(s)")).toBeVisible();
 
   await question
     .getByLabel("Texto da alternativa 2")
-    .fill("O cliente fabrica e também terceiriza, então é sempre Grupo 2.");
+    .fill("Prometer a data que o cliente pediu sem consultar a produção.");
+  await question.getByRole("button", { name: "Excluir alternativa 3" }).click();
   await question.getByRole("button", { name: "Adicionar alternativa" }).click();
   await question
-    .getByLabel("Texto da alternativa 6")
-    .fill("Cliente novo: ainda está entendendo como vender esse produto.");
-  await question.getByRole("checkbox", { name: "Certa" }).nth(3).check();
-  await expect(question.getByText("Gabarito: 4 certa(s)")).toBeVisible();
-  await question.getByRole("button", { name: "Excluir alternativa 6" }).click();
+    .getByLabel("Texto da alternativa 3")
+    .fill("Usar um prazo do mês passado sem conferir a produção.");
+  const answerKeys = question.getByRole("checkbox", { name: "Certa" });
+  await answerKeys.nth(2).check();
+  await answerKeys.nth(1).uncheck();
+  await expect(answerKeys.nth(2)).toBeChecked();
+  await expect(answerKeys.nth(1)).not.toBeChecked();
+  await expect(question.getByText("Gabarito: 1 certa(s)")).toBeVisible();
 
   await page.route(
     "**/api/trpc/treinamento.regenerateQuestionWithAI**",
