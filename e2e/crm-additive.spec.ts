@@ -47,8 +47,10 @@ const propostasAbertas = [
     qtdComprasCliente: 4,
     totalCompras: 4,
     totalCotacoes: 27,
-    orcamentosFechados: 4,
-    taxaConversao: 15,
+    orcamentosFechados: 0,
+    taxaConversao: 0,
+    probabilidadeCompra: 15,
+    probabilidadeExplicacao: ["Teto pela conversão registrada do cliente: 0.0% + 15 p.p., até 15%."],
     contato1: {
       data: new Date(Date.now() - 86_400_000).toISOString(),
       canal: "nao_retornou",
@@ -234,6 +236,7 @@ test("mantém propostas abertas e não inventa score para cliente novo sem calib
 
   await expect(page.getByText("#30002")).toBeVisible();
   await expect(page.getByText(`27 cota\u00e7\u00f5es`, { exact: true })).toBeVisible();
+  await expect(page.getByText("15%", { exact: true })).toBeVisible();
   await expect(page.getByText("Propostas abertas", { exact: true }).locator("..")).toContainText("2");
 
   const filtrarPendentes = page.getByRole("button", { name: /Pendentes de acompanhamento/ });

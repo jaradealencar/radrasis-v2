@@ -25,7 +25,7 @@ const FAIXAS_IDADE = ["menos de 1 ano", "1 a 3 anos", "3 a 10 anos", "10+ anos",
 const COORTES = ["sem compra anterior", "até 2022", "2023-2024", "2025+", "coorte desconhecida"];
 const REGIOES = ["Norte", "Nordeste", "Centro-Oeste", "Sudeste", "Sul", "região desconhecida"];
 
-export const CRM_PROBABILITY_MODEL_VERSION = "logit-platt-segmented-v2";
+export const CRM_PROBABILITY_MODEL_VERSION = "logit-platt-segmented-v3";
 // Não exibe o fallback matemático do modelo como uma probabilidade real.
 // A probabilidade só é apresentada quando o modelo consegue formar a
 // calibração temporal fora da amostra (treino mínimo de 300 decisões).
@@ -34,6 +34,7 @@ export const CRM_PROBABILITY_MIN_TRAINING_EXAMPLES = 300;
 export const CRM_PROBABILITY_MIN_NEW_CUSTOMER_CALIBRATION_EXAMPLES = 100;
 const CRM_PROBABILITY_NEW_CUSTOMER_MAX_UPLIFT_PP = 15;
 const CRM_PROBABILITY_NEW_CUSTOMER_MAX_PCT = 50;
+const CRM_PROBABILITY_CLIENT_CONVERSION_MAX_UPLIFT_PP = 15;
 
 const NUMERIC_FEATURES = [
   "ticketLog", "idadeEmpresaLog", "recenciaCompraMesesLog", "frequenciaRfm12mLog",
@@ -553,6 +554,7 @@ export function calcularProbabilidadeCrmAprendida(args: {
   dataProposta?: string | Date | null;
   numeroProposta?: string | null;
   regiaoCliente?: string | null;
+  taxaConversaoClientePct?: number | null;
 }): {
   probabilidade: number | null;
   explicacao: string[];
@@ -590,15 +592,21 @@ export function calcularProbabilidadeCrmAprendida(args: {
     && args.modelo.modelo.calibrador !== null
     && calibradorAplicavel !== null;
   const bruto = amostraSuficiente ? preverComLogistica(args.modelo.modelo, features) : null;
+  const taxaConversaoClientePct = typeof args.taxaConversaoClientePct === "number" && Number.isFinite(args.taxaConversaoClientePct)
+    ? Math.min(100, Math.max(0, args.taxaConversaoClientePct))
+    : null;
   const limiteClienteNovo = clienteSemCompras && calibradorAplicavel
     ? Math.min(
         CRM_PROBABILITY_NEW_CUSTOMER_MAX_PCT,
         Math.floor(calibradorAplicavel.taxaObservada * 100 + CRM_PROBABILITY_NEW_CUSTOMER_MAX_UPLIFT_PP),
       )
     : 99;
+  const limiteConversaoCliente = taxaConversaoClientePct === null
+    ? 99
+    : Math.min(99, Math.floor(taxaConversaoClientePct + CRM_PROBABILITY_CLIENT_CONVERSION_MAX_UPLIFT_PP));
   const probabilidade = bruto === null
     ? null
-    : Math.max(1, Math.min(limiteClienteNovo, 99, Math.round(bruto * 100)));
+    : Math.max(1, Math.min(limiteClienteNovo, limiteConversaoCliente, 99, Math.round(bruto * 100)));
   const idadeIndex = FEATURE_NAMES.indexOf("idade:disponivel");
   const ultimaCompra = osAnteriores.at(-1)?.data ?? null;
   const recencia = ultimaCompra ? Math.min(120, mesesEntre(ultimaCompra, data)) : 0;
@@ -628,6 +636,9 @@ export function calcularProbabilidadeCrmAprendida(args: {
   if (calibracao) explicacao.push(`Calibração temporal: automática, baseada em ${calibracao.n} previsões históricas fora da amostra.`);
   if (clienteSemCompras && calibracao) {
     explicacao.push(`Limite conservador para cliente sem compras: conversão observada do segmento ${(calibracao.taxaObservada * 100).toFixed(1)}% + ${CRM_PROBABILITY_NEW_CUSTOMER_MAX_UPLIFT_PP} p.p., até ${CRM_PROBABILITY_NEW_CUSTOMER_MAX_PCT}%.`);
+  }
+  if (taxaConversaoClientePct !== null) {
+    explicacao.push(`Teto pela conversão registrada do cliente: ${taxaConversaoClientePct.toFixed(1)}% + ${CRM_PROBABILITY_CLIENT_CONVERSION_MAX_UPLIFT_PP} p.p., até ${limiteConversaoCliente}%.`);
   }
   if (args.modelo.ultimaPropostaTreino) explicacao.push(`Desfechos até: ${args.modelo.ultimaPropostaTreino.toLocaleDateString("pt-BR")}.`);
   if (args.modelo.ultimaPropostaHistorico) explicacao.push(`Histórico de propostas: até ${args.modelo.ultimaPropostaHistorico.toLocaleDateString("pt-BR")}; ${args.modelo.propostasHistoricoSemDesfecho} ainda sem desfecho para treino.`);
