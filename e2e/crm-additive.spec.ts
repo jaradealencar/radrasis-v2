@@ -215,6 +215,8 @@ test("mantém propostas abertas e permite separar as pendentes sem esconder as j
 
   const filtrosAvancados = page.locator("details").filter({ hasText: "Filtros avançados" });
   await expect(filtrosAvancados).toHaveJSProperty("open", false);
+  await filtrosAvancados.locator("summary").click();
+  await expect(filtrosAvancados).toHaveJSProperty("open", true);
 
   await expect(page.getByText("#30002")).toBeVisible();
   await expect(page.getByText("Propostas abertas", { exact: true }).locator("..")).toContainText("2");
