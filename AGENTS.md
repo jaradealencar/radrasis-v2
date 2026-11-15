@@ -296,7 +296,7 @@ server/
   routers.ts          appRouter raiz do tRPC — registra todos os sub-routers
                        `price.listModelCatalog`/`price.saveModelMapping` mantêm produtividade de solda e IDs de faixa por modelo nas tabelas antiga/nova (`price_table_model_mappings`).
   routers/             sub-routers por domínio (logistica.ts, admin.ts, ...)
-                       treinamento.ts controla catálogo, matérias, matrículas, aplicação de provas, materiais de apoio, os 10 perfis de questão, tentativas, resultados e ranking da Escola Corporativa; notas finais são normalizadas de 0 a 10, independentemente da quantidade de questões; avaliações são divididas em módulos sequenciais de até 10 questões, com retomada da tentativa aberta; a avaliação Closer cobre as 14 seções e os anexos A–F do POP, com matriz em `docs/escola-corporativa.md` e questões adicionais na migration `0120_closer_full_coverage`;
+                       treinamento.ts controla catálogo, matérias, matrículas, aplicação de provas, materiais de apoio, geração de rascunhos a partir de POPs, formatos de questão, tentativas, resultados e ranking da Escola Corporativa; notas finais são normalizadas de 0 a 10, independentemente da quantidade de questões; avaliações são divididas em módulos sequenciais de até 10 questões, com retomada da tentativa aberta; a avaliação Closer cobre as 14 seções e os anexos A–F do POP, com matriz em `docs/escola-corporativa.md` e questões adicionais desde a migration `0120_closer_full_coverage`;
                        o simulacro do painel de alunos é somente client-side e nunca grava tentativas fictícias
   db/                  acesso a dados (Drizzle + pg puro via getPool()): db.ts, db-connection.ts,
                        db-helpers*.ts, storage.ts
@@ -315,7 +315,10 @@ server/
                        comparadas a desfechos explícitos, por período e segmento
                        incluindo região; snapshots imutáveis em
                        crm_probabilidade_previsoes),
-                       qualificacaoLeadCnpj.ts (score de lead por CNPJ)
+                       qualificacaoLeadCnpj.ts (score de lead por CNPJ),
+                       campanhasWhatsappIa.ts (qualificação e resumo de leads) e
+                       campanhasWhatsappInboundBuffer.ts (filtro de bot e debounce de respostas)
+                       treinamentoPop.ts (leitura de PDFs, DOCX e TXT e OCR de PDFs escaneados sob demanda para criar rascunhos de treinamento)
                        (telefones das campanhas: `server/sync/clientes-mubisys.ts` espelha o cadastro
                        de clientes do MubiSys em `mubisys_clientes_cache`, atualizado sozinho ao abrir
                        o painel de Campanhas; 429 da API tem retentativa e o lote tem orçamento de 40s),
@@ -398,6 +401,14 @@ em vez de reescrever o padrão:
 - Resultado que o vendedor mostra ao cliente (simuladores de cartão e de boletos, Tabela de Preços > Pág. 6) ganha
   `@/components/BotaoCopiarImagem`: desenha um PNG em canvas (`@/lib/imagemCopia`) e o coloca na área de transferência (sem
   permissão do navegador, baixa o arquivo). Não use `html2canvas` para isso — ele não lê as cores `oklch()` do Tailwind 4.
+
+## Autoria de provas da Escola Corporativa
+
+Ao criar ou revisar provas, use a skill global `$escola-corporativa-provas`. As alternativas devem ser próprias de cada questão, claras e plausíveis; não deixe o gabarito óbvio por repetição de palavras, opções absurdas ou eliminação simples. Em `multiple_select`, misture corretas e erradas e inclua distratores plausíveis para exigir atenção a cada afirmação. Em questões `matching`, o servidor exige pelo menos duas opções extras além de uma resposta para cada item da esquerda, e rejeita textos genéricos ou repetidos na mesma questão ou entre questões de associação da prova. Crie distratores específicos do conteúdo e mantenha uma única associação correta por item.
+
+O editor de avaliações permite alterar perguntas e seus gabaritos visualmente, além da edição avançada em JSON. Cada pergunta pode ser refeita com IA mantendo seu tipo; a resposta da IA é uma prévia não persistida e precisa ser revisada antes de salvar uma nova versão da avaliação. Ao mudar o tipo ou a estrutura de uma questão, valide o gabarito pelo formato correspondente antes de salvar.
+
+Quando a questão trouxer várias afirmações para o aluno julgar uma a uma, use `yes_no_matrix`: cada frase recebe uma resposta Sim/Não e cada acerto soma uma parte igual dos pontos. Reserve `multiple_select` para tarefas em que o aluno escolhe várias opções como um conjunto, sem julgar cada frase com Sim/Não.
 
 ## Testes
 

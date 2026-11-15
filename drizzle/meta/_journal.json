@@ -862,6 +862,83 @@
       "when": 1794686795578,
       "tag": "0122_watery_umar",
       "breakpoints": true
+    },
+    {
+      "idx": 123,
+      "version": "7",
+      "when": 1794695167942,
+      "tag": "0129_closer_client_groups_question",
+      "breakpoints": true
+    },
+    {
+      "idx": 124,
+      "version": "7",
+      "when": 1794695345964,
+      "tag": "0130_closer_crm_qualification_plain_language",
+      "breakpoints": true
+    },
+    {
+      "idx": 125,
+      "version": "7",
+      "when": 1794695860529,
+      "tag": "0131_closer_discount_director_review",
+      "breakpoints": true
+    },
+    {
+      "idx": 126,
+      "version": "7",
+      "when": 1794696193520,
+      "tag": "0132_closer_intermediary_approval_diagnosis",
+      "breakpoints": true
+    },
+    {
+      "idx": 127,
+      "version": "7",
+      "when": 1794696314905,
+      "tag": "0133_closer_grupo1_simple_language",
+      "breakpoints": true
+    },
+    {
+      "idx": 128,
+      "version": "7",
+      "when": 1794697120568,
+      "tag": "0134_fantastic_may_parker",
+      "breakpoints": true
+    },
+    {
+      "idx": 129,
+      "version": "7",
+      "when": 1794710086638,
+      "tag": "0135_loud_shooting_star",
+      "breakpoints": true
+    },
+    {
+      "idx": 130,
+      "version": "7",
+      "when": 1794710244025,
+      "tag": "0136_lying_cardiac",
+      "breakpoints": true
+    },
+    {
+      "idx": 131,
+      "version": "7",
+      "when": 1794710675410,
+      "tag": "0137_clear_rictor",
+      "breakpoints": true
+    },
+    {
+      "idx": 132,
+      "version": "7",
+      "when": 1794711114525,
+      "tag": "0138_pink_jamie_braddock",
+      "breakpoints": true
+    },
+    {
+      "idx": 133,
+      "version": "7",
+      "when": 1794711550143,
+      "tag": "0139_slim_karen_page",
+      "breakpoints": true
     }
   ]
 }

@@ -4059,6 +4059,7 @@ export const trainingQuestionTypes = [
   "best_response",
   "negotiation",
   "true_false",
+  "yes_no_matrix",
   "short_answer",
 ] as const;
 export type TrainingQuestionType = (typeof trainingQuestionTypes)[number];
@@ -4078,6 +4079,12 @@ export type TrainingQuestionNode = {
   clientText: string;
   options: TrainingQuestionOption[];
 };
+export type TrainingQuestionStatement = {
+  id: string;
+  text: string;
+  correctBoolean: boolean;
+  feedback?: string;
+};
 export type TrainingQuestionConfig = {
   options?: TrainingQuestionOption[];
   allowPartialCredit?: boolean;
@@ -4086,6 +4093,7 @@ export type TrainingQuestionConfig = {
   correctPairs?: Array<{ leftId: string; rightId: string }>;
   blanks?: Array<{ id: string; acceptedAnswers: string[] }>;
   correctBoolean?: boolean;
+  statements?: TrainingQuestionStatement[];
   acceptedAnswers?: string[];
   steps?: Array<{ id: string; text: string }>;
   correctOrder?: string[];
