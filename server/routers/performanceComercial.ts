@@ -4,14 +4,14 @@ import { z } from "zod";
 import { ENV } from "../_core/env";
 import { listarOSMubiSys, listarOrcamentosMubiSys, urlOrcamentoMubiSys, buscarOrcamentoPorNumero } from "../integrations/mubisys-client";
 import { getDb } from "../db/db";
-import { sinaisMercado, financeiroMensal, custoMarketing, crmMetas, metasComerciais, historicoOs, historicoOrcamentos, crmProbabilidadePrevisoes, clienteOverrides, faturamento, inteligenciaAcoesClientes, performanceAuditada, mubisysApiCache, clienteNovosContato, performancePropostasFollowup, performancePropostasContatado, inteligenciaClientesContatos, crmAtividadeLog } from "../../drizzle/schema";
-import { eq, and, desc, gte, lte, sql } from "drizzle-orm";
+import { sinaisMercado, financeiroMensal, custoMarketing, crmMetas, metasComerciais, historicoOs, historicoOrcamentos, crmProbabilidadePrevisoes, crmContatos, clienteOverrides, faturamento, inteligenciaAcoesClientes, performanceAuditada, mubisysApiCache, clienteNovosContato, performancePropostasFollowup, performancePropostasContatado, inteligenciaClientesContatos, crmAtividadeLog } from "../../drizzle/schema";
+import { eq, and, desc, gte, lte, inArray, sql } from "drizzle-orm";
 import {
   construirBaseClientes, calcularVisaoGeral, analisarCliente, calcularCandidatosAcao,
   calcularFunilOrcamentos, calcularPrevisaoComercial, calcularRecompraNovosReativados, calcularTempoOrcamentoPedido,
   calcularConversaoPorFaixaTicket, calcularFunilMensal,
   montarContextoAssistenteClientes, PROMPT_ASSISTENTE_CLIENTES_V1, VERSAO_PROMPT_ASSISTENTE_CLIENTES,
-  DICIONARIO_METRICAS, DIAS_COOLDOWN_ACAO_RESOLVIDA, VERSAO_REGRA_ATUAL, parseDataFlexivel, STATUS_ABERTO,
+  DICIONARIO_METRICAS, DIAS_COOLDOWN_ACAO_RESOLVIDA, VERSAO_REGRA_ATUAL, parseDataFlexivel,
   type AnaliseCliente,
 } from "../services/inteligenciaClientes";
 import { calcularPainelMeta } from "../services/painelMeta";
@@ -30,7 +30,7 @@ import {
 import { construirMapaConversaoClientes, calcularProbabilidade, calcularTaxaConversaoCliente } from "../services/probabilidadeCompra";
 import { isOsNormalDb } from "../utils/os-valida";
 import { perguntarSobreClientes } from "../integrations/anthropic-client";
-import { classificarDesfechoExplicito } from "../services/crmProbabilidadeModel";
+import { resolverDesfechoMonitorado, type SituacaoDesfechoMonitorado } from "../services/crmProbabilidadePerformance";
 
 // ─── Cache em memória para evitar chamadas duplicadas à API ────────────────────
 // TTL: 60 minutos para mês atual, 6 horas para meses históricos (dados não mudam).
@@ -1726,6 +1726,9 @@ type LinhaProbabilidadeVendedor = {
   probabilidade: number;
   valor: number;
   desfecho: 0 | 1 | null;
+  desfechoConsiderandoVencidas: 0 | 1 | null;
+  situacaoDesfecho: SituacaoDesfechoMonitorado;
+  origemDesfecho: "mubisys" | "crm" | "mubisys_e_crm" | "presumida" | null;
   aberta: boolean;
   grupoCliente: "novo" | "antigo" | "desconhecido";
   faixaProbabilidade: string;
@@ -1738,6 +1741,17 @@ type BucketProbabilidadeVendedor = {
   perdas: number;
   semDesfecho: number;
   abertas: number;
+  perdasPresumidas: number;
+  abertasNaValidade: number;
+  abertasSemData: number;
+  semHistorico: number;
+  semStatus: number;
+  statusAmbiguo: number;
+  statusNaoReconhecido: number;
+  conflitos: number;
+  fontesDesfecho: { mubisys: number; crm: number; ambos: number; conflitos: number };
+  decididasConsiderandoVencidas: number;
+  conversaoConsiderandoVencidasPct: number | null;
   ganhosEsperados: number;
   valorGanhoReal: number;
   valorGanhoEsperado: number;
@@ -1787,6 +1801,22 @@ function calcularBucketProbabilidadeVendedor(args: {
   const ganhos = decididas.filter(linha => linha.desfecho === 1);
   const perdas = decididas.filter(linha => linha.desfecho === 0);
   const abertas = linhas.filter(linha => linha.aberta);
+  const decididasConsiderandoVencidas = linhas.filter(linha => linha.desfechoConsiderandoVencidas !== null);
+  const ganhosConsiderandoVencidas = decididasConsiderandoVencidas.filter(linha => linha.desfechoConsiderandoVencidas === 1).length;
+  const perdasPresumidas = linhas.filter(linha => linha.situacaoDesfecho === "perda_presumida_validade").length;
+  const abertasNaValidade = linhas.filter(linha => linha.situacaoDesfecho === "aberta_na_validade").length;
+  const abertasSemData = linhas.filter(linha => linha.situacaoDesfecho === "aberta_sem_data").length;
+  const semHistorico = linhas.filter(linha => linha.situacaoDesfecho === "sem_historico").length;
+  const semStatus = linhas.filter(linha => linha.situacaoDesfecho === "sem_status").length;
+  const statusAmbiguo = linhas.filter(linha => linha.situacaoDesfecho === "status_ambiguo").length;
+  const statusNaoReconhecido = linhas.filter(linha => linha.situacaoDesfecho === "status_nao_reconhecido").length;
+  const conflitos = linhas.filter(linha => linha.situacaoDesfecho === "conflito").length;
+  const fontesDesfecho = {
+    mubisys: linhas.filter(linha => linha.origemDesfecho === "mubisys").length,
+    crm: linhas.filter(linha => linha.origemDesfecho === "crm").length,
+    ambos: linhas.filter(linha => linha.origemDesfecho === "mubisys_e_crm").length,
+    conflitos,
+  };
   const ganhosEsperados = decididas.reduce((soma, linha) => soma + linha.probabilidade, 0);
   const valorGanhoReal = ganhos.reduce((soma, linha) => soma + linha.valor, 0);
   const valorGanhoEsperado = decididas.reduce((soma, linha) => soma + linha.probabilidade * linha.valor, 0);
@@ -1850,8 +1880,21 @@ function calcularBucketProbabilidadeVendedor(args: {
     decididas: decididas.length,
     ganhos: ganhos.length,
     perdas: perdas.length,
-    semDesfecho: linhas.length - decididas.length - abertas.length,
+    semDesfecho: linhas.length - decididas.length - abertas.length - perdasPresumidas,
     abertas: abertas.length,
+    perdasPresumidas,
+    abertasNaValidade,
+    abertasSemData,
+    semHistorico,
+    semStatus,
+    statusAmbiguo,
+    statusNaoReconhecido,
+    conflitos,
+    fontesDesfecho,
+    decididasConsiderandoVencidas: decididasConsiderandoVencidas.length,
+    conversaoConsiderandoVencidasPct: decididasConsiderandoVencidas.length
+      ? arredondarProbabilidade((ganhosConsiderandoVencidas / decididasConsiderandoVencidas.length) * 100, 1)
+      : null,
     ganhosEsperados: arredondarProbabilidade(ganhosEsperados),
     valorGanhoReal: arredondarProbabilidade(valorGanhoReal),
     valorGanhoEsperado: arredondarProbabilidade(valorGanhoEsperado),
@@ -1878,48 +1921,114 @@ export const performanceComercialRouter = router({
       if (!db) {
         return {
           periodo: { mes: input.mes, ano: input.ano },
-          cobertura: { propostasNoHistorico: 0, propostasMonitoradas: 0, percentual: null },
+          cobertura: {
+            propostasNoHistorico: 0, propostasMonitoradas: 0, propostasCorrespondidas: 0,
+            propostasSemScore: 0, snapshotsSemHistorico: 0, snapshotsComHistoricoAmbiguo: 0,
+            snapshotsSemIdMubiSys: 0, snapshotsConsiderados: 0, percentual: null,
+          },
           total: calcularBucketProbabilidadeVendedor({ linhas: [] }),
+          versoes: [],
+          statusNaoReconhecidos: [],
           vendedores: [],
         };
       }
 
-      const [historicoMes, snapshots] = await Promise.all([
-        db.select({ orcNumero: historicoOrcamentos.orcNumero })
-          .from(historicoOrcamentos)
-          .where(and(eq(historicoOrcamentos.mes, input.mes), eq(historicoOrcamentos.ano, input.ano))),
+      const [historicoLinhas, snapshots] = await Promise.all([
+        db.select({
+          orcNumero: historicoOrcamentos.orcNumero,
+          dataCadastro: historicoOrcamentos.dataCadastro,
+          validade: historicoOrcamentos.validade,
+          status: historicoOrcamentos.status,
+          mes: historicoOrcamentos.mes,
+          ano: historicoOrcamentos.ano,
+        })
+          .from(historicoOrcamentos),
         db.select({
           orcNumero: crmProbabilidadePrevisoes.orcNumero,
+          mubisysOrcamentoId: crmProbabilidadePrevisoes.mubisysOrcamentoId,
           dataProposta: crmProbabilidadePrevisoes.dataProposta,
           exibidaEm: crmProbabilidadePrevisoes.exibidaEm,
           probabilidadePct: crmProbabilidadePrevisoes.probabilidadePct,
           valorProposta: crmProbabilidadePrevisoes.valorProposta,
           vendedor: crmProbabilidadePrevisoes.vendedor,
           coorteCliente: crmProbabilidadePrevisoes.coorteCliente,
-          dataCadastroHistorico: historicoOrcamentos.dataCadastro,
-          statusHistorico: historicoOrcamentos.status,
-        }).from(crmProbabilidadePrevisoes)
-          .leftJoin(historicoOrcamentos, eq(crmProbabilidadePrevisoes.orcNumero, historicoOrcamentos.orcNumero)),
+          modeloVersao: crmProbabilidadePrevisoes.modeloVersao,
+        }).from(crmProbabilidadePrevisoes),
       ]);
 
-      const propostasNoHistorico = new Set(historicoMes
-        .map(row => String(row.orcNumero ?? "").trim())
-        .filter(Boolean)).size;
+      const normalizarOrcNumero = (value: string | null | undefined) => String(value ?? "").trim();
+      const historicosPorNumero = new Map<string, typeof historicoLinhas>();
+      const numerosHistoricoMes = new Set(historicoLinhas
+        .filter(row => row.mes === input.mes && row.ano === input.ano)
+        .map(row => normalizarOrcNumero(row.orcNumero))
+        .filter(Boolean));
+      for (const row of historicoLinhas) {
+        const numero = normalizarOrcNumero(row.orcNumero);
+        if (!numero) continue;
+        historicosPorNumero.set(numero, [...(historicosPorNumero.get(numero) ?? []), row]);
+      }
+      const propostasNoHistorico = numerosHistoricoMes.size;
+      const snapshotsDaCoorte = snapshots.filter(row => {
+        const numero = normalizarOrcNumero(row.orcNumero);
+        const historicos = historicosPorNumero.get(numero) ?? [];
+        const historico = historicos.length === 1 ? historicos[0] : null;
+        const dataBase = row.dataProposta
+          ?? parseDataFlexivel(historico?.dataCadastro ?? null)
+          ?? row.exibidaEm;
+        return dataBase.getFullYear() === input.ano && dataBase.getMonth() + 1 === input.mes;
+      });
+      const idsMubiSys = [...new Set(snapshotsDaCoorte
+        .map(row => String(row.mubisysOrcamentoId ?? "").trim())
+        .filter(Boolean))];
+      const contatosFinais = idsMubiSys.length
+        ? await db.select({ orcamentoId: crmContatos.orcamentoId, canal: crmContatos.canal })
+            .from(crmContatos)
+            .where(and(
+              inArray(crmContatos.orcamentoId, idsMubiSys),
+              inArray(crmContatos.canal, ["perdida", "garantiu_fechamento"]),
+            ))
+        : [];
+      const desfechosCrmPorId = new Map<string, Array<0 | 1>>();
+      for (const contato of contatosFinais) {
+        const desfechos = desfechosCrmPorId.get(contato.orcamentoId) ?? [];
+        desfechos.push(contato.canal === "garantiu_fechamento" ? 1 : 0);
+        desfechosCrmPorId.set(contato.orcamentoId, desfechos);
+      }
+
+      const propostasMonitoradasNumeros = new Set<string>();
+      const snapshotsSemHistoricoNumeros = new Set<string>();
+      const snapshotsHistoricoAmbiguoNumeros = new Set<string>();
+      const snapshotsSemIdMubiSysNumeros = new Set<string>();
+      const versoes = new Map<string, number>();
+      const statusNaoReconhecidos = new Map<string, number>();
       const linhas: LinhaProbabilidadeVendedor[] = [];
-      for (const row of snapshots) {
+      for (const row of snapshotsDaCoorte) {
         const score = Number(row.probabilidadePct);
         if (!Number.isFinite(score) || score < 0 || score > 100) continue;
-        // A data original da proposta define o mês; só usamos a data em que o
-        // CRM exibiu o score quando as duas fontes anteriores não têm data.
-        const dataBase = row.dataProposta
-          ?? parseDataFlexivel(row.dataCadastroHistorico ?? null)
-          ?? row.exibidaEm;
-        if (dataBase.getFullYear() !== input.ano || dataBase.getMonth() + 1 !== input.mes) continue;
+        const numero = normalizarOrcNumero(row.orcNumero);
+        const historicos = historicosPorNumero.get(numero) ?? [];
+        const historico = historicos.length === 1 ? historicos[0] : null;
+        const idMubiSys = String(row.mubisysOrcamentoId ?? "").trim();
+        if (!idMubiSys && numero) snapshotsSemIdMubiSysNumeros.add(numero);
+        const desfecho = resolverDesfechoMonitorado({
+          statusMubiSys: historico?.status ?? null,
+          existeNoHistorico: historicos.length > 0,
+          dataCadastro: historico?.dataCadastro ?? null,
+          validade: historico?.validade ?? null,
+          desfechosCrm: idMubiSys ? desfechosCrmPorId.get(idMubiSys) : undefined,
+        });
+        if (historicos.length === 1 && numerosHistoricoMes.has(numero)) propostasMonitoradasNumeros.add(numero);
+        else if (numero && historicos.length === 0) snapshotsSemHistoricoNumeros.add(numero);
+        else if (numero && historicos.length > 1) snapshotsHistoricoAmbiguoNumeros.add(numero);
+        const versao = String(row.modeloVersao ?? "").trim() || "sem versao";
+        versoes.set(versao, (versoes.get(versao) ?? 0) + 1);
+        if (desfecho.situacao === "status_nao_reconhecido" && historico?.status?.trim()) {
+          const statusRaw = historico.status.trim();
+          statusNaoReconhecidos.set(statusRaw, (statusNaoReconhecidos.get(statusRaw) ?? 0) + 1);
+        }
 
         const vendedorOriginal = String(row.vendedor ?? "").trim();
         const vendedor = vendedorOriginal || "Sem vendedor";
-        // Mantém as propostas sem atribuição no resultado geral, mas nunca as
-        // considera colegas de si mesmas no benchmark entre vendedores.
         const vendedorKey = vendedorOriginal ? normalizarChaveProbabilidade(vendedorOriginal) : "";
         const coorte = normalizarChaveProbabilidade(row.coorteCliente);
         const grupoCliente: LinhaProbabilidadeVendedor["grupoCliente"] = coorte === "sem compra anterior"
@@ -1928,14 +2037,16 @@ export const performanceComercialRouter = router({
             ? "antigo"
             : "desconhecido";
         const valor = Number(row.valorProposta ?? 0);
-        const status = normalizarChaveProbabilidade(row.statusHistorico);
         linhas.push({
           vendedor,
           vendedorKey,
           probabilidade: score / 100,
           valor: Number.isFinite(valor) && valor > 0 ? valor : 0,
-          desfecho: classificarDesfechoExplicito(row.statusHistorico),
-          aberta: status === normalizarChaveProbabilidade(STATUS_ABERTO),
+          desfecho: desfecho.desfecho,
+          desfechoConsiderandoVencidas: desfecho.desfechoConsiderandoVencidas,
+          situacaoDesfecho: historicos.length > 1 && desfecho.origem !== "crm" ? "status_ambiguo" : desfecho.situacao,
+          origemDesfecho: historicos.length > 1 && desfecho.origem !== "crm" ? null : desfecho.origem,
+          aberta: desfecho.situacao === "aberta_na_validade" || desfecho.situacao === "aberta_sem_data",
           grupoCliente,
           faixaProbabilidade: faixaProbabilidadeVendedor(score),
         });
@@ -1975,12 +2086,23 @@ export const performanceComercialRouter = router({
         periodo: { mes: input.mes, ano: input.ano },
         cobertura: {
           propostasNoHistorico,
-          propostasMonitoradas: linhas.length,
+          propostasMonitoradas: propostasMonitoradasNumeros.size,
+          propostasCorrespondidas: propostasMonitoradasNumeros.size,
+          propostasSemScore: Math.max(0, propostasNoHistorico - propostasMonitoradasNumeros.size),
+          snapshotsSemHistorico: snapshotsSemHistoricoNumeros.size,
+          snapshotsComHistoricoAmbiguo: snapshotsHistoricoAmbiguoNumeros.size,
+          snapshotsSemIdMubiSys: snapshotsSemIdMubiSysNumeros.size,
+          snapshotsConsiderados: linhas.length,
           percentual: propostasNoHistorico > 0
-            ? arredondarProbabilidade((linhas.length / propostasNoHistorico) * 100, 1)
+            ? arredondarProbabilidade((propostasMonitoradasNumeros.size / propostasNoHistorico) * 100, 1)
             : null,
         },
         total: calcularBucketProbabilidadeVendedor({ linhas }),
+        versoes: [...versoes.entries()].map(([versao, propostas]) => ({ versao, propostas })),
+        statusNaoReconhecidos: [...statusNaoReconhecidos.entries()]
+          .map(([status, propostas]) => ({ status, propostas }))
+          .sort((a, b) => b.propostas - a.propostas || a.status.localeCompare(b.status, "pt-BR"))
+          .slice(0, 10),
         vendedores,
       };
     }),

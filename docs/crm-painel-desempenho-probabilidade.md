@@ -2,9 +2,11 @@
 
 ## O que é medido
 
-O CRM registra a primeira probabilidade que devolve para cada orçamento aberto. O snapshot fica em `crm_probabilidade_previsoes`, com chave única por `orc_numero`, horário de exibição, versão do modelo, percentual previsto, vendedor, ticket, idade da empresa, região e sinais RFM/coorte anteriores à proposta. Não grava nome do cliente nem CNPJ. A tabela só acompanha previsões; a fila operacional continua limitada a orçamentos abertos do MubiSys.
+O CRM registra a primeira probabilidade entregue para cada orçamento aberto. O snapshot fica em `crm_probabilidade_previsoes`, com chave única por `orc_numero`, horário, versão do modelo, percentual, vendedor e grupos de perfil anteriores à proposta. Também preserva o ID interno do orçamento no MubiSys quando a proposta ainda está disponível no CRM, para ligar decisões manuais futuras sem parear por nome de cliente ou data. Não grava nome do cliente nem CNPJ.
 
-O resultado é associado depois por `historico_orcamentos.orcNumero`. Só status explícitos reconhecidos como ganho ou perda entram nas métricas. Propostas ainda abertas, com status não reconhecido ou ausentes do espelho permanecem pendentes; o painel não deduz perda pela validade nem pelo tempo em aberto.
+O painel de Performance Comercial compara essa previsão com resultados confirmados no histórico do MubiSys e com decisões manuais do CRM associadas ao mesmo ID interno. Status contraditórios entre ERP e CRM são apresentados como conflito e não entram na conversão confirmada. Propostas “Em aberto” vencidas são mostradas separadamente como perdas presumidas, usando a validade registrada ou 30 dias quando ela não existe; isso não transforma uma suposição em desfecho confirmado. Propostas sem histórico, sem status, com status desconhecido ou com identificador ambíguo também ficam identificadas em separado.
+
+A cobertura usa como denominador as propostas do mês no histórico do MubiSys e conta no numerador somente as previsões que correspondem a um orçamento desse histórico. O painel informa também propostas sem score, snapshots sem histórico, versões do modelo presentes na coorte e a origem de cada desfecho confirmado. Conversão real e esperada usam o mesmo conjunto de decisões confirmadas; faturamento de O.S. continua separado, sem atribuição artificial a cada orçamento.
 
 Na aba Propostas, a tabela mostra todas as propostas ainda abertas no MubiSys, incluindo as que já receberam dois contatos. O filtro “Pendentes de acompanhamento” permite focar as que ainda não chegaram a essa meta. A fila e a agenda não repetem contatos para propostas que já chegaram a dois.
 

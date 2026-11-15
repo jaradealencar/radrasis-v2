@@ -1,3 +1,99 @@
+import { parseDataFlexivel, STATUS_ABERTO } from "./inteligenciaClientes";
+import { classificarDesfechoExplicito } from "./crmProbabilidadeModel";
+
+export type SituacaoDesfechoMonitorado =
+  | "ganho_mubisys"
+  | "perda_mubisys"
+  | "ganho_crm"
+  | "perda_crm"
+  | "ganho_mubisys_crm"
+  | "perda_mubisys_crm"
+  | "conflito"
+  | "perda_presumida_validade"
+  | "aberta_na_validade"
+  | "aberta_sem_data"
+  | "sem_historico"
+  | "sem_status"
+  | "status_ambiguo"
+  | "status_nao_reconhecido";
+
+export function resolverDesfechoMonitorado(args: {
+  statusMubiSys: string | null;
+  existeNoHistorico: boolean;
+  dataCadastro: string | null;
+  validade: string | null;
+  desfechosCrm?: Array<0 | 1>;
+  agora?: Date;
+}): {
+  situacao: SituacaoDesfechoMonitorado;
+  desfecho: 0 | 1 | null;
+  desfechoConsiderandoVencidas: 0 | 1 | null;
+  origem: "mubisys" | "crm" | "mubisys_e_crm" | "presumida" | null;
+} {
+  const status = String(args.statusMubiSys ?? "").trim().toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+  const statusCompacto = status.replace(/\s+/g, "");
+  const statusMubiSysAmbiguo = statusCompacto === "orc.:aprovado|os.:cancelada";
+  const desfechosCrm = new Set(args.desfechosCrm ?? []);
+  const desfechoMubiSys = classificarDesfechoExplicito(args.statusMubiSys);
+  const desfechoCrm = desfechosCrm.size === 1 ? [...desfechosCrm][0] : null;
+
+  if (desfechosCrm.size > 1 || statusMubiSysAmbiguo && desfechosCrm.size > 0
+    || (desfechoMubiSys !== null && desfechoCrm !== null && desfechoMubiSys !== desfechoCrm)) {
+    return { situacao: "conflito", desfecho: null, desfechoConsiderandoVencidas: null, origem: null };
+  }
+  if (desfechoMubiSys !== null && desfechoCrm !== null) {
+    return {
+      situacao: desfechoMubiSys === 1 ? "ganho_mubisys_crm" : "perda_mubisys_crm",
+      desfecho: desfechoMubiSys,
+      desfechoConsiderandoVencidas: desfechoMubiSys,
+      origem: "mubisys_e_crm",
+    };
+  }
+  if (desfechoMubiSys !== null) {
+    return {
+      situacao: desfechoMubiSys === 1 ? "ganho_mubisys" : "perda_mubisys",
+      desfecho: desfechoMubiSys,
+      desfechoConsiderandoVencidas: desfechoMubiSys,
+      origem: "mubisys",
+    };
+  }
+  if (desfechoCrm !== null) {
+    return {
+      situacao: desfechoCrm === 1 ? "ganho_crm" : "perda_crm",
+      desfecho: desfechoCrm,
+      desfechoConsiderandoVencidas: desfechoCrm,
+      origem: "crm",
+    };
+  }
+  if (!args.existeNoHistorico) {
+    return { situacao: "sem_historico", desfecho: null, desfechoConsiderandoVencidas: null, origem: null };
+  }
+
+  if (statusMubiSysAmbiguo) {
+    return { situacao: "status_ambiguo", desfecho: null, desfechoConsiderandoVencidas: null, origem: null };
+  }
+  if (!status) {
+    return { situacao: "sem_status", desfecho: null, desfechoConsiderandoVencidas: null, origem: null };
+  }
+  if (status !== STATUS_ABERTO) {
+    return { situacao: "status_nao_reconhecido", desfecho: null, desfechoConsiderandoVencidas: null, origem: null };
+  }
+
+  const dataCadastro = args.dataCadastro ? parseDataFlexivel(args.dataCadastro) : null;
+  if (!dataCadastro) {
+    return { situacao: "aberta_sem_data", desfecho: null, desfechoConsiderandoVencidas: null, origem: null };
+  }
+  const validadeDias = Number(String(args.validade ?? "").replace(",", "."));
+  const diasParaVencimento = Number.isFinite(validadeDias) && validadeDias > 0 ? validadeDias : 30;
+  const vencimento = new Date(dataCadastro);
+  vencimento.setDate(vencimento.getDate() + diasParaVencimento);
+  const agora = args.agora ?? new Date();
+  if (vencimento < agora) {
+    return { situacao: "perda_presumida_validade", desfecho: null, desfechoConsiderandoVencidas: 0, origem: "presumida" };
+  }
+  return { situacao: "aberta_na_validade", desfecho: null, desfechoConsiderandoVencidas: null, origem: null };
+}
+
 export interface PrevisaoCrmMonitorada {
   orcNumero: string;
   exibidaEm: Date;
