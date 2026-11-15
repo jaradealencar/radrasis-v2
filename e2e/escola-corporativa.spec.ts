@@ -401,3 +401,146 @@ test("instrutor gera uma matéria a partir de um POP somente após pedir e salva
   await page.getByRole("button", { name: "Salvar como rascunho" }).click();
   await expect(page.getByText(/salvas como rascunho/)).toBeVisible();
 });
+
+test("pratica mostra correcoes apenas nas opcoes julgadas errado", async ({
+  page,
+}) => {
+  await login(page, studentLogin);
+  await page.goto("/treinamento");
+
+  const enrollButton = page.getByRole("button", {
+    name: "Matricular-se",
+    exact: true,
+  });
+  if (await enrollButton.isVisible().catch(() => false)) {
+    await enrollButton.click();
+  }
+
+  await page.route("**/api/trpc/treinamento.startAttempt**", route =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify([
+        {
+          result: {
+            data: {
+              json: {
+                assessmentId: 1,
+                attemptId: 900001,
+                assignmentStudentId: null,
+                initialQuestionIndex: 0,
+                currentQuestionAnswered: false,
+                mode: "practice",
+                title: "Teste de alternativas",
+                version: 1,
+                progresso: {
+                  perguntasRespondidas: 0,
+                  totalPerguntas: 1,
+                  questoesRestantes: 1,
+                  percentualConcluido: 0,
+                  percentualRestante: 100,
+                  pontosGanhos: 0,
+                  pontosPossiveisRespondidos: 0,
+                  percentualAcerto: null,
+                },
+                questions: [
+                  {
+                    key: "alternativas_teste",
+                    type: "multiple_select",
+                    prompt: "Quais opcoes estao corretas?",
+                    points: 1,
+                    config: {
+                      options: [
+                        { id: "certa_marcada", text: "Opcao certa marcada" },
+                        { id: "certa_omitida", text: "Opcao certa esquecida" },
+                        { id: "errada_marcada", text: "Opcao errada marcada" },
+                        {
+                          id: "errada_omitida",
+                          text: "Opcao errada esquecida",
+                        },
+                      ],
+                      allowPartialCredit: true,
+                    },
+                  },
+                ],
+              },
+            },
+          },
+        },
+      ]),
+    })
+  );
+  await page.route("**/api/trpc/treinamento.submitAnswer**", route =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify([
+        {
+          result: {
+            data: {
+              json: {
+                questionComplete: true,
+                nextQuestion: null,
+                progresso: {
+                  perguntasRespondidas: 1,
+                  totalPerguntas: 1,
+                  questoesRestantes: 0,
+                  percentualConcluido: 100,
+                  percentualRestante: 0,
+                  pontosGanhos: 0,
+                  pontosPossiveisRespondidos: 1,
+                  percentualAcerto: 0,
+                },
+                feedback: {
+                  isCorrect: false,
+                  expectedAnswer: "Opcao certa marcada; Opcao certa esquecida",
+                  explanation: "Marque apenas as opcoes corretas.",
+                  details: [],
+                  corrections: [
+                    {
+                      id: "certa_omitida",
+                      text: "Opcao certa esquecida",
+                      selectedAnswer: "Nao marcada",
+                      expectedAnswer: "Marcar",
+                      feedback: "Essa opcao tambem deveria ser marcada.",
+                    },
+                    {
+                      id: "errada_marcada",
+                      text: "Opcao errada marcada",
+                      selectedAnswer: "Marcada",
+                      expectedAnswer: "Nao marcar",
+                      feedback: "Essa opcao nao segue o material.",
+                    },
+                  ],
+                  scorePercent: 0,
+                },
+              },
+            },
+          },
+        },
+      ]),
+    })
+  );
+
+  await page.getByRole("button", { name: "Praticar", exact: true }).click();
+  await expect(page.getByText("Quais opcoes estao corretas?")).toBeVisible();
+  await page.getByRole("checkbox", { name: "Opcao certa marcada" }).check();
+  await page.getByRole("checkbox", { name: "Opcao errada marcada" }).check();
+  await page.getByRole("button", { name: "Responder", exact: true }).click();
+
+  const corrections = page.locator('[role="status"]').filter({
+    hasText: "O correto era",
+  });
+  await expect(corrections).toHaveCount(2);
+  await expect(corrections.nth(0)).toContainText("Opcao certa esquecida");
+  await expect(corrections.nth(1)).toContainText("Opcao errada marcada");
+  const correctlyHandled = page
+    .getByRole("checkbox", { name: "Opcao certa marcada" })
+    .locator("xpath=../..");
+  const correctlyLeftUnmarked = page
+    .getByRole("checkbox", { name: "Opcao errada esquecida" })
+    .locator("xpath=../..");
+  await expect(correctlyHandled.getByRole("status")).toHaveCount(0);
+  await expect(correctlyLeftUnmarked.getByRole("status")).toHaveCount(0);
+  await expect(page.getByText("Resposta esperada:")).toHaveCount(0);
+});
