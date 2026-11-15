@@ -1812,8 +1812,9 @@ function TrainingAdmin({ onChanged }: { onChanged: () => void }) {
 
               <section className="grid gap-4 rounded-xl border bg-background/80 p-4 lg:grid-cols-2">
                 <div className="space-y-2">
-                  <Label>Nome da matéria</Label>
+                  <Label htmlFor="pop-subject-title">Nome da matéria</Label>
                   <Input
+                    id="pop-subject-title"
                     value={popDraft.subjectTitle}
                     onChange={event =>
                       updatePopDraft(draft => ({
@@ -2118,7 +2119,6 @@ function TrainingAdmin({ onChanged }: { onChanged: () => void }) {
               </Button>
             </div>
             <select
-              data-testid="assessment-editor-selector"
               className="w-full rounded-md border bg-background px-3 py-2 text-sm"
               value={sectorId ?? ""}
               onChange={event => setSectorId(Number(event.target.value) || 0)}
@@ -2470,6 +2470,7 @@ function TrainingAdmin({ onChanged }: { onChanged: () => void }) {
               </Button>
             </div>
             <select
+              data-testid="assessment-editor-selector"
               className="w-full rounded-md border bg-background px-3 py-2 text-sm"
               value={assessmentId ?? ""}
               onChange={event =>
