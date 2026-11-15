@@ -469,17 +469,6 @@ export const crmRouter = router({
           ? normalizarUf((orc as any).cliente_endereco[0]?.estado)
           : null;
         const regiaoCliente = estadoCliente ? (UF_PARA_REGIAO[estadoCliente] ?? null) : null;
-        const { probabilidade: probabilidadeCompra, explicacao: probabilidadeExplicacao, segmentos: segmentosProbabilidade } = modeloProbabilidade
-          ? calcularProbabilidadeCrmAprendida({
-              modelo: modeloProbabilidade,
-              nomeCliente,
-              valorProposta: p.valor,
-              dataProposta: p.dataCriacao,
-              numeroProposta: p.sequencial,
-              regiaoCliente: estadoCliente,
-            })
-          : { probabilidade: null as number | null, explicacao: [] as string[], segmentos: null };
-        if (segmentosProbabilidade) segmentosProbabilidadePorProposta.set(p.id, segmentosProbabilidade);
         const chaveCliente = normalizeEmpresaKey(nomeCliente);
         const conversaoCliente = mapaConversao?.porCliente.get(chaveCliente);
         const qtdComprasCliente = conversaoCliente?.qtdCompras ?? 0;
@@ -501,6 +490,19 @@ export const crmRouter = router({
         // Conversão = orçamentos fechados ÷ orçamentos, os dois do histórico de orçamentos.
         const orcamentosFechados = Math.min(conversaoCliente?.orcamentosFechados ?? 0, totalCotacoes);
         const taxaConversao = calcularTaxaConversaoCliente(totalCotacoes, orcamentosFechados, conversaoCliente?.totalOrcamentos ?? 0);
+
+        const { probabilidade: probabilidadeCompra, explicacao: probabilidadeExplicacao, segmentos: segmentosProbabilidade } = modeloProbabilidade
+          ? calcularProbabilidadeCrmAprendida({
+              modelo: modeloProbabilidade,
+              nomeCliente,
+              valorProposta: p.valor,
+              dataProposta: p.dataCriacao,
+              numeroProposta: p.sequencial,
+              regiaoCliente: estadoCliente,
+              taxaConversaoClientePct: taxaConversao,
+            })
+          : { probabilidade: null as number | null, explicacao: [] as string[], segmentos: null };
+        if (segmentosProbabilidade) segmentosProbabilidadePorProposta.set(p.id, segmentosProbabilidade);
 
         return { ...p, telefone, nomeCliente, nomeContato: p.nomeContato ?? "", clienteNovo, probabilidadeCompra, probabilidadeExplicacao, qtdComprasCliente, totalCompras: qtdComprasCliente, diasSemComprar, ultimaCompraEm, totalCotacoes, orcamentosFechados, taxaConversao, orcamentosDesde: mapaConversao?.orcamentosDesde ?? null, estadoCliente, regiaoCliente };
       });

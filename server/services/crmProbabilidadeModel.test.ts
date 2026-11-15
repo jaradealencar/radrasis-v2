@@ -140,6 +140,39 @@ describe("modelo de probabilidade do CRM", () => {
     expect(result.explicacao.some((linha) => linha.includes("conversão observada do segmento 15.0% + 15 p.p., até 50%"))).toBe(true);
   });
 
+  it("limita a previsão de um cliente com conversão zero a 15%", () => {
+    const modelo = modeloVazio();
+    modelo.nTreino = CRM_PROBABILITY_MIN_TRAINING_EXAMPLES;
+    modelo.modelo.intercepto = Math.log(0.72 / 0.28);
+    modelo.modelo.calibrador = {
+      mediaLogit: 0,
+      escalaLogit: 1,
+      coeficiente: 1,
+      intercepto: 0,
+      n: 200,
+      taxaObservada: 0.24,
+    };
+    modelo.modelo.calibradorSemCompras = {
+      mediaLogit: 0,
+      escalaLogit: 1,
+      coeficiente: 1,
+      intercepto: 0,
+      n: CRM_PROBABILITY_MIN_NEW_CUSTOMER_CALIBRATION_EXAMPLES,
+      taxaObservada: 0.15,
+    };
+
+    const result = calcularProbabilidadeCrmAprendida({
+      modelo,
+      nomeCliente: "Cliente sem compras",
+      valorProposta: 63.47,
+      dataProposta: new Date("2026-01-15T12:00:00Z"),
+      taxaConversaoClientePct: 0,
+    });
+
+    expect(result.probabilidade).toBe(15);
+    expect(result.explicacao.some((linha) => linha.includes("conversão registrada do cliente: 0.0% + 15 p.p., até 15%"))).toBe(true);
+  });
+
   it("oculta o score se a calibração temporal não estiver disponível", () => {
     const modelo = modeloVazio();
     modelo.nTreino = 300;
