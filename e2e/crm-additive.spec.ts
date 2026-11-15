@@ -199,8 +199,23 @@ test("mantém propostas abertas e permite separar as pendentes sem esconder as j
   await page.goto("/comercial/crm");
 
   await expect(page.getByRole("heading", { name: "CRM de Propostas" })).toBeVisible();
-  await expect(page.getByRole("tab", { name: /Propostas/ })).toHaveAttribute("data-state", "active");
+  const tabs = page.getByRole("tab");
+  await expect(tabs).toHaveCount(7);
+  await expect(tabs.nth(0)).toContainText("Fila de trabalho");
+  await expect(tabs.nth(1)).toContainText("Propostas");
+  await expect(tabs.nth(2)).toContainText("Desempenho");
+  await expect(tabs.nth(3)).toContainText("Agenda de Hoje");
+  await expect(tabs.nth(4)).toContainText("Reativar clientes");
+  await expect(tabs.nth(5)).toContainText("Histórico");
+  await expect(tabs.nth(6)).toContainText("Auditoria");
+  await expect(tabs.nth(0)).toHaveAttribute("data-state", "active");
+
+  await tabs.nth(1).click();
   await expect(page.getByText("#30001")).toBeVisible();
+
+  const filtrosAvancados = page.locator("details").filter({ hasText: "Filtros avançados" });
+  await expect(filtrosAvancados).toHaveJSProperty("open", false);
+
   await expect(page.getByText("#30002")).toBeVisible();
   await expect(page.getByText("Propostas abertas", { exact: true }).locator("..")).toContainText("2");
 
