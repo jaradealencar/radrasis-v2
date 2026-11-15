@@ -306,6 +306,7 @@ server/
                        puras quando não precisarem de I/O:
                        inteligenciaClientes.ts (RFM/classificação/funil/previsão
                        comercial), crmProbabilidadeModel.ts (score por proposta
+                       (calibracao propria para cliente sem O.S. valida anterior: no minimo 100 previsoes temporais, 10 ganhos e 10 perdas; limite pela conversao do grupo +15 p.p., teto de 50%),
                        com regressão logística, calibração temporal, RFM, coorte,
                        idade CNPJ e região; auditoria agregada das propostas e
                        de todas as O.S. no espelho em
