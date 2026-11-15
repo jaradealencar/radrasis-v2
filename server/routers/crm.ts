@@ -708,7 +708,14 @@ export const crmRouter = router({
       const modelo = await construirModeloProbabilidadeCrm(db).catch(() => null);
       const modeloAtual = modelo ? {
         versao: CRM_PROBABILITY_MODEL_VERSION,
+        status: modelo.nTreino < CRM_PROBABILITY_MIN_TRAINING_EXAMPLES
+          ? "amostra_insuficiente"
+          : modelo.modelo.calibrador === null
+            ? "calibracao_indisponivel"
+            : "disponivel",
         propostasTreino: modelo.nTreino,
+        calibracaoTemporalDisponivel: modelo.modelo.calibrador !== null,
+        previsoesUsadasNaCalibracao: modelo.modelo.calibrador?.n ?? 0,
         ultimaPropostaTreino: modelo.ultimaPropostaTreino?.toISOString() ?? null,
         ultimaPropostaHistorico: modelo.ultimaPropostaHistorico?.toISOString() ?? null,
         propostasHistoricoSemDesfecho: modelo.propostasHistoricoSemDesfecho,

@@ -967,9 +967,8 @@ export default function CRM() {
   const [ordenarPorProbabilidade, setOrdenarPorProbabilidade] = useState(false);
   const [filtroResposta, setFiltroResposta] = useState<string>("todos");
   const [filtroFaixa, setFiltroFaixa] = useState<string>("todas");
-  // Abra o CRM na tela de propostas conhecida. Os painéis novos continuam
-  // disponíveis como abas adicionais, sem esconder os filtros legados.
-  const [abaAtiva, setAbaAtiva] = useState<string>("propostas");
+  // Mantém a tela inicial e a ordem de abas que o time já conhecia na sexta.
+  const [abaAtiva, setAbaAtiva] = useState<string>("fila");
   const [buscaPropostas, setBuscaPropostas] = useState("");
   const [filtroFila, setFiltroFila] = useState<"todas" | TipoProximaAcao>("todas");
   const [filtroSugestoes, setFiltroSugestoes] = useState<"todas" | "reativar">("todas");
@@ -1334,9 +1333,16 @@ export default function CRM() {
       )}
       <Tabs value={abaAtiva} onValueChange={setAbaAtiva} className="w-full">
         <TabsList className="grid w-full grid-cols-2 md:grid-cols-4 xl:grid-cols-7 mb-4 h-auto">
+          <TabsTrigger value="fila" className="gap-1.5">
+            <ListTodo className="w-3.5 h-3.5" /> Fila de trabalho
+            <Badge variant="secondary" className="text-[10px] px-1.5 py-0">{filaCounts.todas}</Badge>
+          </TabsTrigger>
           <TabsTrigger value="propostas" className="gap-1.5">
             Propostas
             <Badge variant="secondary" className="text-[10px] px-1.5 py-0">{propostasAtivas.length}</Badge>
+          </TabsTrigger>
+          <TabsTrigger value="desempenho" className="gap-1.5">
+            <BarChart3 className="w-3.5 h-3.5" /> Desempenho
           </TabsTrigger>
           <TabsTrigger value="agenda" className="gap-1.5">
             Agenda de Hoje
@@ -1344,7 +1350,7 @@ export default function CRM() {
           </TabsTrigger>
           <TabsTrigger value="sugestoes" className="gap-1.5">
             <Target className="w-3.5 h-3.5" />
-            Sugestões de Contato
+            Reativar clientes
             {sugestoesData && sugestoesData.sugestoes.length > 0 && (
               <Badge variant="secondary" className="text-[10px] px-1.5 py-0 bg-indigo-100 text-indigo-700">{sugestoesData.sugestoes.length}</Badge>
             )}
@@ -1356,13 +1362,6 @@ export default function CRM() {
           <TabsTrigger value="auditoria" className="gap-1.5">
             <Activity className="w-3.5 h-3.5" />
             Auditoria
-          </TabsTrigger>
-          <TabsTrigger value="fila" className="gap-1.5">
-            <ListTodo className="w-3.5 h-3.5" /> Fila de trabalho
-            <Badge variant="secondary" className="text-[10px] px-1.5 py-0">{filaCounts.todas}</Badge>
-          </TabsTrigger>
-          <TabsTrigger value="desempenho" className="gap-1.5">
-            <BarChart3 className="w-3.5 h-3.5" /> Desempenho
           </TabsTrigger>
         </TabsList>
 
@@ -1436,7 +1435,7 @@ export default function CRM() {
           placeholder="Buscar cliente, telefone, vendedor ou número da proposta"
           className="h-10 w-full rounded-xl border bg-white pl-9 pr-3 text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
       </label>
-      <details open className="group rounded-xl border bg-white shadow-sm">
+      <details className="group rounded-xl border bg-white shadow-sm">
         <summary className="flex cursor-pointer list-none items-center gap-2 px-4 py-3 text-sm font-semibold text-slate-700">
           <SlidersHorizontal className="h-4 w-4" /> Filtros avançados
           <span className="text-xs font-normal text-muted-foreground">vendedor, datas, perfil de cliente, acompanhamento</span>

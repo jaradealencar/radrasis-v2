@@ -28,7 +28,7 @@ import {
 } from "@/components/ui/table";
 import ChartTooltip from "@/components/ChartTooltip";
 import { chartColor } from "@/lib/chartColors";
-import { fmtNum, fmtBrl } from "@/lib/format";
+import { fmtNum, fmtBrl, fmtPct } from "@/lib/format";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
 } from "@/components/ui/dialog";
@@ -43,6 +43,10 @@ const MESES_NOMES = ["Janeiro","Fevereiro","Março","Abril","Maio","Junho",
 
 const ANO_ATUAL = new Date().getFullYear();
 const MES_ATUAL = new Date().getMonth() + 1;
+
+function normalizarNomeVendedorProbabilidade(nome: string): string {
+  return nome.trim().toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/\s+/g, " ");
+}
 
 // ─── KPI Card ────────────────────────────────────────────────────────────────
 
@@ -430,6 +434,17 @@ export default function PerformanceComercial() {
   const { data: mesDados, isLoading: loadingMes, refetch: refetchMes } =
     trpc.performanceComercial.getMes.useQuery({ mes: mesSelecionado, ano: anoSelecionado, forceRefresh: forceRefreshMes }, RETRY_1);
 
+  // Monitoramento por proposta: compara previsao registrada no CRM com o desfecho
+  // explicito no historico do MubiSys, sem tentar vincular faturamento de OS.
+  const {
+    data: probabilidadeVendedores,
+    isLoading: loadingProbabilidadeVendedores,
+    isError: erroProbabilidadeVendedores,
+  } = trpc.performanceComercial.getProbabilidadeVendedores.useQuery(
+    { mes: mesSelecionado, ano: anoSelecionado },
+    RETRY_1,
+  );
+
   // Resumo de propostas de alto valor sem NENHUM contato registrado no mês
   const { data: resumoSilencio, isLoading: loadingSilencio } =
     trpc.performanceComercial.getResumoSilencioPropostas.useQuery({ mes: mesSelecionado, ano: anoSelecionado }, RETRY_1);
@@ -606,6 +621,25 @@ export default function PerformanceComercial() {
       .sort((a: any, b: any) => b.cotacoes - a.cotacoes)
       .slice(0, 12);
   }, [mesDados, clientesNovos]);
+
+  // O faturamento de O.S. é um realizado mensal do ERP. Ele não é o desfecho
+  // das propostas monitoradas pelo modelo; mostramos os dois lado a lado sem
+  // fingir um vínculo entre O.S. e orçamento que o MubiSys não fornece.
+  const faturamentoOsProbabilidade = useMemo(() => {
+    if (!mesDados || fonteStatus === "congelado") return { disponivel: false, porVendedor: new Map<string, number>() };
+    const pv = mesDados.porVendedor;
+    const linhas: any[] = Array.isArray(pv) ? pv : Object.values(pv ?? {});
+    const porVendedor = new Map<string, number>();
+    for (const linha of linhas) {
+      const nome = String(linha?.vendedor ?? "").trim();
+      if (!nome) continue;
+      const valor = Number(linha?.faturamento ?? 0);
+      if (!Number.isFinite(valor)) continue;
+      const chave = normalizarNomeVendedorProbabilidade(nome);
+      porVendedor.set(chave, (porVendedor.get(chave) ?? 0) + valor);
+    }
+    return { disponivel: true, porVendedor };
+  }, [mesDados, fonteStatus]);
 
   // Metas indexadas por vendedor
   const metasPorVendedor = useMemo(() => {
@@ -1834,6 +1868,174 @@ export default function PerformanceComercial() {
             </div>
           </div>
         )}
+
+        {/* Probabilidade por proposta: resultado real, previsão do modelo e referência dos colegas */}
+        <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+          <div className="px-5 py-4 border-b border-slate-100">
+            <div className="flex items-center gap-2">
+              <Target className="w-4 h-4 text-indigo-600" />
+              <h2 className="text-sm font-semibold text-slate-800">
+                Conversão observada x probabilidade — {MESES_NOMES[mesSelecionado - 1]} {anoSelecionado}
+              </h2>
+            </div>
+            <p className="text-xs text-slate-500 mt-1">
+              Compara cada proposta acompanhada no CRM com o resultado registrado no MubiSys e com colegas que receberam propostas de probabilidade e perfil semelhantes.
+            </p>
+          </div>
+
+          {loadingProbabilidadeVendedores ? (
+            <div className="p-8 text-center text-sm text-slate-500">Carregando resultados de probabilidade...</div>
+          ) : erroProbabilidadeVendedores ? (
+            <div className="m-5 rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
+              Não foi possível carregar a comparação de probabilidade agora. Os indicadores atuais de desempenho continuam disponíveis acima.
+            </div>
+          ) : !probabilidadeVendedores || probabilidadeVendedores.cobertura.propostasMonitoradas === 0 ? (
+            <div className="p-8 text-center">
+              <p className="text-sm font-medium text-slate-700">Ainda não há propostas com probabilidade registrada neste período.</p>
+              <p className="text-xs text-slate-500 mt-1">As estimativas começam a ser acompanhadas quando uma proposta recebe sua primeira probabilidade no CRM.</p>
+            </div>
+          ) : (
+            <div className="p-5 space-y-5">
+              <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3">
+                <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                  <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Cobertura do histórico</p>
+                  <p className="mt-1 text-lg font-bold text-slate-800">
+                    {probabilidadeVendedores.cobertura.percentual == null ? "—" : fmtPct(probabilidadeVendedores.cobertura.percentual)}
+                  </p>
+                  <p className="text-xs text-slate-500">
+                    {fmtNum(probabilidadeVendedores.cobertura.propostasMonitoradas)} acompanhadas de {fmtNum(probabilidadeVendedores.cobertura.propostasNoHistorico)} propostas no MubiSys
+                  </p>
+                </div>
+                <div className="rounded-lg border border-blue-200 bg-blue-50/60 p-3">
+                  <p className="text-[11px] font-semibold uppercase tracking-wide text-blue-700">Desfechos conhecidos</p>
+                  <p className="mt-1 text-lg font-bold text-slate-800">{fmtNum(probabilidadeVendedores.total.decididas)}</p>
+                  <p className="text-xs text-slate-600">
+                    {fmtNum(probabilidadeVendedores.total.ganhos)} ganhos · {fmtNum(probabilidadeVendedores.total.perdas)} perdas · {fmtNum(probabilidadeVendedores.total.semDesfecho)} sem desfecho explícito
+                  </p>
+                </div>
+                <div className="rounded-lg border border-indigo-200 bg-indigo-50/60 p-3">
+                  <p className="text-[11px] font-semibold uppercase tracking-wide text-indigo-700">Ganhos: real x esperado</p>
+                  <p className="mt-1 text-lg font-bold text-slate-800">
+                    {fmtNum(probabilidadeVendedores.total.ganhos)} <span className="text-sm font-medium text-slate-500">x {fmtNum(probabilidadeVendedores.total.ganhosEsperados, 1)}</span>
+                  </p>
+                  <p className="text-xs text-slate-600">
+                    Conversão {fmtPct(probabilidadeVendedores.total.conversaoRealPct)} real · {fmtPct(probabilidadeVendedores.total.conversaoEsperadaPct)} prevista pelo modelo
+                  </p>
+                  <p className="text-xs text-slate-600 mt-1">
+                    Valor das propostas ganhas: {fmtBrl(probabilidadeVendedores.total.valorGanhoReal)} real · {fmtBrl(probabilidadeVendedores.total.valorGanhoEsperado)} esperado
+                  </p>
+                </div>
+                <div className="rounded-lg border border-emerald-200 bg-emerald-50/60 p-3">
+                  <p className="text-[11px] font-semibold uppercase tracking-wide text-emerald-700">Potencial ponderado monitorado</p>
+                  <p className="mt-1 text-lg font-bold text-slate-800">{fmtBrl(probabilidadeVendedores.total.valorCarteiraEsperado)}</p>
+                  <p className="text-xs text-slate-600">
+                    Σ probabilidade individual × orçamento · {fmtNum(probabilidadeVendedores.total.abertas)} abertas ({fmtBrl(probabilidadeVendedores.total.pipelinePonderado)} ponderados)
+                  </p>
+                </div>
+              </div>
+
+              <div className="rounded-lg border border-indigo-100 bg-indigo-50/50 p-3 text-xs leading-relaxed text-slate-700">
+                <strong>Como ler:</strong> “Potencial ponderado” soma a probabilidade salva para cada orçamento multiplicada pelo valor daquele orçamento. É uma expectativa estatística da carteira, não uma meta, garantia ou venda perdida confirmada. “Ganhos real / modelo” compara o valor das propostas ganhas com a expectativa calculada para as mesmas propostas decididas. “Referência dos colegas” estima o resultado de outros vendedores em propostas decididas com faixa de probabilidade e grupo de cliente semelhantes. O faturamento de O.S. vem do ERP no mês selecionado; aparece separado porque não existe um vínculo confiável entre cada O.S. e cada orçamento. A referência de colegas só aparece com pelo menos 20 decisões do vendedor, cobertura de pares de 70% ou mais e 10 decisões de colegas por estrato comparável. O vendedor mostrado é o associado à proposta na primeira previsão. Propostas abertas e sem desfecho explícito não entram na conversão; clientes novos não tinham compra anterior registrada e antigos já tinham.
+              </div>
+
+              <div className="overflow-x-auto rounded-lg border border-slate-200">
+                <Table>
+                  <TableHeader>
+                    <TableRow className="bg-slate-50">
+                      <TableHead>Vendedor na previsão</TableHead>
+                      <TableHead>Grupo</TableHead>
+                      <TableHead className="text-right">Decididas</TableHead>
+                      <TableHead className="text-right">Faturamento ERP (O.S.)</TableHead>
+                      <TableHead className="text-right">Ganhos real / modelo (R$)</TableHead>
+                      <TableHead className="text-right">Real − modelo (R$)</TableHead>
+                      <TableHead className="text-right">Conversão real / modelo</TableHead>
+                      <TableHead className="text-right">Potencial ponderado (R$)</TableHead>
+                      <TableHead className="text-right">Pares: esperado / realizado</TableHead>
+                      <TableHead className="text-right">Diferença vs pares (R$)</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {probabilidadeVendedores.vendedores.flatMap((vendedor: any) => ([
+                      { vendedor: vendedor.vendedor, grupo: "Geral", bucket: vendedor.geral, destaque: true },
+                      { vendedor: vendedor.vendedor, grupo: "Clientes novos", bucket: vendedor.novos, destaque: false },
+                      { vendedor: vendedor.vendedor, grupo: "Clientes antigos", bucket: vendedor.antigos, destaque: false },
+                    ] as const).map((linha) => {
+                      const bucket = linha.bucket;
+                      const peer = bucket.benchmarkColegas;
+                      return (
+                        <TableRow key={`${linha.vendedor}-${linha.grupo}`} className={linha.destaque ? "bg-white" : "bg-slate-50/60"}>
+                          <TableCell className={linha.destaque ? "font-semibold text-slate-800" : "text-slate-500 pl-8"}>
+                            {linha.destaque ? linha.vendedor : "↳ " + linha.grupo}
+                          </TableCell>
+                          <TableCell className={linha.destaque ? "font-medium" : "text-slate-500"}>{linha.destaque ? "Todas as propostas" : linha.grupo}</TableCell>
+                          <TableCell className="text-right tabular-nums">{fmtNum(bucket.decididas)} <span className="text-xs text-slate-400">({fmtNum(bucket.ganhos)}G / {fmtNum(bucket.perdas)}P)</span></TableCell>
+                          <TableCell className="text-right tabular-nums" title={linha.destaque ? `O.S. faturadas no mês selecionado: ${linha.vendedor}` : "O faturamento do ERP não está classificado por coorte de proposta."}>
+                            {linha.destaque
+                              ? faturamentoOsProbabilidade.disponivel
+                                ? faturamentoOsProbabilidade.porVendedor.has(normalizarNomeVendedorProbabilidade(linha.vendedor))
+                                  ? fmtBrl(faturamentoOsProbabilidade.porVendedor.get(normalizarNomeVendedorProbabilidade(linha.vendedor)))
+                                  : <span className="text-slate-400">Sem correspondência</span>
+                                : <span className="text-slate-400">Indisponível no snapshot</span>
+                              : <span className="text-slate-400">—</span>}
+                          </TableCell>
+                          <TableCell className="text-right tabular-nums font-medium">
+                            {bucket.decididas > 0 ? <>
+                              <div>{fmtBrl(bucket.valorGanhoReal)}</div>
+                              <div className="text-xs font-normal text-slate-400">esperado: {fmtBrl(bucket.valorGanhoEsperado)}</div>
+                            </> : <span className="text-slate-400">Sem decisões</span>}
+                          </TableCell>
+                          <TableCell className="text-right tabular-nums">
+                            {bucket.decididas === 0 ? <span className="text-slate-400">—</span> : (() => {
+                              const desvio = bucket.valorGanhoReal - bucket.valorGanhoEsperado;
+                              return <span className={`font-semibold ${desvio >= 0 ? "text-emerald-700" : "text-rose-700"}`}>
+                                {desvio > 0 ? "+" : ""}{fmtBrl(desvio)}
+                              </span>;
+                            })()}
+                          </TableCell>
+                          <TableCell className="text-right tabular-nums">
+                            <span>{fmtPct(bucket.conversaoRealPct)}</span>
+                            <span className="text-slate-400"> / {fmtPct(bucket.conversaoEsperadaPct)}</span>
+                          </TableCell>
+                          <TableCell className="text-right tabular-nums font-medium">
+                            <div>{fmtBrl(bucket.valorCarteiraEsperado)}</div>
+                            <div className="text-xs font-normal text-slate-400">abertas: {fmtBrl(bucket.pipelinePonderado)}</div>
+                          </TableCell>
+                          <TableCell className="text-right tabular-nums">
+                            {peer?.conversaoPct == null ? <span className="text-slate-400">{bucket.decididas === 0 ? "Sem propostas decididas" : "Amostra insuficiente"}</span> : (
+                              <div title={`${fmtNum(peer.cobertas)} de ${fmtNum(peer.comparaveis)} propostas próprias cobertas`}>
+                                <div>{fmtBrl(peer.valorEsperado)} esperado</div>
+                                <div className="text-xs text-slate-400">{fmtBrl(peer.valorRealCoberto)} realizado · {fmtNum(peer.cobertas)}/{fmtNum(peer.comparaveis)} cobertas</div>
+                              </div>
+                            )}
+                          </TableCell>
+                          <TableCell className="text-right">
+                            {peer?.diferencaValor == null ? <span className="text-slate-400">{bucket.decididas === 0 ? "Sem propostas decididas" : "Amostra insuficiente"}</span> : (
+                              <div className={`font-semibold tabular-nums ${peer.diferencaValor > 0 ? "text-rose-700" : peer.diferencaValor < 0 ? "text-emerald-700" : "text-slate-600"}`}>
+                                {peer.diferencaValor > 0 ? "+" : ""}{fmtBrl(peer.diferencaValor)}
+                                <div className="text-xs font-normal text-slate-500">{peer.diferencaGanhos! > 0 ? "+" : ""}{fmtNum(peer.diferencaGanhos, 1)} ganhos</div>
+                              </div>
+                            )}
+                          </TableCell>
+                        </TableRow>
+                      );
+                    }))}
+                    {probabilidadeVendedores.vendedores.length === 0 && (
+                      <TableRow>
+                        <TableCell colSpan={10} className="py-8 text-center text-sm text-slate-500">Não há vendedor associado às previsões registradas neste período.</TableCell>
+                      </TableRow>
+                    )}
+                  </TableBody>
+                </Table>
+              </div>
+
+              <div className="flex flex-wrap gap-x-5 gap-y-1 text-[11px] text-slate-500">
+                <span><strong>G</strong> = ganho explícito · <strong>P</strong> = perdido explicitamente</span>
+                <span>Carteira completa: {fmtBrl(probabilidadeVendedores.total.valorCarteiraEsperado)} esperados · abertas: {fmtBrl(probabilidadeVendedores.total.pipelinePonderado)}</span>
+                <span>Propostas abertas e sem status claro não entram na taxa de decisão nem no benchmark.</span>
+              </div>
+            </div>
+          )}
+        </div>
         {/* Clientes Novos e Reativados do mês com WhatsApp — listas separadas (mesma regra dos KPIs acima) */}
         <CardClientesContato
           titulo={`Clientes Novos — ${MESES_NOMES[mesSelecionado - 1]} ${anoSelecionado}`}

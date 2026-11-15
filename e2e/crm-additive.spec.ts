@@ -97,6 +97,60 @@ function respostaProcedimento(path: string) {
   }
   if (path === "permissions.myPermissions") return ["comercial-crm"];
   if (path === "midiasBiblioteca.list") return { itens: [], galerias: [] };
+  if (path === "performanceComercial.getMes") {
+    return {
+      mes: new Date().getMonth() + 1,
+      ano: new Date().getFullYear(),
+      cotacoes: 2,
+      osGeradas: 1,
+      valorOrcado: 30000,
+      faturamento: 10000,
+      custo: 5000,
+      resultado: 5000,
+      taxaConversao: 50,
+      taxaFaturamento: 33.3,
+      ticketMedio: 10000,
+      margemPct: 50,
+      clientesUnicos: 1,
+      clientesComRecompra: 0,
+      porVendedor: [{ vendedor: "Álvaro Teste", cotacoes: 2, valorOrcado: 30000, osGeradas: 1, faturamento: 10000, custo: 5000, resultado: 5000, taxaConversao: 50, taxaFaturamento: 33.3, ticketMedio: 10000, margemPct: 50 }],
+    };
+  }
+  if (path === "performanceComercial.getProbabilidadeVendedores") {
+    const bucket = {
+      monitoradas: 2,
+      decididas: 2,
+      ganhos: 1,
+      perdas: 1,
+      semDesfecho: 0,
+      abertas: 0,
+      ganhosEsperados: 0.8,
+      valorGanhoReal: 10000,
+      valorGanhoEsperado: 27000,
+      valorCarteiraEsperado: 27000,
+      conversaoRealPct: 50,
+      conversaoEsperadaPct: 40,
+      desvioGanhos: 0.2,
+      pipelinePonderado: 0,
+      benchmarkColegas: {
+        comparaveis: 2,
+        cobertas: 2,
+        coberturaPct: 100,
+        conversaoPct: 60,
+        ganhosEsperados: 1.2,
+        valorEsperado: 27000,
+        valorRealCoberto: 10000,
+        diferencaGanhos: 0.2,
+        diferencaValor: 17000,
+      },
+    };
+    return {
+      periodo: { mes: new Date().getMonth() + 1, ano: new Date().getFullYear() },
+      cobertura: { propostasNoHistorico: 2, propostasMonitoradas: 2, percentual: 100 },
+      total: bucket,
+      vendedores: [{ vendedor: "Álvaro Teste", geral: bucket, novos: bucket, antigos: bucket }],
+    };
+  }
   return [];
 }
 
@@ -145,8 +199,25 @@ test("mantém propostas abertas e permite separar as pendentes sem esconder as j
   await page.goto("/comercial/crm");
 
   await expect(page.getByRole("heading", { name: "CRM de Propostas" })).toBeVisible();
-  await expect(page.getByRole("tab", { name: /Propostas/ })).toHaveAttribute("data-state", "active");
+  const tabs = page.getByRole("tab");
+  await expect(tabs).toHaveCount(7);
+  await expect(tabs.nth(0)).toContainText("Fila de trabalho");
+  await expect(tabs.nth(1)).toContainText("Propostas");
+  await expect(tabs.nth(2)).toContainText("Desempenho");
+  await expect(tabs.nth(3)).toContainText("Agenda de Hoje");
+  await expect(tabs.nth(4)).toContainText("Reativar clientes");
+  await expect(tabs.nth(5)).toContainText("Histórico");
+  await expect(tabs.nth(6)).toContainText("Auditoria");
+  await expect(tabs.nth(0)).toHaveAttribute("data-state", "active");
+
+  await tabs.nth(1).click();
   await expect(page.getByText("#30001")).toBeVisible();
+
+  const filtrosAvancados = page.locator("details").filter({ hasText: "Filtros avançados" });
+  await expect(filtrosAvancados).toHaveJSProperty("open", false);
+  await filtrosAvancados.locator("summary").click();
+  await expect(filtrosAvancados).toHaveJSProperty("open", true);
+
   await expect(page.getByText("#30002")).toBeVisible();
   await expect(page.getByText("Propostas abertas", { exact: true }).locator("..")).toContainText("2");
 
@@ -157,4 +228,30 @@ test("mantém propostas abertas e permite separar as pendentes sem esconder as j
   await expect(page.getByText("#30001")).toBeVisible();
   await expect(page.getByText("#30002")).toBeHidden();
   await expect(page.getByRole("button", { name: /Todas as abertas/ })).toBeVisible();
+});
+
+test("mostra realizado de O.S., valor esperado pelo modelo e diferença para os colegas por vendedor", async ({ page }) => {
+  await page.route("**/api/auth/get-session**", async (route) => {
+    const agora = new Date().toISOString();
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        session: { id: "e2e-admin-session", userId: "e2e-admin", token: "e2e-session-token", expiresAt: new Date(Date.now() + 60 * 60 * 1000).toISOString(), createdAt: agora, updatedAt: agora },
+        user: { id: "e2e-admin", name: "Admin E2E", email: "admin-e2e@example.test", role: "admin", emailVerified: true, createdAt: agora, updatedAt: agora },
+      }),
+    });
+  });
+  await page.route("**/api/trpc/**", instalarMocks);
+
+  await page.goto("/comercial/performance");
+
+  const painel = page.getByText("Conversão observada x probabilidade").locator("..").locator("..").locator("..");
+  await expect(painel).toBeVisible();
+  await expect(painel.getByText("Álvaro Teste")).toBeVisible();
+  await expect(painel.getByText("R$ 10.000,00").first()).toBeVisible();
+  await expect(painel.getByText("R$ 27.000,00").first()).toBeVisible();
+  await expect(painel.getByText("+R$ 17.000,00").first()).toBeVisible();
+  await expect(painel.getByText("Clientes novos", { exact: true })).toBeVisible();
+  await expect(painel.getByText("Clientes antigos", { exact: true })).toBeVisible();
 });

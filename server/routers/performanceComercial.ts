@@ -4,14 +4,14 @@ import { z } from "zod";
 import { ENV } from "../_core/env";
 import { listarOSMubiSys, listarOrcamentosMubiSys, urlOrcamentoMubiSys, buscarOrcamentoPorNumero } from "../integrations/mubisys-client";
 import { getDb } from "../db/db";
-import { sinaisMercado, financeiroMensal, custoMarketing, crmMetas, metasComerciais, historicoOs, historicoOrcamentos, clienteOverrides, faturamento, inteligenciaAcoesClientes, performanceAuditada, mubisysApiCache, clienteNovosContato, performancePropostasFollowup, performancePropostasContatado, inteligenciaClientesContatos, crmAtividadeLog } from "../../drizzle/schema";
+import { sinaisMercado, financeiroMensal, custoMarketing, crmMetas, metasComerciais, historicoOs, historicoOrcamentos, crmProbabilidadePrevisoes, clienteOverrides, faturamento, inteligenciaAcoesClientes, performanceAuditada, mubisysApiCache, clienteNovosContato, performancePropostasFollowup, performancePropostasContatado, inteligenciaClientesContatos, crmAtividadeLog } from "../../drizzle/schema";
 import { eq, and, desc, gte, lte, sql } from "drizzle-orm";
 import {
   construirBaseClientes, calcularVisaoGeral, analisarCliente, calcularCandidatosAcao,
   calcularFunilOrcamentos, calcularPrevisaoComercial, calcularRecompraNovosReativados, calcularTempoOrcamentoPedido,
   calcularConversaoPorFaixaTicket, calcularFunilMensal,
   montarContextoAssistenteClientes, PROMPT_ASSISTENTE_CLIENTES_V1, VERSAO_PROMPT_ASSISTENTE_CLIENTES,
-  DICIONARIO_METRICAS, DIAS_COOLDOWN_ACAO_RESOLVIDA, VERSAO_REGRA_ATUAL,
+  DICIONARIO_METRICAS, DIAS_COOLDOWN_ACAO_RESOLVIDA, VERSAO_REGRA_ATUAL, parseDataFlexivel, STATUS_ABERTO,
   type AnaliseCliente,
 } from "../services/inteligenciaClientes";
 import { calcularPainelMeta } from "../services/painelMeta";
@@ -30,6 +30,7 @@ import {
 import { construirMapaConversaoClientes, calcularProbabilidade, calcularTaxaConversaoCliente } from "../services/probabilidadeCompra";
 import { isOsNormalDb } from "../utils/os-valida";
 import { perguntarSobreClientes } from "../integrations/anthropic-client";
+import { classificarDesfechoExplicito } from "../services/crmProbabilidadeModel";
 
 // ─── Cache em memória para evitar chamadas duplicadas à API ────────────────────
 // TTL: 60 minutos para mês atual, 6 horas para meses históricos (dados não mudam).
@@ -1719,7 +1720,270 @@ async function carregarPainelMeta(db: BancoDados, hoje: Date): Promise<PainelCom
 const limitadorConsultorMeta = criarLimitador(40, 60 * 60 * 1000);
 const limitadorAssistenteClientes = criarLimitador(30, 60 * 60 * 1000);
 
+type LinhaProbabilidadeVendedor = {
+  vendedor: string;
+  vendedorKey: string;
+  probabilidade: number;
+  valor: number;
+  desfecho: 0 | 1 | null;
+  aberta: boolean;
+  grupoCliente: "novo" | "antigo" | "desconhecido";
+  faixaProbabilidade: string;
+};
+
+type BucketProbabilidadeVendedor = {
+  monitoradas: number;
+  decididas: number;
+  ganhos: number;
+  perdas: number;
+  semDesfecho: number;
+  abertas: number;
+  ganhosEsperados: number;
+  valorGanhoReal: number;
+  valorGanhoEsperado: number;
+  valorCarteiraEsperado: number;
+  conversaoRealPct: number | null;
+  conversaoEsperadaPct: number | null;
+  desvioGanhos: number | null;
+  pipelinePonderado: number;
+  benchmarkColegas: {
+    comparaveis: number;
+    cobertas: number;
+    coberturaPct: number | null;
+    conversaoPct: number | null;
+    ganhosEsperados: number | null;
+    valorEsperado: number | null;
+    valorRealCoberto: number | null;
+    diferencaGanhos: number | null;
+    diferencaValor: number | null;
+  } | null;
+};
+
+function normalizarChaveProbabilidade(value: string | null | undefined): string {
+  return String(value ?? "").trim().toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+}
+
+function arredondarProbabilidade(value: number, casas = 2): number {
+  const fator = 10 ** casas;
+  return Math.round((value + Number.EPSILON) * fator) / fator;
+}
+
+function faixaProbabilidadeVendedor(probabilidade: number): string {
+  if (probabilidade < 20) return "0-19";
+  if (probabilidade < 40) return "20-39";
+  if (probabilidade < 60) return "40-59";
+  if (probabilidade < 80) return "60-79";
+  return "80-100";
+}
+
+function calcularBucketProbabilidadeVendedor(args: {
+  linhas: LinhaProbabilidadeVendedor[];
+  linhasParaBenchmark?: LinhaProbabilidadeVendedor[];
+  vendedorKey?: string;
+  calcularBenchmark?: boolean;
+}): BucketProbabilidadeVendedor {
+  const { linhas } = args;
+  const decididas = linhas.filter(linha => linha.desfecho !== null);
+  const ganhos = decididas.filter(linha => linha.desfecho === 1);
+  const perdas = decididas.filter(linha => linha.desfecho === 0);
+  const abertas = linhas.filter(linha => linha.aberta);
+  const ganhosEsperados = decididas.reduce((soma, linha) => soma + linha.probabilidade, 0);
+  const valorGanhoReal = ganhos.reduce((soma, linha) => soma + linha.valor, 0);
+  const valorGanhoEsperado = decididas.reduce((soma, linha) => soma + linha.probabilidade * linha.valor, 0);
+
+  let benchmarkColegas: BucketProbabilidadeVendedor["benchmarkColegas"] = null;
+  if (args.calcularBenchmark && args.vendedorKey && args.linhasParaBenchmark) {
+    const colegasPorEstrato = new Map<string, { decididas: number; ganhos: number }>();
+    for (const linha of args.linhasParaBenchmark) {
+      if (linha.desfecho === null || !linha.vendedorKey || linha.vendedorKey === args.vendedorKey) continue;
+      const estrato = `${linha.faixaProbabilidade}|${linha.grupoCliente}`;
+      const atual = colegasPorEstrato.get(estrato) ?? { decididas: 0, ganhos: 0 };
+      atual.decididas += 1;
+      if (linha.desfecho === 1) atual.ganhos += 1;
+      colegasPorEstrato.set(estrato, atual);
+    }
+
+    // Denominador: todas as propostas decididas próprias. Propostas sem colega
+    // no estrato ficam sem cobertura, para não inflar a taxa de comparação.
+    const comparaveis = decididas.length;
+    let cobertas = 0;
+    let ganhosEsperadosColegas = 0;
+    let valorEsperadoColegas = 0;
+    let ganhosRealCobertos = 0;
+    let valorRealCoberto = 0;
+    for (const linha of decididas) {
+      const estrato = `${linha.faixaProbabilidade}|${linha.grupoCliente}`;
+      const pares = colegasPorEstrato.get(estrato);
+      if (!pares || pares.decididas < 10) continue;
+      // Dez decisões de colegas no mesmo estrato evita usar taxas muito instáveis.
+      cobertas += 1;
+      const taxaColegas = pares.ganhos / pares.decididas;
+      ganhosEsperadosColegas += taxaColegas;
+      valorEsperadoColegas += taxaColegas * linha.valor;
+      if (linha.desfecho === 1) {
+        ganhosRealCobertos += 1;
+        valorRealCoberto += linha.valor;
+      }
+    }
+
+    const coberturaPct = comparaveis > 0 ? (cobertas / comparaveis) * 100 : null;
+    const amostraSuficiente = comparaveis >= 20 && coberturaPct !== null && coberturaPct >= 70;
+    benchmarkColegas = {
+      comparaveis,
+      cobertas,
+      coberturaPct: coberturaPct === null ? null : arredondarProbabilidade(coberturaPct, 1),
+      conversaoPct: amostraSuficiente && cobertas > 0
+        ? arredondarProbabilidade((ganhosEsperadosColegas / cobertas) * 100, 1)
+        : null,
+      ganhosEsperados: amostraSuficiente ? arredondarProbabilidade(ganhosEsperadosColegas) : null,
+      valorEsperado: amostraSuficiente ? arredondarProbabilidade(valorEsperadoColegas) : null,
+      valorRealCoberto: amostraSuficiente ? arredondarProbabilidade(valorRealCoberto) : null,
+      // Sinal positivo = oportunidade estimada abaixo do benchmark dos pares;
+      // não é uma venda perdida comprovada nem uma estimativa causal.
+      diferencaGanhos: amostraSuficiente ? arredondarProbabilidade(ganhosEsperadosColegas - ganhosRealCobertos) : null,
+      diferencaValor: amostraSuficiente ? arredondarProbabilidade(valorEsperadoColegas - valorRealCoberto) : null,
+    };
+  }
+
+  return {
+    monitoradas: linhas.length,
+    decididas: decididas.length,
+    ganhos: ganhos.length,
+    perdas: perdas.length,
+    semDesfecho: linhas.length - decididas.length - abertas.length,
+    abertas: abertas.length,
+    ganhosEsperados: arredondarProbabilidade(ganhosEsperados),
+    valorGanhoReal: arredondarProbabilidade(valorGanhoReal),
+    valorGanhoEsperado: arredondarProbabilidade(valorGanhoEsperado),
+    // Expectativa no momento da primeira exibição da probabilidade, para toda
+    // a carteira monitorada (ganhas, perdidas e ainda abertas).
+    valorCarteiraEsperado: arredondarProbabilidade(linhas.reduce((soma, linha) => soma + linha.probabilidade * linha.valor, 0)),
+    conversaoRealPct: decididas.length ? arredondarProbabilidade((ganhos.length / decididas.length) * 100, 1) : null,
+    conversaoEsperadaPct: decididas.length ? arredondarProbabilidade((ganhosEsperados / decididas.length) * 100, 1) : null,
+    desvioGanhos: decididas.length ? arredondarProbabilidade(ganhos.length - ganhosEsperados) : null,
+    pipelinePonderado: arredondarProbabilidade(abertas.reduce((soma, linha) => soma + linha.probabilidade * linha.valor, 0)),
+    benchmarkColegas,
+  };
+}
+
 export const performanceComercialRouter = router({
+
+  // Mede a previsão salva quando o orçamento foi exibido no CRM contra o
+  // desfecho explícito sincronizado depois. A comparação de colegas é por
+  // faixa de probabilidade e coorte, para não comparar carteiras diferentes.
+  getProbabilidadeVendedores: publicProcedure
+    .input(z.object({ mes: z.number().int().min(1).max(12), ano: z.number().int().min(2020).max(2100) }))
+    .query(async ({ input }) => {
+      const db = await getDb();
+      if (!db) {
+        return {
+          periodo: { mes: input.mes, ano: input.ano },
+          cobertura: { propostasNoHistorico: 0, propostasMonitoradas: 0, percentual: null },
+          total: calcularBucketProbabilidadeVendedor({ linhas: [] }),
+          vendedores: [],
+        };
+      }
+
+      const [historicoMes, snapshots] = await Promise.all([
+        db.select({ orcNumero: historicoOrcamentos.orcNumero })
+          .from(historicoOrcamentos)
+          .where(and(eq(historicoOrcamentos.mes, input.mes), eq(historicoOrcamentos.ano, input.ano))),
+        db.select({
+          orcNumero: crmProbabilidadePrevisoes.orcNumero,
+          dataProposta: crmProbabilidadePrevisoes.dataProposta,
+          exibidaEm: crmProbabilidadePrevisoes.exibidaEm,
+          probabilidadePct: crmProbabilidadePrevisoes.probabilidadePct,
+          valorProposta: crmProbabilidadePrevisoes.valorProposta,
+          vendedor: crmProbabilidadePrevisoes.vendedor,
+          coorteCliente: crmProbabilidadePrevisoes.coorteCliente,
+          dataCadastroHistorico: historicoOrcamentos.dataCadastro,
+          statusHistorico: historicoOrcamentos.status,
+        }).from(crmProbabilidadePrevisoes)
+          .leftJoin(historicoOrcamentos, eq(crmProbabilidadePrevisoes.orcNumero, historicoOrcamentos.orcNumero)),
+      ]);
+
+      const propostasNoHistorico = new Set(historicoMes
+        .map(row => String(row.orcNumero ?? "").trim())
+        .filter(Boolean)).size;
+      const linhas: LinhaProbabilidadeVendedor[] = [];
+      for (const row of snapshots) {
+        const score = Number(row.probabilidadePct);
+        if (!Number.isFinite(score) || score < 0 || score > 100) continue;
+        // A data original da proposta define o mês; só usamos a data em que o
+        // CRM exibiu o score quando as duas fontes anteriores não têm data.
+        const dataBase = row.dataProposta
+          ?? parseDataFlexivel(row.dataCadastroHistorico ?? null)
+          ?? row.exibidaEm;
+        if (dataBase.getFullYear() !== input.ano || dataBase.getMonth() + 1 !== input.mes) continue;
+
+        const vendedorOriginal = String(row.vendedor ?? "").trim();
+        const vendedor = vendedorOriginal || "Sem vendedor";
+        // Mantém as propostas sem atribuição no resultado geral, mas nunca as
+        // considera colegas de si mesmas no benchmark entre vendedores.
+        const vendedorKey = vendedorOriginal ? normalizarChaveProbabilidade(vendedorOriginal) : "";
+        const coorte = normalizarChaveProbabilidade(row.coorteCliente);
+        const grupoCliente: LinhaProbabilidadeVendedor["grupoCliente"] = coorte === "sem compra anterior"
+          ? "novo"
+          : coorte && coorte !== "coorte desconhecida"
+            ? "antigo"
+            : "desconhecido";
+        const valor = Number(row.valorProposta ?? 0);
+        const status = normalizarChaveProbabilidade(row.statusHistorico);
+        linhas.push({
+          vendedor,
+          vendedorKey,
+          probabilidade: score / 100,
+          valor: Number.isFinite(valor) && valor > 0 ? valor : 0,
+          desfecho: classificarDesfechoExplicito(row.statusHistorico),
+          aberta: status === normalizarChaveProbabilidade(STATUS_ABERTO),
+          grupoCliente,
+          faixaProbabilidade: faixaProbabilidadeVendedor(score),
+        });
+      }
+
+      const porVendedor = new Map<string, { vendedor: string; linhas: LinhaProbabilidadeVendedor[] }>();
+      for (const linha of linhas) {
+        const atual = porVendedor.get(linha.vendedorKey) ?? { vendedor: linha.vendedor, linhas: [] };
+        atual.linhas.push(linha);
+        porVendedor.set(linha.vendedorKey, atual);
+      }
+      const vendedores = [...porVendedor.entries()]
+        .map(([vendedorKey, grupo]) => ({
+          vendedor: grupo.vendedor,
+          geral: calcularBucketProbabilidadeVendedor({
+            linhas: grupo.linhas,
+            linhasParaBenchmark: linhas,
+            vendedorKey,
+            calcularBenchmark: true,
+          }),
+          novos: calcularBucketProbabilidadeVendedor({
+            linhas: grupo.linhas.filter(linha => linha.grupoCliente === "novo"),
+            linhasParaBenchmark: linhas,
+            vendedorKey,
+            calcularBenchmark: true,
+          }),
+          antigos: calcularBucketProbabilidadeVendedor({
+            linhas: grupo.linhas.filter(linha => linha.grupoCliente === "antigo"),
+            linhasParaBenchmark: linhas,
+            vendedorKey,
+            calcularBenchmark: true,
+          }),
+        }))
+        .sort((a, b) => b.geral.monitoradas - a.geral.monitoradas || a.vendedor.localeCompare(b.vendedor, "pt-BR"));
+
+      return {
+        periodo: { mes: input.mes, ano: input.ano },
+        cobertura: {
+          propostasNoHistorico,
+          propostasMonitoradas: linhas.length,
+          percentual: propostasNoHistorico > 0
+            ? arredondarProbabilidade((linhas.length / propostasNoHistorico) * 100, 1)
+            : null,
+        },
+        total: calcularBucketProbabilidadeVendedor({ linhas }),
+        vendedores,
+      };
+    }),
 
   // Dados de um mês específico
   getMes: publicProcedure
