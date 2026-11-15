@@ -243,6 +243,42 @@ function ProbabilidadeBadge({ p, explicacao }: { p: number | null; explicacao: s
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
+function CotacoesBadge({
+  total,
+  clienteNovo,
+  compacto = false,
+  mostrarEstrela = false,
+}: {
+  total?: number;
+  clienteNovo: boolean;
+  compacto?: boolean;
+  mostrarEstrela?: boolean;
+}) {
+  const quantidade = Math.max(1, total ?? 1);
+  const texto = compacto
+    ? `${quantidade} cot.`
+    : `${quantidade} ${quantidade === 1 ? "cotação" : "cotações"}`;
+  const cor = clienteNovo
+    ? "bg-amber-50 text-amber-800 border-amber-300"
+    : "bg-slate-50 text-slate-700 border-slate-200";
+
+  return (
+    <TooltipProvider>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full border text-[10px] font-semibold cursor-default ${cor} ${compacto ? "flex-shrink-0" : ""}`}>
+            {mostrarEstrela && clienteNovo && <Star className="w-2.5 h-2.5 text-yellow-500 fill-yellow-400" />}
+            {texto}
+          </span>
+        </TooltipTrigger>
+        <TooltipContent side="top" className="text-xs max-w-[220px]">
+          {quantidade} {quantidade === 1 ? "cotação registrada" : "cotações registradas"} no sistema{clienteNovo ? "; cliente ainda sem compras anteriores" : ""}.
+        </TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
+  );
+}
+
 const fmt = (v: number) => v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 
 function fmtShort(d: Date) {
@@ -609,20 +645,7 @@ function PropostaRow({ p, vendedor, onRefresh, showVendedor, faixasConfig }: {
               <div className="flex items-center gap-1.5 flex-wrap">
                 <span className="text-xs text-muted-foreground">{fmt(p.valor)}</span>
                 <ProbabilidadeBadge p={p.probabilidadeCompra} explicacao={p.probabilidadeExplicacao} />
-                {p.clienteNovo && (
-                  <TooltipProvider>
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <span className="inline-flex items-center px-1.5 py-0.5 rounded-full border text-[10px] font-semibold bg-amber-50 text-amber-800 border-amber-300 cursor-default">
-                          {p.totalCotacoes === 1 ? "1ª cotação" : `${p.totalCotacoes || 1} cotações`}
-                        </span>
-                      </TooltipTrigger>
-                      <TooltipContent side="top" className="text-xs max-w-[220px]">
-                        Cliente novo (sem compras anteriores). Já realizou {p.totalCotacoes || 1} {(p.totalCotacoes || 1) === 1 ? "cotação" : "cotações"} no sistema.
-                      </TooltipContent>
-                    </Tooltip>
-                  </TooltipProvider>
-                )}
+                <CotacoesBadge total={p.totalCotacoes} clienteNovo={p.clienteNovo} />
                 {p.qtdComprasCliente > 0 && (
                   <TooltipProvider>
                     <Tooltip>
@@ -1732,15 +1755,7 @@ export default function CRM() {
                     <div key={p.id} className="flex items-center gap-2 bg-white rounded border border-yellow-100 px-2 py-1">
                       <span className="text-xs font-bold text-yellow-700">#{p.sequencial || p.id}</span>
                       <span className="text-xs text-gray-700 truncate flex-1" title={p.nomeCliente}>{p.nomeCliente}</span>
-                      {p.clienteNovo && (
-                        <span
-                          className="inline-flex items-center gap-0.5 text-[10px] font-semibold text-amber-800 bg-amber-50 border border-amber-200 rounded px-1 flex-shrink-0"
-                          title={`Cliente novo — ${p.totalCotacoes || 1} ${(p.totalCotacoes || 1) === 1 ? "cotação registrada" : "cotações registradas"}`}
-                        >
-                          <Star className="w-2.5 h-2.5 text-yellow-500 fill-yellow-400" />
-                          {p.totalCotacoes === 1 ? "1ª cot." : `${p.totalCotacoes || 1} cot.`}
-                        </span>
-                      )}
+                      <CotacoesBadge total={p.totalCotacoes} clienteNovo={p.clienteNovo} compacto mostrarEstrela />
                       <WhatsAppAgendaBotao p={p} faixa={1} faixasConfig={faixasConfig} />
                     </div>
                   ))}
@@ -1764,15 +1779,7 @@ export default function CRM() {
                     <div key={p.id} className="flex items-center gap-2 bg-white rounded border border-pink-100 px-2 py-1">
                       <span className="text-xs font-bold text-pink-700">#{p.sequencial || p.id}</span>
                       <span className="text-xs text-gray-700 truncate flex-1" title={p.nomeCliente}>{p.nomeCliente}</span>
-                      {p.clienteNovo && (
-                        <span
-                          className="inline-flex items-center gap-0.5 text-[10px] font-semibold text-amber-800 bg-amber-50 border border-amber-200 rounded px-1 flex-shrink-0"
-                          title={`Cliente novo — ${p.totalCotacoes || 1} ${(p.totalCotacoes || 1) === 1 ? "cotação registrada" : "cotações registradas"}`}
-                        >
-                          <Star className="w-2.5 h-2.5 text-yellow-500 fill-yellow-400" />
-                          {p.totalCotacoes === 1 ? "1ª cot." : `${p.totalCotacoes || 1} cot.`}
-                        </span>
-                      )}
+                      <CotacoesBadge total={p.totalCotacoes} clienteNovo={p.clienteNovo} compacto mostrarEstrela />
                       <WhatsAppAgendaBotao p={p} faixa={2} faixasConfig={faixasConfig} />
                     </div>
                   ))}
@@ -1796,15 +1803,7 @@ export default function CRM() {
                     <div key={p.id} className="flex items-center gap-2 bg-white rounded border border-orange-100 px-2 py-1">
                       <span className="text-xs font-bold text-orange-700">#{p.sequencial || p.id}</span>
                       <span className="text-xs text-gray-700 truncate flex-1" title={p.nomeCliente}>{p.nomeCliente}</span>
-                      {p.clienteNovo && (
-                        <span
-                          className="inline-flex items-center gap-0.5 text-[10px] font-semibold text-amber-800 bg-amber-50 border border-amber-200 rounded px-1 flex-shrink-0"
-                          title={`Cliente novo — ${p.totalCotacoes || 1} ${(p.totalCotacoes || 1) === 1 ? "cotação registrada" : "cotações registradas"}`}
-                        >
-                          <Star className="w-2.5 h-2.5 text-yellow-500 fill-yellow-400" />
-                          {p.totalCotacoes === 1 ? "1ª cot." : `${p.totalCotacoes || 1} cot.`}
-                        </span>
-                      )}
+                      <CotacoesBadge total={p.totalCotacoes} clienteNovo={p.clienteNovo} compacto mostrarEstrela />
                       <WhatsAppAgendaBotao p={p} faixa={3} faixasConfig={faixasConfig} />
                     </div>
                   ))}

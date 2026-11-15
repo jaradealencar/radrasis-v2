@@ -43,7 +43,12 @@ const propostasAbertas = [
     ...propostaBase,
     id: "erp-30002",
     sequencial: 30002,
-    nomeCliente: "Proposta aberta com dois contatos",
+    nomeCliente: "Cliente recorrente com dois contatos",
+    qtdComprasCliente: 4,
+    totalCompras: 4,
+    totalCotacoes: 27,
+    orcamentosFechados: 4,
+    taxaConversao: 15,
     contato1: {
       data: new Date(Date.now() - 86_400_000).toISOString(),
       canal: "nao_retornou",
@@ -226,6 +231,7 @@ test("mantém propostas abertas e não inventa score para cliente novo sem calib
   await expect(page.getByRole("button", { name: "Scripts" }).first()).toBeVisible();
 
   await expect(page.getByText("#30002")).toBeVisible();
+  await expect(page.getByText(`27 cota\u00e7\u00f5es`, { exact: true })).toBeVisible();
   await expect(page.getByText("Propostas abertas", { exact: true }).locator("..")).toContainText("2");
 
   const filtrarPendentes = page.getByRole("button", { name: /Pendentes de acompanhamento/ });
