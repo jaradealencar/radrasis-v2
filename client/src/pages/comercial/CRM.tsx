@@ -967,8 +967,9 @@ export default function CRM() {
   const [ordenarPorProbabilidade, setOrdenarPorProbabilidade] = useState(false);
   const [filtroResposta, setFiltroResposta] = useState<string>("todos");
   const [filtroFaixa, setFiltroFaixa] = useState<string>("todas");
-  // Mantém a tela inicial e a ordem de abas que o time já conhecia na sexta.
-  const [abaAtiva, setAbaAtiva] = useState<string>("fila");
+  // Mantém Propostas como tela inicial; os painéis novos ficam disponíveis
+  // como abas adicionais sem substituir o fluxo clássico do CRM.
+  const [abaAtiva, setAbaAtiva] = useState<string>("propostas");
   const [buscaPropostas, setBuscaPropostas] = useState("");
   const [filtroFila, setFiltroFila] = useState<"todas" | TipoProximaAcao>("todas");
   const [filtroSugestoes, setFiltroSugestoes] = useState<"todas" | "reativar">("todas");
@@ -1279,33 +1280,6 @@ export default function CRM() {
         </div>
       )}
 
-      {/* Alerta de atraso */}
-      {propostasAtrasadas.length > 0 && (
-        <div className="flex items-start gap-3 bg-red-50 border border-red-300 rounded-xl p-4 shadow-sm">
-          <AlertTriangle className="w-5 h-5 text-red-500 flex-shrink-0 mt-0.5" />
-          <div className="flex-1 min-w-0">
-            <p className="text-sm font-semibold text-red-700">
-              {propostasAtrasadas.length} proposta{propostasAtrasadas.length > 1 ? "s" : ""} com acompanhamento atrasado!
-            </p>
-            <p className="text-xs text-red-600 mt-0.5">
-              Há datas de follow-up que já passaram sem contato registrado. Priorize essas propostas!
-            </p>
-            <div className="flex flex-wrap gap-1 mt-2">
-              {propostasAtrasadas.slice(0, 5).map(p => (
-                <span key={p.id} className="text-xs bg-red-100 text-red-700 px-2 py-0.5 rounded-full font-medium border border-red-200">
-                  #{p.sequencial || p.id} — {p.nomeCliente.slice(0, 20)}
-                </span>
-              ))}
-              {propostasAtrasadas.length > 5 && (
-                <span className="text-xs bg-red-100 text-red-700 px-2 py-0.5 rounded-full font-medium border border-red-200">
-                  +{propostasAtrasadas.length - 5} mais
-                </span>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
-
       {/* Sub-abas do CRM */}
       {modeloProbabilidade?.status === "amostra_insuficiente" && (
         <div className="mb-4 flex items-start gap-3 bg-amber-50 border border-amber-300 rounded-xl p-3 shadow-sm" role="status">
@@ -1333,16 +1307,9 @@ export default function CRM() {
       )}
       <Tabs value={abaAtiva} onValueChange={setAbaAtiva} className="w-full">
         <TabsList className="grid w-full grid-cols-2 md:grid-cols-4 xl:grid-cols-7 mb-4 h-auto">
-          <TabsTrigger value="fila" className="gap-1.5">
-            <ListTodo className="w-3.5 h-3.5" /> Fila de trabalho
-            <Badge variant="secondary" className="text-[10px] px-1.5 py-0">{filaCounts.todas}</Badge>
-          </TabsTrigger>
           <TabsTrigger value="propostas" className="gap-1.5">
             Propostas
             <Badge variant="secondary" className="text-[10px] px-1.5 py-0">{propostasAtivas.length}</Badge>
-          </TabsTrigger>
-          <TabsTrigger value="desempenho" className="gap-1.5">
-            <BarChart3 className="w-3.5 h-3.5" /> Desempenho
           </TabsTrigger>
           <TabsTrigger value="agenda" className="gap-1.5">
             Agenda de Hoje
@@ -1350,7 +1317,7 @@ export default function CRM() {
           </TabsTrigger>
           <TabsTrigger value="sugestoes" className="gap-1.5">
             <Target className="w-3.5 h-3.5" />
-            Reativar clientes
+            Sugestões de Contato
             {sugestoesData && sugestoesData.sugestoes.length > 0 && (
               <Badge variant="secondary" className="text-[10px] px-1.5 py-0 bg-indigo-100 text-indigo-700">{sugestoesData.sugestoes.length}</Badge>
             )}
@@ -1362,6 +1329,13 @@ export default function CRM() {
           <TabsTrigger value="auditoria" className="gap-1.5">
             <Activity className="w-3.5 h-3.5" />
             Auditoria
+          </TabsTrigger>
+          <TabsTrigger value="fila" className="gap-1.5">
+            <ListTodo className="w-3.5 h-3.5" /> Fila de trabalho
+            <Badge variant="secondary" className="text-[10px] px-1.5 py-0">{filaCounts.todas}</Badge>
+          </TabsTrigger>
+          <TabsTrigger value="desempenho" className="gap-1.5">
+            <BarChart3 className="w-3.5 h-3.5" /> Desempenho
           </TabsTrigger>
         </TabsList>
 
@@ -1380,6 +1354,32 @@ export default function CRM() {
               </div>
             </div>
           </div>
+
+          {propostasAtrasadas.length > 0 && (
+            <div className="flex items-start gap-3 rounded-xl border border-red-300 bg-red-50 p-4 shadow-sm">
+              <AlertTriangle className="mt-0.5 h-5 w-5 flex-shrink-0 text-red-500" />
+              <div className="min-w-0 flex-1">
+                <p className="text-sm font-semibold text-red-700">
+                  {propostasAtrasadas.length} proposta{propostasAtrasadas.length > 1 ? "s" : ""} com acompanhamento atrasado!
+                </p>
+                <p className="mt-0.5 text-xs text-red-600">
+                  Há datas de follow-up que já passaram sem contato registrado. Priorize essas propostas!
+                </p>
+                <div className="mt-2 flex flex-wrap gap-1">
+                  {propostasAtrasadas.slice(0, 5).map(p => (
+                    <span key={p.id} className="rounded-full border border-red-200 bg-red-100 px-2 py-0.5 text-xs font-medium text-red-700">
+                      #{p.sequencial || p.id} — {p.nomeCliente.slice(0, 20)}
+                    </span>
+                  ))}
+                  {propostasAtrasadas.length > 5 && (
+                    <span className="rounded-full border border-red-200 bg-red-100 px-2 py-0.5 text-xs font-medium text-red-700">
+                      +{propostasAtrasadas.length - 5} mais
+                    </span>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
 
           <div className="flex flex-col gap-3 rounded-xl border bg-white p-3 shadow-sm">
             <label className="relative block flex-1">
@@ -1435,7 +1435,7 @@ export default function CRM() {
           placeholder="Buscar cliente, telefone, vendedor ou número da proposta"
           className="h-10 w-full rounded-xl border bg-white pl-9 pr-3 text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
       </label>
-      <details className="group rounded-xl border bg-white shadow-sm">
+      <details open className="group rounded-xl border bg-white shadow-sm">
         <summary className="flex cursor-pointer list-none items-center gap-2 px-4 py-3 text-sm font-semibold text-slate-700">
           <SlidersHorizontal className="h-4 w-4" /> Filtros avançados
           <span className="text-xs font-normal text-muted-foreground">vendedor, datas, perfil de cliente, acompanhamento</span>
