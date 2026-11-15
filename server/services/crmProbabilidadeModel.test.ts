@@ -5,6 +5,7 @@ import {
   CRM_PROBABILITY_MIN_TRAINING_EXAMPLES,
   CRM_PROBABILITY_MIN_NEW_CUSTOMER_CALIBRATION_EXAMPLES,
   CRM_PROBABILITY_TICKET_BANDS,
+  classificarDesfechoExplicito,
   preverComLogistica,
   treinarRegressaoLogistica,
   type ExemploProbabilidadeCrm,
@@ -44,6 +45,14 @@ function modeloVazio(): ModeloProbabilidadeCrm {
 }
 
 describe("modelo de probabilidade do CRM", () => {
+  it.each([
+    ["faturado", 1],
+    ["concluído", 1],
+    ["cancelado", 0],
+  ] as const)("classifica o status ERP alternativo %s como %i", (status, desfecho) => {
+    expect(classificarDesfechoExplicito(status)).toBe(desfecho);
+  });
+
   it("nao transforma o fallback de 20% em score sem amostra suficiente", () => {
     const result = calcularProbabilidadeCrmAprendida({
       modelo: modeloVazio(),

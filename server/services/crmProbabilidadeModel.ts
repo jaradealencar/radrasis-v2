@@ -384,15 +384,17 @@ export function preverComLogistica(modelo: ModeloLogisticoCrm, features: number[
 export function classificarDesfechoExplicito(statusRaw: string | null | undefined): 0 | 1 | null {
   const normalizarStatus = (value: string) => value.trim().toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
   const status = normalizarStatus(statusRaw ?? "");
-  if ([...STATUS_GANHO].some((value) => normalizarStatus(value) === status)) return 1;
-  if ([...STATUS_PERDIDO].some((value) => normalizarStatus(value) === status)) return 0;
+  const ganhos = new Set([...STATUS_GANHO].map(normalizarStatus).concat(["faturado", "concluido"]));
+  const perdas = new Set([...STATUS_PERDIDO].map(normalizarStatus).concat(["cancelado"]));
+  if (ganhos.has(status)) return 1;
+  if (perdas.has(status)) return 0;
   return null;
 }
 
 function rotular(r: { status: string | null; dataCadastro: string | null; validade: string | null }, agora: Date): 0 | 1 | null {
   const status = (r.status ?? "").trim().toLowerCase();
-  if (STATUS_GANHO.has(status)) return 1;
-  if (STATUS_PERDIDO.has(status)) return 0;
+  const desfechoExplicito = classificarDesfechoExplicito(status);
+  if (desfechoExplicito !== null) return desfechoExplicito;
   if (status !== STATUS_ABERTO) return null;
   const data = lerData(r.dataCadastro);
   if (!data) return null;

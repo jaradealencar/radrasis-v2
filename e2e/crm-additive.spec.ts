@@ -136,6 +136,17 @@ function respostaProcedimento(path: string) {
       perdas: 1,
       semDesfecho: 0,
       abertas: 0,
+      perdasPresumidas: 0,
+      abertasNaValidade: 0,
+      abertasSemData: 0,
+      semHistorico: 0,
+      semStatus: 0,
+      statusAmbiguo: 0,
+      statusNaoReconhecido: 0,
+      conflitos: 0,
+      fontesDesfecho: { mubisys: 1, crm: 0, ambos: 1, conflitos: 0 },
+      decididasConsiderandoVencidas: 2,
+      conversaoConsiderandoVencidasPct: 50,
       ganhosEsperados: 0.8,
       valorGanhoReal: 10000,
       valorGanhoEsperado: 27000,
@@ -158,8 +169,20 @@ function respostaProcedimento(path: string) {
     };
     return {
       periodo: { mes: new Date().getMonth() + 1, ano: new Date().getFullYear() },
-      cobertura: { propostasNoHistorico: 2, propostasMonitoradas: 2, percentual: 100 },
+      cobertura: {
+        propostasNoHistorico: 2,
+        propostasMonitoradas: 2,
+        propostasCorrespondidas: 2,
+        propostasSemScore: 0,
+        snapshotsSemHistorico: 0,
+        snapshotsComHistoricoAmbiguo: 0,
+        snapshotsSemIdMubiSys: 0,
+        snapshotsConsiderados: 2,
+        percentual: 100,
+      },
       total: bucket,
+      versoes: [{ versao: "logit-platt-segmented-v3", propostas: 2 }],
+      statusNaoReconhecidos: [],
       vendedores: [{ vendedor: "Álvaro Teste", geral: bucket, novos: bucket, antigos: bucket }],
     };
   }
@@ -270,6 +293,9 @@ test("mostra realizado de O.S., valor esperado pelo modelo e diferença para os 
   await expect(painel.getByText("R$ 10.000,00").first()).toBeVisible();
   await expect(painel.getByText("R$ 27.000,00").first()).toBeVisible();
   await expect(painel.getByText("+R$ 17.000,00").first()).toBeVisible();
+  await expect(painel.getByText("Desfechos confirmados", { exact: true })).toBeVisible();
+  await expect(painel.getByText(/Vencidas presumidas: 0/)).toBeVisible();
+  await expect(painel.getByText(/Versões do modelo: logit-platt-segmented-v3 \(2\)/)).toBeVisible();
   await expect(painel.getByText("Clientes novos", { exact: true })).toBeVisible();
   await expect(painel.getByText("Clientes antigos", { exact: true })).toBeVisible();
 });
