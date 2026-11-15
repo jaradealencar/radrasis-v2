@@ -201,22 +201,20 @@ test("mantém propostas abertas e permite separar as pendentes sem esconder as j
   await expect(page.getByRole("heading", { name: "CRM de Propostas" })).toBeVisible();
   const tabs = page.getByRole("tab");
   await expect(tabs).toHaveCount(7);
-  await expect(tabs.nth(0)).toContainText("Fila de trabalho");
-  await expect(tabs.nth(1)).toContainText("Propostas");
-  await expect(tabs.nth(2)).toContainText("Desempenho");
-  await expect(tabs.nth(3)).toContainText("Agenda de Hoje");
-  await expect(tabs.nth(4)).toContainText("Reativar clientes");
-  await expect(tabs.nth(5)).toContainText("Histórico");
-  await expect(tabs.nth(6)).toContainText("Auditoria");
+  await expect(tabs.nth(0)).toContainText("Propostas");
+  await expect(tabs.nth(1)).toContainText("Agenda de Hoje");
+  await expect(tabs.nth(2)).toContainText("Sugestões de Contato");
+  await expect(tabs.nth(3)).toContainText("Histórico");
+  await expect(tabs.nth(4)).toContainText("Auditoria");
+  await expect(tabs.nth(5)).toContainText("Fila de trabalho");
+  await expect(tabs.nth(6)).toContainText("Desempenho");
   await expect(tabs.nth(0)).toHaveAttribute("data-state", "active");
 
-  await tabs.nth(1).click();
   await expect(page.getByText("#30001")).toBeVisible();
 
   const filtrosAvancados = page.locator("details").filter({ hasText: "Filtros avançados" });
-  await expect(filtrosAvancados).toHaveJSProperty("open", false);
-  await filtrosAvancados.locator("summary").click();
   await expect(filtrosAvancados).toHaveJSProperty("open", true);
+  await expect(page.getByRole("button", { name: "Scripts" }).first()).toBeVisible();
 
   await expect(page.getByText("#30002")).toBeVisible();
   await expect(page.getByText("Propostas abertas", { exact: true }).locator("..")).toContainText("2");
