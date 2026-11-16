@@ -508,7 +508,7 @@ test("pratica mostra correcoes apenas nas opcoes julgadas errado", async ({
                       id: "errada_marcada",
                       text: "Opcao errada marcada",
                       selectedAnswer: "Marcada",
-                      expectedAnswer: "Nao marcar",
+                      expectedAnswer: "N\u00e3o marcar",
                       feedback: "Essa opcao nao segue o material.",
                     },
                   ],
