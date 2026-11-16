@@ -845,7 +845,7 @@ export const crmRouter = router({
     .input(z.object({
       orcamentoId: z.string(),
       data: z.string(), // ISO string da data do contato a alterar (mesmo lookup de desfazarContato)
-      canal: z.enum(["nao_retornou", "esperando_cliente", "garantiu_fechamento", "aguardando_resposta"]),
+      canal: z.enum(["nao_retornou", "esperando_cliente", "relacionamento", "garantiu_fechamento", "aguardando_resposta"]),
       observacao: z.string().nullable().optional(),
     }))
     .mutation(async ({ ctx, input }) => {
@@ -949,7 +949,7 @@ export const crmRouter = router({
       orcamentoId: z.string(),
       empresa: z.string(),
       vendedor: z.string(),
-      canal: z.enum(["nao_retornou", "esperando_cliente", "garantiu_fechamento", "aguardando_resposta"]),
+      canal: z.enum(["nao_retornou", "esperando_cliente", "relacionamento", "garantiu_fechamento", "aguardando_resposta"]),
       observacao: z.string().nullable().optional(),
       dataContato: z.string().optional(), // ISO string da data clicada
     }))
