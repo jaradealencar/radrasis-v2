@@ -530,12 +530,18 @@ test("pratica mostra correcoes apenas nas opcoes julgadas errado", async ({
   await page.getByRole("checkbox", { name: "Opcao errada marcada" }).check();
   await page.getByRole("button", { name: "Responder", exact: true }).click();
 
-  const corrections = page.locator('[role="status"]').filter({
-    hasText: "O correto era",
-  });
-  await expect(corrections).toHaveCount(2);
-  await expect(corrections.nth(0)).toContainText("Opcao certa esquecida");
-  await expect(corrections.nth(1)).toContainText("Opcao errada marcada");
+  const missedCorrectOption = page
+    .getByText("Opcao certa esquecida", { exact: true })
+    .locator("xpath=../..");
+  const wronglySelectedOption = page
+    .getByText("Opcao errada marcada", { exact: true })
+    .locator("xpath=../..");
+  await expect(missedCorrectOption.getByRole("status")).toContainText(
+    /marcar esta op\u00e7\u00e3o/
+  );
+  await expect(wronglySelectedOption.getByRole("status")).toContainText(
+    /n\u00e3o marcar esta op\u00e7\u00e3o/
+  );
   const correctlyHandled = page
     .getByRole("checkbox", { name: "Opcao certa marcada" })
     .locator("xpath=../..");
