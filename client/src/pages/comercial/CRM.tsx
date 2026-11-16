@@ -429,9 +429,10 @@ function getCanalInfo(canal: string) {
 }
 
 // ─── PropostaRow ─────────────────────────────────────────────────────────────
-function PropostaRow({ p, vendedor, onRefresh, showVendedor, faixasConfig }: {
+function PropostaRow({ p, vendedor, onRefresh, showVendedor, faixasConfig, onMarkRecurring, markingRecurring }: {
   p: Proposta; vendedor: string; onRefresh: () => void; showVendedor: boolean;
   faixasConfig: Record<1 | 2 | 3, FaixaConfig>;
+  onMarkRecurring: (p: Proposta) => void; markingRecurring: boolean;
 }) {
   // modalContato: null = fechado; { date } = aberto (registro novo OU edição de um já existente
   // — depende se `contatoMap` já tem essa data, ver `editando` abaixo)
@@ -621,6 +622,30 @@ function PropostaRow({ p, vendedor, onRefresh, showVendedor, faixasConfig }: {
                       </TooltipTrigger>
                       <TooltipContent side="top" className="text-xs">
                         Cliente novo — sem compras anteriores ({p.totalCotacoes || 1} {(p.totalCotacoes || 1) === 1 ? "cotação registrada" : "cotações registradas"})
+                      </TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
+                )}
+                {p.clienteNovo && (
+                  <TooltipProvider>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <button
+                          type="button"
+                          aria-label={`Marcar ${p.nomeCliente} como recorrente`}
+                          title="Corrigir classificação: marcar como recorrente"
+                          disabled={markingRecurring}
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            onMarkRecurring(p);
+                          }}
+                          className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded border border-blue-200 bg-blue-50 text-blue-700 transition-colors hover:bg-blue-100 disabled:cursor-wait disabled:opacity-50"
+                        >
+                          {markingRecurring ? <Spinner className="size-3" /> : <RefreshCw className="h-3 w-3" />}
+                        </button>
+                      </TooltipTrigger>
+                      <TooltipContent side="top" className="text-xs">
+                        Marcar como recorrente. O cliente sairá do filtro de novos clientes.
                       </TooltipContent>
                     </Tooltip>
                   </TooltipProvider>
@@ -1070,6 +1095,23 @@ export default function CRM() {
   const { data: faixasData } = trpc.crm.getFaixaEtiquetas.useQuery();
   const faixasConfig: Record<1 | 2 | 3, FaixaConfig> = faixasData ?? FAIXA_DEFAULTS_CLIENTE;
   const faixasOrdenadas = useMemo(() => [faixasConfig[1], faixasConfig[2], faixasConfig[3]], [faixasConfig]);
+  const utils = trpc.useUtils();
+  const marcarClienteRecorrente = trpc.performanceComercial.upsertClienteOverride.useMutation({
+    onSuccess: async (_resultado, input) => {
+      await Promise.all([
+        refetch(),
+        utils.performanceComercial.listClienteOverrides.invalidate(),
+        utils.performanceComercial.getClientesNovos.invalidate(),
+      ]);
+      toast.success(`${input.empresaOriginal} marcada como recorrente. Ela não aparecerá mais como cliente novo.`);
+    },
+    onError: (error) => toast.error(`Não foi possível corrigir o cliente: ${error.message}`),
+  });
+  const marcarComoRecorrente = (proposta: Proposta) => marcarClienteRecorrente.mutate({
+    empresaOriginal: proposta.nomeCliente,
+    status: "recorrente",
+    motivo: "Classificado manualmente como recorrente pelo CRM.",
+  });
 
   const propostas: Proposta[] = (data?.propostas ?? []) as Proposta[];
   const stats = data?.stats;
@@ -1449,7 +1491,7 @@ export default function CRM() {
                   <TableHead>Nº proposta</TableHead><TableHead>Cliente</TableHead><TableHead>Contato</TableHead><TableHead>Último contato</TableHead><TableHead>Próxima ação</TableHead>
                   {showVendedor && <TableHead>Vendedor</TableHead>}<TableHead>Agenda</TableHead><TableHead className="text-center">Perdida</TableHead><TableHead className="text-center">Ganha</TableHead>
                 </TableRow></TableHeader>
-                <TableBody>{propostasFila.map(p => <PropostaRow key={p.id} p={p} vendedor={vendedor || user?.name || ""} onRefresh={refetch} showVendedor={showVendedor} faixasConfig={faixasConfig} />)}</TableBody>
+                <TableBody>{propostasFila.map(p => <PropostaRow key={p.id} p={p} vendedor={vendedor || user?.name || ""} onRefresh={refetch} showVendedor={showVendedor} faixasConfig={faixasConfig} onMarkRecurring={marcarComoRecorrente} markingRecurring={marcarClienteRecorrente.isPending} />)}</TableBody>
               </Table>
             )}
           </div>
@@ -1729,7 +1771,7 @@ export default function CRM() {
               </TableHeader>
               <TableBody>
                 {propostasAtivas.map(p => (
-                  <PropostaRow key={p.id} p={p} vendedor={vendedor || user?.name || ""} onRefresh={refetch} showVendedor={showVendedor} faixasConfig={faixasConfig} />
+                  <PropostaRow key={p.id} p={p} vendedor={vendedor || user?.name || ""} onRefresh={refetch} showVendedor={showVendedor} faixasConfig={faixasConfig} onMarkRecurring={marcarComoRecorrente} markingRecurring={marcarClienteRecorrente.isPending} />
                 ))}
               </TableBody>
             </Table>
@@ -1913,7 +1955,7 @@ export default function CRM() {
                 </TableHeader>
                 <TableBody>
                   {propostasHistorico.map(p => (
-                    <PropostaRow key={p.id} p={p} vendedor={vendedor || user?.name || ""} onRefresh={refetch} showVendedor={showVendedor} faixasConfig={faixasConfig} />
+                    <PropostaRow key={p.id} p={p} vendedor={vendedor || user?.name || ""} onRefresh={refetch} showVendedor={showVendedor} faixasConfig={faixasConfig} onMarkRecurring={marcarComoRecorrente} markingRecurring={marcarClienteRecorrente.isPending} />
                   ))}
                 </TableBody>
               </Table>
