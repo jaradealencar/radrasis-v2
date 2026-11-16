@@ -1,0 +1,1 @@
+ALTER TABLE "historico_os" ADD COLUMN "clienteId" integer;

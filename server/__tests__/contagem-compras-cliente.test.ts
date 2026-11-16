@@ -3,9 +3,11 @@ import {
   contarComprasPorCliente,
   calcularTaxaConversaoCliente,
   primeiroMesDoHistorico,
+  construirMapaConversaoClientes,
   type OsParaContagem,
   type OrcGanhoParaContagem,
 } from "../services/probabilidadeCompra";
+import { historicoOrcamentos, historicoOs } from "../../drizzle/schema";
 
 const os = (empresa: string, mes: number, ano: number, extra: Partial<OsParaContagem> = {}): OsParaContagem => ({
   empresa, tipoOs: "Normal", status: "Entregue", mes, ano, ...extra,
@@ -106,6 +108,49 @@ describe("primeiroMesDoHistorico", () => {
 
   it("sem linhas não há data: null", () => {
     expect(primeiroMesDoHistorico([])).toBeNull();
+  });
+});
+
+describe("cobertura e vínculo por ID MubiSys no CRM", () => {
+  it("agrupa orçamentos e compras pelo ID estável mesmo quando os nomes divergem", async () => {
+    const tabelas = new Map<any, any[]>([
+      [historicoOrcamentos, [
+        { id: 1, clienteId: 42, empresa: "ALFAPRINT COMUNICAÇÃO", status: "Aprovado", total: "1000.00", dataCadastro: "2025-01-10", orcNumero: "ORC-1", mes: 1, ano: 2025 },
+        { id: 2, clienteId: 42, empresa: "ALFAPRINT", status: "Em aberto", total: "500.00", dataCadastro: "2025-02-10", orcNumero: "ORC-2", mes: 2, ano: 2025 },
+      ]],
+      [historicoOs, [
+        { clienteId: 42, empresa: "ALFA PRINT", osNumero: "OS-1", tipoOs: "Normal", status: "Entregue", dataAprovacao: "2025-01-12", mes: 1, ano: 2025 },
+        { clienteId: 42, empresa: "ALFAPRINT COMUNICAÇÃO", osNumero: "OS-2", tipoOs: "Retrabalho", status: "Entregue", dataAprovacao: "2025-02-12", mes: 2, ano: 2025 },
+      ]],
+    ]);
+    const db = {
+      select: () => ({ from: async (tabela: any) => tabelas.get(tabela) ?? [] }),
+    };
+
+    const mapa = await construirMapaConversaoClientes(db);
+    const cliente = mapa.porClienteId.get(42);
+    expect(cliente?.totalOrcamentos).toBe(2);
+    expect(cliente?.orcamentosFechados).toBe(1);
+    expect(cliente?.qtdCompras).toBe(1);
+    expect(cliente?.qtdOrdensServico).toBe(2);
+    expect([...(cliente?.orcNumeros ?? [])]).toEqual(["ORC-1", "ORC-2"]);
+    expect([...(cliente?.orcNumerosFechados ?? [])]).toEqual(["ORC-1"]);
+    expect(mapa.orcamentosCoberturaCompleta).toBe(false);
+  });
+
+  it("mantém a cotação ligada ao ID mesmo sem razão social e não declara o histórico completo", async () => {
+    const tabelas = new Map<any, any[]>([
+      [historicoOrcamentos, [
+        { id: 1, clienteId: 84, empresa: null, status: "Aprovado", total: "1000.00", dataCadastro: "2025-01-10", orcNumero: "ORC-84", mes: 1, ano: 2025 },
+      ]],
+      [historicoOs, []],
+    ]);
+    const db = { select: () => ({ from: async (tabela: any) => tabelas.get(tabela) ?? [] }) };
+
+    const mapa = await construirMapaConversaoClientes(db);
+    expect(mapa.porClienteId.get(84)?.orcNumeros?.has("ORC-84")).toBe(true);
+    expect(mapa.porClienteId.get(84)?.qtdCompras).toBe(1);
+    expect(mapa.orcamentosCoberturaCompleta).toBe(false);
   });
 });
 

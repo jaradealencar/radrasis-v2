@@ -17,13 +17,15 @@ const propostaBase = {
   probabilidadeCompra: null,
   probabilidadeExplicacao: ["Sem amostra de treino no ambiente de teste."],
   qtdComprasCliente: 0,
+  qtdOrdensServicoCliente: 0,
   diasSemComprar: null,
   ultimaCompraEm: null,
   totalCotacoes: 1,
   totalCompras: 0,
   orcamentosFechados: 0,
   taxaConversao: 0,
-  orcamentosDesde: null,
+  orcamentosDesde: "01/2026",
+  orcamentosCoberturaCompleta: false,
   estadoCliente: null,
 };
 
@@ -34,6 +36,8 @@ const propostasAbertas = [
     sequencial: 30001,
     nomeCliente: "Cliente novo sem compras",
     clienteNovo: true,
+    estadoCliente: "MS",
+    regiaoCliente: "Centro-Oeste",
     totalCotacoes: 2,
     taxaConversao: 0,
     probabilidadeCompra: null,
@@ -44,9 +48,16 @@ const propostasAbertas = [
     id: "erp-30002",
     sequencial: 30002,
     nomeCliente: "Cliente recorrente com dois contatos",
+    estadoCliente: "SP",
+    regiaoCliente: "Sudeste",
     qtdComprasCliente: 4,
+    qtdOrdensServicoCliente: 4,
+    diasSemComprar: 240,
+    ultimaCompraEm: new Date(Date.now() - 240 * 86_400_000).toISOString(),
     totalCompras: 4,
     totalCotacoes: 27,
+    orcamentosDesde: "03/2023",
+    orcamentosCoberturaCompleta: false,
     orcamentosFechados: 0,
     taxaConversao: 0,
     probabilidadeCompra: 15,
@@ -98,6 +109,11 @@ const crmData = {
 
 function respostaProcedimento(path: string) {
   if (path === "crm.getPropostas") return crmData;
+  if (path === "performanceComercial.upsertClienteOverride") {
+    const clienteMarcado = propostasAbertas.find(proposta => proposta.clienteNovo);
+    if (clienteMarcado) clienteMarcado.clienteNovo = false;
+    return { ok: true };
+  }
   if (path === "crm.getVendedores") return [{ nome: "Vendedora de teste" }];
   if (path === "crm.getSugestoesContato") return { sugestoes: [] };
   if (path === "crm.getFaixaEtiquetas") {
@@ -250,7 +266,15 @@ test("mantém propostas abertas e não inventa score para cliente novo sem calib
   const alturaLinhaNova = await clienteNovoRow.evaluate((row) => row.getBoundingClientRect().height);
   expect(alturaLinhaNova).toBeLessThan(160);
   await expect(page.getByText("Cliente novo sem compras")).toBeVisible();
-  await expect(page.getByText("2 cotações", { exact: true })).toBeVisible();
+  await expect(page.getByText("≥2 cotações", { exact: true })).toBeVisible();
+  const faixas = page.getByTestId("faixas-acompanhamento").first();
+  await expect(faixas).toHaveCSS("flex-direction", "row");
+  const blocosFaixa = faixas.locator(":scope > div");
+  await expect(blocosFaixa).toHaveCount(3);
+  const posicoes = await blocosFaixa.evaluateAll(elementos =>
+    elementos.map(elemento => elemento.getBoundingClientRect().top)
+  );
+  expect(Math.max(...posicoes) - Math.min(...posicoes)).toBeLessThanOrEqual(1);
   await expect(page.getByText("0% conv.", { exact: true }).first()).toBeVisible();
   await expect(page.getByText("S/D", { exact: true }).first()).toBeVisible();
 
@@ -259,9 +283,27 @@ test("mantém propostas abertas e não inventa score para cliente novo sem calib
   await expect(page.getByRole("button", { name: "Scripts" }).first()).toBeVisible();
 
   await expect(page.getByText("#30002")).toBeVisible();
-  await expect(page.getByText(`27 cota\u00e7\u00f5es`, { exact: true })).toBeVisible();
+  await expect(page.getByText(`≥27 cota\u00e7\u00f5es`, { exact: true })).toBeVisible();
+  await expect(page.getByText("4 O.S.", { exact: true })).toBeVisible();
   await expect(page.getByText("15%", { exact: true })).toBeVisible();
   await expect(page.getByText("Propostas abertas", { exact: true }).locator("..")).toContainText("2");
+
+  await page.getByRole("button", { name: /Sem compra 6\+ meses/ }).click();
+  await expect(page.getByText("#30002")).toBeVisible();
+  await expect(page.getByText("#30001")).toBeHidden();
+  await page.getByRole("button", { name: /Apenas 6\+ meses/ }).click();
+
+  const filtroRegiao = page.getByText("Região", { exact: true }).locator("..").getByRole("combobox");
+  await filtroRegiao.click();
+  await page.getByRole("option", { name: "Centro-Oeste" }).click();
+  await expect(page.getByText("#30001")).toBeVisible();
+  await expect(page.getByText("#30002")).toBeHidden();
+  await filtroRegiao.click();
+  await page.getByRole("option", { name: "Sudeste" }).click();
+  await expect(page.getByText("#30002")).toBeVisible();
+  await expect(page.getByText("#30001")).toBeHidden();
+  await filtroRegiao.click();
+  await page.getByRole("option", { name: "Todas as regiões" }).click();
 
   const filtrarPendentes = page.getByRole("button", { name: /Pendentes de acompanhamento/ });
   await expect(filtrarPendentes).toBeVisible();
@@ -270,6 +312,11 @@ test("mantém propostas abertas e não inventa score para cliente novo sem calib
   await expect(page.getByText("#30001")).toBeVisible();
   await expect(page.getByText("#30002")).toBeHidden();
   await expect(page.getByRole("button", { name: /Todas as abertas/ })).toBeVisible();
+
+  await page.getByRole("button", { name: "Clientes novos" }).click();
+  await expect(page.getByText("#30001")).toBeVisible();
+  await page.getByRole("button", { name: "Marcar Cliente novo sem compras como recorrente" }).click();
+  await expect(page.getByText("#30001")).toBeHidden();
 });
 
 test("mostra realizado de O.S., valor esperado pelo modelo e diferença para os colegas por vendedor", async ({ page }) => {

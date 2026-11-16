@@ -422,21 +422,32 @@ export const crmRouter = router({
       }
       // Mapear números de orçamentos de todos os orçamentos abertos por cliente (para unir com o histórico)
       const orcsAbertosPorCliente = new Map<string, Set<string>>();
+      const orcsAbertosPorClienteId = new Map<number, Set<string>>();
       for (const o of todosAbertos) {
         const clienteRaw = o.cliente;
         const nome = typeof clienteRaw === "object" && clienteRaw !== null
           ? (clienteRaw as any)?.nome ?? (clienteRaw as any)?.razao_social ?? String(clienteRaw)
           : String(clienteRaw ?? o.empresa ?? "");
         const chave = normalizeEmpresaKey(nome);
-        if (!chave) continue;
         const num = String(o.sequencial_orcamento ?? o.numero ?? o.id ?? "");
         if (!num) continue;
-        let s = orcsAbertosPorCliente.get(chave);
-        if (!s) {
-          s = new Set<string>();
-          orcsAbertosPorCliente.set(chave, s);
+        if (chave) {
+          let s = orcsAbertosPorCliente.get(chave);
+          if (!s) {
+            s = new Set<string>();
+            orcsAbertosPorCliente.set(chave, s);
+          }
+          s.add(num);
         }
-        s.add(num);
+        const clienteId = Number(o.cliente_id);
+        if (Number.isInteger(clienteId) && clienteId > 0) {
+          let porId = orcsAbertosPorClienteId.get(clienteId);
+          if (!porId) {
+            porId = new Set<string>();
+            orcsAbertosPorClienteId.set(clienteId, porId);
+          }
+          porId.add(num);
+        }
       }
 
       // Enriquecer com telefone e clienteNovo
@@ -451,16 +462,12 @@ export const crmRouter = router({
         const nomeCliente = typeof clienteRaw === "object" && clienteRaw !== null
           ? (clienteRaw as any)?.nome ?? (clienteRaw as any)?.razao_social ?? String(clienteRaw)
           : String(clienteRaw ?? empresaRaw ?? "");
-        const chaveCliente = normalizeEmpresaKey(nomeCliente);
-        const conversaoCliente = mapaConversao?.porCliente.get(chaveCliente);
-        const qtdComprasCliente = conversaoCliente?.qtdCompras ?? 0;
-        // O mapa compartilhado conta compras válidas e usa a mesma chave
-        // normalizada que o modelo de probabilidade.
-        const isNovoByHistory = mapaConversao !== null && qtdComprasCliente === 0;
-        const overrideStatus = overrideMap.get(chaveCliente);
-        const clienteNovo = overrideStatus === "recorrente" ? false
-          : overrideStatus === "novo" ? true
-          : isNovoByHistory;
+        const clienteKey = normalizeEmpresaKey(nomeCliente);
+        const clienteIdRaw = Number(orc?.cliente_id);
+        const clienteId = Number.isInteger(clienteIdRaw) && clienteIdRaw > 0 ? clienteIdRaw : null;
+        // Verificar override manual: "recorrente" exclui estrela; "novo" força estrela
+        const overrideStatus = overrideMap.get(clienteKey);
+        const conversaoClienteId = clienteId == null ? undefined : mapaConversao?.porClienteId.get(clienteId);
         // cliente_endereco vem no próprio orçamento (confirmado em produção, 12/09/2026) —
         // mesmo formato do endereço em MubiSysOS, apesar de não estar no tipo MubiSysOrcamento.
         // normalizarUf rejeita lixo (variações, texto vazio) — melhor null do que uma UF inválida.
@@ -468,14 +475,38 @@ export const crmRouter = router({
           ? normalizarUf((orc as any).cliente_endereco[0]?.estado)
           : null;
         const regiaoCliente = estadoCliente ? (UF_PARA_REGIAO[estadoCliente] ?? null) : null;
+        const chaveCliente = clienteKey;
+        const conversaoCliente = mapaConversao?.porCliente.get(chaveCliente);
+        // Até o backfill dos IDs, as linhas antigas de O.S. continuam usando
+        // o nome. Mantemos os dois caminhos ativos durante essa transição.
+        const qtdComprasCliente = Math.max(conversaoClienteId?.qtdCompras ?? 0, conversaoCliente?.qtdCompras ?? 0);
+        const qtdOrdensServicoCliente = Math.max(conversaoClienteId?.qtdOrdensServico ?? 0, conversaoCliente?.qtdOrdensServico ?? 0);
+        const orcamentosFechadosConhecidos = new Set([
+          ...(conversaoClienteId?.orcNumerosFechados ?? []),
+          ...(conversaoCliente?.orcNumerosFechados ?? []),
+        ]);
+        const orcamentosGanhosCliente = orcamentosFechadosConhecidos.size;
+        const temCompraHistorica = qtdComprasCliente > 0 || orcamentosGanhosCliente > 0;
+        const clienteNovo = overrideStatus === "recorrente" ? false
+          : overrideStatus === "novo" ? true
+          : mapaConversao !== null && !temCompraHistorica;
+        const ultimaCompra = conversaoClienteId?.ultimaCompra && conversaoCliente?.ultimaCompra
+          ? (conversaoClienteId.ultimaCompra > conversaoCliente.ultimaCompra ? conversaoClienteId.ultimaCompra : conversaoCliente.ultimaCompra)
+          : conversaoClienteId?.ultimaCompra ?? conversaoCliente?.ultimaCompra ?? null;
         // Só faz sentido "dias sem comprar" para quem já comprou alguma vez —
         // cliente novo não tem essa métrica (ver clienteNovo acima).
-        const diasSemComprar = conversaoCliente?.ultimaCompra
-          ? Math.floor((Date.now() - conversaoCliente.ultimaCompra.getTime()) / (1000 * 60 * 60 * 24))
+        const diasSemComprar = ultimaCompra
+          ? Math.floor((Date.now() - ultimaCompra.getTime()) / (1000 * 60 * 60 * 24))
           : null;
-        const ultimaCompraEm = conversaoCliente?.ultimaCompra?.toISOString() ?? null;
-        const orcsHist = conversaoCliente?.orcNumeros ?? new Set<string>();
-        const orcsAbertos = (chaveCliente ? orcsAbertosPorCliente.get(chaveCliente) : undefined) ?? new Set<string>();
+        const ultimaCompraEm = ultimaCompra?.toISOString() ?? null;
+        const orcsHist = new Set([
+          ...(conversaoClienteId?.orcNumeros ?? []),
+          ...(conversaoCliente?.orcNumeros ?? []),
+        ]);
+        const orcsAbertos = new Set([
+          ...(clienteId == null ? [] : orcsAbertosPorClienteId.get(clienteId) ?? []),
+          ...(chaveCliente ? orcsAbertosPorCliente.get(chaveCliente) ?? [] : []),
+        ]);
         const todosOrcsDoCliente = new Set<string>([...orcsHist, ...orcsAbertos]);
         // Mesmo orçamento: o histórico (e os abertos) identificam pelo sequencial; o id interno
         // do MubiSys só vale quando não há sequencial — somar os dois contava a proposta em dobro.
@@ -484,8 +515,8 @@ export const crmRouter = router({
         const totalCotacoes = Math.max(1, todosOrcsDoCliente.size);
 
         // Conversão = orçamentos fechados ÷ orçamentos, os dois do histórico de orçamentos.
-        const orcamentosFechados = Math.min(conversaoCliente?.orcamentosFechados ?? 0, totalCotacoes);
-        const taxaConversao = calcularTaxaConversaoCliente(totalCotacoes, orcamentosFechados, conversaoCliente?.totalOrcamentos ?? 0);
+        const orcamentosFechados = Math.min(orcamentosGanhosCliente, totalCotacoes);
+        const taxaConversao = calcularTaxaConversaoCliente(totalCotacoes, orcamentosFechados, orcsHist.size);
 
         const calculoProbabilidade = modeloProbabilidade
           ? calcularProbabilidadeCrmAprendida({
@@ -507,7 +538,7 @@ export const crmRouter = router({
         const segmentosProbabilidade = calculoProbabilidade.segmentos;
         if (segmentosProbabilidade) segmentosProbabilidadePorProposta.set(p.id, segmentosProbabilidade);
 
-        return { ...p, telefone, nomeCliente, nomeContato: p.nomeContato ?? "", clienteNovo, probabilidadeCompra, probabilidadeExplicacao, qtdComprasCliente, totalCompras: qtdComprasCliente, diasSemComprar, ultimaCompraEm, totalCotacoes, orcamentosFechados, taxaConversao, orcamentosDesde: mapaConversao?.orcamentosDesde ?? null, estadoCliente, regiaoCliente };
+        return { ...p, telefone, nomeCliente, nomeContato: p.nomeContato ?? "", clienteId, clienteNovo, probabilidadeCompra, probabilidadeExplicacao, qtdComprasCliente, qtdOrdensServicoCliente, totalCompras: qtdComprasCliente, diasSemComprar, ultimaCompraEm, totalCotacoes, orcamentosFechados, taxaConversao, orcamentosDesde: mapaConversao?.orcamentosDesde ?? null, orcamentosCoberturaCompleta: mapaConversao?.orcamentosCoberturaCompleta ?? false, estadoCliente, regiaoCliente };
       });
 
       // Primeira probabilidade entregue ao CRM por proposta. Snapshot imutável:

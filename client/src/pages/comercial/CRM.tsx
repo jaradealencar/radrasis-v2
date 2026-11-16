@@ -59,6 +59,8 @@ const OPCOES_RESPOSTA = [
 ] as const;
 
 type RespostaCanal = typeof OPCOES_RESPOSTA[number]["value"];
+const REGIOES_BRASIL = ["Centro-Oeste", "Sudeste", "Sul", "Nordeste", "Norte"] as const;
+type FiltroRegiao = "todas" | typeof REGIOES_BRASIL[number];
 
 type Proposta = {
   id: string;
@@ -80,6 +82,7 @@ type Proposta = {
   probabilidadeCompra: number | null;
   probabilidadeExplicacao: string[];
   qtdComprasCliente: number;
+  qtdOrdensServicoCliente: number;
   /** Dias desde a última compra registrada no histórico local — null quando
    * o cliente é novo (sem nenhuma compra anterior) ou não há data disponível. */
   diasSemComprar: number | null;
@@ -90,7 +93,9 @@ type Proposta = {
   orcamentosFechados?: number;
   taxaConversao?: number | null;
   orcamentosDesde?: string | null;
+  orcamentosCoberturaCompleta?: boolean;
   estadoCliente: string | null;
+  regiaoCliente: string | null;
 };
 
 // Limiar de compras a partir do qual o cliente é elegível a parcelamento (regra do usuário)
@@ -246,18 +251,23 @@ function ProbabilidadeBadge({ p, explicacao }: { p: number | null; explicacao: s
 function CotacoesBadge({
   total,
   clienteNovo,
+  orcamentosDesde,
+  coberturaCompleta = false,
   compacto = false,
   mostrarEstrela = false,
 }: {
   total?: number;
   clienteNovo: boolean;
+  orcamentosDesde?: string | null;
+  coberturaCompleta?: boolean;
   compacto?: boolean;
   mostrarEstrela?: boolean;
 }) {
   const quantidade = Math.max(1, total ?? 1);
+  const prefixo = coberturaCompleta ? "" : "≥";
   const texto = compacto
-    ? `${quantidade} cot.`
-    : `${quantidade} ${quantidade === 1 ? "cotação" : "cotações"}`;
+    ? `${prefixo}${quantidade} cot.`
+    : `${prefixo}${quantidade} ${quantidade === 1 ? "cotação" : "cotações"}`;
   const cor = clienteNovo
     ? "bg-amber-50 text-amber-800 border-amber-300"
     : "bg-slate-50 text-slate-700 border-slate-200";
@@ -272,7 +282,10 @@ function CotacoesBadge({
           </span>
         </TooltipTrigger>
         <TooltipContent side="top" className="text-xs max-w-[220px]">
-          {quantidade} {quantidade === 1 ? "cotação registrada" : "cotações registradas"} no sistema{clienteNovo ? "; cliente ainda sem compras anteriores" : ""}.
+          {coberturaCompleta
+            ? `${quantidade} ${quantidade === 1 ? "cotação registrada" : "cotações registradas"} no histórico completo.`
+            : `Pelo menos ${quantidade} ${quantidade === 1 ? "cotação registrada" : "cotações registradas"}${orcamentosDesde ? ` desde ${orcamentosDesde}` : " no histórico disponível"}; o total pode ser maior.`}
+          {clienteNovo ? " Cliente sem compras anteriores registradas." : ""}
         </TooltipContent>
       </Tooltip>
     </TooltipProvider>
@@ -426,9 +439,10 @@ function getCanalInfo(canal: string) {
 }
 
 // ─── PropostaRow ─────────────────────────────────────────────────────────────
-function PropostaRow({ p, vendedor, onRefresh, showVendedor, faixasConfig }: {
+function PropostaRow({ p, vendedor, onRefresh, showVendedor, faixasConfig, onMarkRecurring, markingRecurring }: {
   p: Proposta; vendedor: string; onRefresh: () => void; showVendedor: boolean;
   faixasConfig: Record<1 | 2 | 3, FaixaConfig>;
+  onMarkRecurring: (p: Proposta) => void; markingRecurring: boolean;
 }) {
   // modalContato: null = fechado; { date } = aberto (registro novo OU edição de um já existente
   // — depende se `contatoMap` já tem essa data, ver `editando` abaixo)
@@ -547,10 +561,10 @@ function PropostaRow({ p, vendedor, onRefresh, showVendedor, faixasConfig }: {
   // Renderiza apenas o conteúdo interno das datas (usado pelo ScriptsFaixaPopover)
   const renderFaixaContent = (faixaDates: Date[]) => (
     <>
-      <div className="text-[8px] text-center text-gray-400 mb-1.5 leading-tight">
+      <div className="text-[8px] text-center text-gray-400 mb-0.5 leading-tight">
         {faixaDates.map(dt => fmtShort(dt)).join(" ")}
       </div>
-      <div className="flex gap-1 justify-center">
+      <div className="flex flex-nowrap gap-1 justify-center">
         {faixaDates.map((dt, i) => {
           const key = toDateKey(dt);
           const contato = contatoMap[key];
@@ -622,6 +636,30 @@ function PropostaRow({ p, vendedor, onRefresh, showVendedor, faixasConfig }: {
                     </Tooltip>
                   </TooltipProvider>
                 )}
+                {p.clienteNovo && (
+                  <TooltipProvider>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <button
+                          type="button"
+                          aria-label={`Marcar ${p.nomeCliente} como recorrente`}
+                          title="Corrigir classificação: marcar como recorrente"
+                          disabled={markingRecurring}
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            onMarkRecurring(p);
+                          }}
+                          className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded border border-blue-200 bg-blue-50 text-blue-700 transition-colors hover:bg-blue-100 disabled:cursor-wait disabled:opacity-50"
+                        >
+                          {markingRecurring ? <Spinner className="size-3" /> : <RefreshCw className="h-3 w-3" />}
+                        </button>
+                      </TooltipTrigger>
+                      <TooltipContent side="top" className="text-xs">
+                        Marcar como recorrente. O cliente sairá do filtro de novos clientes.
+                      </TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
+                )}
                 {isClienteReativacao(p) && (
                   <TooltipProvider>
                     <Tooltip>
@@ -645,8 +683,8 @@ function PropostaRow({ p, vendedor, onRefresh, showVendedor, faixasConfig }: {
               <div className="flex items-center gap-1 flex-wrap">
                 <span className="text-xs text-muted-foreground">{fmt(p.valor)}</span>
                 <ProbabilidadeBadge p={p.probabilidadeCompra} explicacao={p.probabilidadeExplicacao} />
-                <CotacoesBadge total={p.totalCotacoes} clienteNovo={p.clienteNovo} />
-                {p.qtdComprasCliente > 0 && (
+                <CotacoesBadge total={p.totalCotacoes} clienteNovo={p.clienteNovo} orcamentosDesde={p.orcamentosDesde} coberturaCompleta={p.orcamentosCoberturaCompleta} />
+                {(p.qtdOrdensServicoCliente > 0 || p.qtdComprasCliente > 0) && (
                   <TooltipProvider>
                     <Tooltip>
                       <TooltipTrigger asChild>
@@ -655,15 +693,20 @@ function PropostaRow({ p, vendedor, onRefresh, showVendedor, faixasConfig }: {
                             ? "font-bold bg-indigo-100 text-indigo-700 border-indigo-200"
                             : "text-gray-500 bg-gray-50 border-gray-200"
                         }`}>
-                          {p.qtdComprasCliente}x comprou
+                          {p.qtdOrdensServicoCliente > 0
+                            ? `${p.qtdOrdensServicoCliente} O.S.`
+                            : `${p.qtdComprasCliente} compra${p.qtdComprasCliente === 1 ? "" : "s"}`}
                         </span>
                       </TooltipTrigger>
                       <TooltipContent side="top" className="text-xs max-w-[220px]">
+                        {p.qtdOrdensServicoCliente > 0
+                          ? `${p.qtdOrdensServicoCliente} O.S. no histórico; ${p.qtdComprasCliente} compra${p.qtdComprasCliente === 1 ? "" : "s"} válida${p.qtdComprasCliente === 1 ? "" : "s"}.`
+                          : `${p.qtdComprasCliente} compra${p.qtdComprasCliente === 1 ? "" : "s"} registrada${p.qtdComprasCliente === 1 ? "" : "s"} por orçamento ganho; sem O.S. associada no histórico.`}
                         {p.qtdComprasCliente > LIMIAR_PARCELAMENTO
-                          ? `Elegível a parcelamento (mais de ${LIMIAR_PARCELAMENTO} compras no histórico)`
-                          : `${p.qtdComprasCliente} compra${p.qtdComprasCliente === 1 ? "" : "s"} no histórico`}
+                          ? ` Elegível a parcelamento (mais de ${LIMIAR_PARCELAMENTO} compras).`
+                          : ""}
                         <br />
-                        <span className="text-gray-400">Conta as O.S. válidas do histórico local (a partir de 2023), sem retrabalho, amostra, cortesia nem cancelada.</span>
+                        <span className="text-gray-400">Compras válidas excluem retrabalho, amostra, cortesia e O.S. cancelada.</span>
                       </TooltipContent>
                     </Tooltip>
                   </TooltipProvider>
@@ -767,10 +810,10 @@ function PropostaRow({ p, vendedor, onRefresh, showVendedor, faixasConfig }: {
         )}
 
         {/* Faixas agrupadas */}
-        <TableCell className="w-[414px] min-w-[414px] whitespace-normal px-1 py-1">
-          <div className="flex flex-nowrap gap-1 [&>div]:w-[134px] [&>div]:shrink-0 [&>div]:px-1.5 [&>div]:py-1">
+        <TableCell className="w-[414px] min-w-[414px] whitespace-normal px-1 py-0.5 align-top">
+          <div data-testid="faixas-acompanhamento" className="flex flex-row flex-nowrap items-start gap-1.5 [&>div]:w-[134px] [&>div]:shrink-0 [&>div]:px-1.5 [&>div]:py-1">
             <ScriptsFaixaPopover
-              faixa={1} label={faixasConfig[1].label} bgCls="bg-yellow-50 border-yellow-200"
+              compact faixa={1} label={faixasConfig[1].label} bgCls="bg-yellow-50 border-yellow-200"
               nomeCliente={nomeParaMensagem(p)}
               produto={`OS #${p.sequencial || p.id}`}
               valor={fmt(p.valor)}
@@ -780,7 +823,7 @@ function PropostaRow({ p, vendedor, onRefresh, showVendedor, faixasConfig }: {
               {renderFaixaContent(datasDaFaixa(dates, faixasConfig[1]))}
             </ScriptsFaixaPopover>
             <ScriptsFaixaPopover
-              faixa={2} label={faixasConfig[2].label} bgCls="bg-pink-50 border-pink-200"
+              compact faixa={2} label={faixasConfig[2].label} bgCls="bg-pink-50 border-pink-200"
               nomeCliente={nomeParaMensagem(p)}
               produto={`OS #${p.sequencial || p.id}`}
               valor={fmt(p.valor)}
@@ -790,7 +833,7 @@ function PropostaRow({ p, vendedor, onRefresh, showVendedor, faixasConfig }: {
               {renderFaixaContent(datasDaFaixa(dates, faixasConfig[2]))}
             </ScriptsFaixaPopover>
             <ScriptsFaixaPopover
-              faixa={3} label={faixasConfig[3].label} bgCls="bg-orange-50 border-orange-200"
+              compact faixa={3} label={faixasConfig[3].label} bgCls="bg-orange-50 border-orange-200"
               nomeCliente={nomeParaMensagem(p)}
               produto={`OS #${p.sequencial || p.id}`}
               valor={fmt(p.valor)}
@@ -986,6 +1029,7 @@ export default function CRM() {
   const [apenasPendentesAcompanhamento, setApenasPendentesAcompanhamento] = useState(false);
   const [apenasHoje, setApenasHoje] = useState(false);
   const [filtroProbabilidade, setFiltroProbabilidade] = useState<"todas" | "alta" | "media" | "baixa">("todas");
+  const [filtroRegiao, setFiltroRegiao] = useState<FiltroRegiao>("todas");
   const [apenasMS, setApenasMS] = useState(false);
   const [ordenarPorProbabilidade, setOrdenarPorProbabilidade] = useState(false);
   const [filtroResposta, setFiltroResposta] = useState<string>("todos");
@@ -1066,6 +1110,23 @@ export default function CRM() {
   const { data: faixasData } = trpc.crm.getFaixaEtiquetas.useQuery();
   const faixasConfig: Record<1 | 2 | 3, FaixaConfig> = faixasData ?? FAIXA_DEFAULTS_CLIENTE;
   const faixasOrdenadas = useMemo(() => [faixasConfig[1], faixasConfig[2], faixasConfig[3]], [faixasConfig]);
+  const utils = trpc.useUtils();
+  const marcarClienteRecorrente = trpc.performanceComercial.upsertClienteOverride.useMutation({
+    onSuccess: async (_resultado, input) => {
+      await Promise.all([
+        refetch(),
+        utils.performanceComercial.listClienteOverrides.invalidate(),
+        utils.performanceComercial.getClientesNovos.invalidate(),
+      ]);
+      toast.success(`${input.empresaOriginal} marcada como recorrente. Ela não aparecerá mais como cliente novo.`);
+    },
+    onError: (error) => toast.error(`Não foi possível corrigir o cliente: ${error.message}`),
+  });
+  const marcarComoRecorrente = (proposta: Proposta) => marcarClienteRecorrente.mutate({
+    empresaOriginal: proposta.nomeCliente,
+    status: "recorrente",
+    motivo: "Classificado manualmente como recorrente pelo CRM.",
+  });
 
   const propostas: Proposta[] = (data?.propostas ?? []) as Proposta[];
   const stats = data?.stats;
@@ -1143,9 +1204,10 @@ export default function CRM() {
       });
     }
     if (apenasMS) list = list.filter(p => p.estadoCliente === "MS");
+    if (filtroRegiao !== "todas") list = list.filter(p => p.regiaoCliente === filtroRegiao);
     if (ordenarPorProbabilidade) list = [...list].sort((a, b) => (b.probabilidadeCompra ?? -1) - (a.probabilidadeCompra ?? -1));
     return list;
-  }, [propostas, buscaPropostas, apenasNovos, apenasSemCompra6Meses, apenasPendentesAcompanhamento, apenasHoje, filtroResposta, filtroFaixa, filtroProbabilidade, apenasMS, ordenarPorProbabilidade, faixasConfig]);
+  }, [propostas, buscaPropostas, apenasNovos, apenasSemCompra6Meses, apenasPendentesAcompanhamento, apenasHoje, filtroResposta, filtroFaixa, filtroProbabilidade, filtroRegiao, apenasMS, ordenarPorProbabilidade, faixasConfig]);
 
   const propostasHistorico = useMemo(() => propostas.filter(p => p.meta2Contatos), [propostas]);
   const showVendedor = !vendedor;
@@ -1444,7 +1506,7 @@ export default function CRM() {
                   <TableHead>Nº proposta</TableHead><TableHead>Cliente</TableHead><TableHead>Contato</TableHead><TableHead>Último contato</TableHead><TableHead>Próxima ação</TableHead>
                   {showVendedor && <TableHead>Vendedor</TableHead>}<TableHead>Agenda</TableHead><TableHead className="text-center">Perdida</TableHead><TableHead className="text-center">Ganha</TableHead>
                 </TableRow></TableHeader>
-                <TableBody>{propostasFila.map(p => <PropostaRow key={p.id} p={p} vendedor={vendedor || user?.name || ""} onRefresh={refetch} showVendedor={showVendedor} faixasConfig={faixasConfig} />)}</TableBody>
+                <TableBody>{propostasFila.map(p => <PropostaRow key={p.id} p={p} vendedor={vendedor || user?.name || ""} onRefresh={refetch} showVendedor={showVendedor} faixasConfig={faixasConfig} onMarkRecurring={marcarComoRecorrente} markingRecurring={marcarClienteRecorrente.isPending} />)}</TableBody>
               </Table>
             )}
           </div>
@@ -1600,6 +1662,16 @@ export default function CRM() {
             {apenasMS ? "Só MS ✕" : "Só MS"}
           </button>
         </div>
+        <div className="flex flex-col gap-1">
+          <label className="text-xs font-semibold text-muted-foreground">Região</label>
+          <Select value={filtroRegiao} onValueChange={(value) => setFiltroRegiao(value as FiltroRegiao)}>
+            <SelectTrigger className="h-9 text-sm w-40"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="todas">Todas as regiões</SelectItem>
+              {REGIOES_BRASIL.map(regiao => <SelectItem key={regiao} value={regiao}>{regiao}</SelectItem>)}
+            </SelectContent>
+          </Select>
+        </div>
       </div>
 
       {/* Filtro por tipo de resposta */}
@@ -1714,7 +1786,7 @@ export default function CRM() {
               </TableHeader>
               <TableBody>
                 {propostasAtivas.map(p => (
-                  <PropostaRow key={p.id} p={p} vendedor={vendedor || user?.name || ""} onRefresh={refetch} showVendedor={showVendedor} faixasConfig={faixasConfig} />
+                  <PropostaRow key={p.id} p={p} vendedor={vendedor || user?.name || ""} onRefresh={refetch} showVendedor={showVendedor} faixasConfig={faixasConfig} onMarkRecurring={marcarComoRecorrente} markingRecurring={marcarClienteRecorrente.isPending} />
                 ))}
               </TableBody>
             </Table>
@@ -1755,7 +1827,7 @@ export default function CRM() {
                     <div key={p.id} className="flex items-center gap-2 bg-white rounded border border-yellow-100 px-2 py-1">
                       <span className="text-xs font-bold text-yellow-700">#{p.sequencial || p.id}</span>
                       <span className="text-xs text-gray-700 truncate flex-1" title={p.nomeCliente}>{p.nomeCliente}</span>
-                      <CotacoesBadge total={p.totalCotacoes} clienteNovo={p.clienteNovo} compacto mostrarEstrela />
+                      <CotacoesBadge total={p.totalCotacoes} clienteNovo={p.clienteNovo} orcamentosDesde={p.orcamentosDesde} coberturaCompleta={p.orcamentosCoberturaCompleta} compacto mostrarEstrela />
                       <WhatsAppAgendaBotao p={p} faixa={1} faixasConfig={faixasConfig} />
                     </div>
                   ))}
@@ -1779,7 +1851,7 @@ export default function CRM() {
                     <div key={p.id} className="flex items-center gap-2 bg-white rounded border border-pink-100 px-2 py-1">
                       <span className="text-xs font-bold text-pink-700">#{p.sequencial || p.id}</span>
                       <span className="text-xs text-gray-700 truncate flex-1" title={p.nomeCliente}>{p.nomeCliente}</span>
-                      <CotacoesBadge total={p.totalCotacoes} clienteNovo={p.clienteNovo} compacto mostrarEstrela />
+                      <CotacoesBadge total={p.totalCotacoes} clienteNovo={p.clienteNovo} orcamentosDesde={p.orcamentosDesde} coberturaCompleta={p.orcamentosCoberturaCompleta} compacto mostrarEstrela />
                       <WhatsAppAgendaBotao p={p} faixa={2} faixasConfig={faixasConfig} />
                     </div>
                   ))}
@@ -1803,7 +1875,7 @@ export default function CRM() {
                     <div key={p.id} className="flex items-center gap-2 bg-white rounded border border-orange-100 px-2 py-1">
                       <span className="text-xs font-bold text-orange-700">#{p.sequencial || p.id}</span>
                       <span className="text-xs text-gray-700 truncate flex-1" title={p.nomeCliente}>{p.nomeCliente}</span>
-                      <CotacoesBadge total={p.totalCotacoes} clienteNovo={p.clienteNovo} compacto mostrarEstrela />
+                      <CotacoesBadge total={p.totalCotacoes} clienteNovo={p.clienteNovo} orcamentosDesde={p.orcamentosDesde} coberturaCompleta={p.orcamentosCoberturaCompleta} compacto mostrarEstrela />
                       <WhatsAppAgendaBotao p={p} faixa={3} faixasConfig={faixasConfig} />
                     </div>
                   ))}
@@ -1898,7 +1970,7 @@ export default function CRM() {
                 </TableHeader>
                 <TableBody>
                   {propostasHistorico.map(p => (
-                    <PropostaRow key={p.id} p={p} vendedor={vendedor || user?.name || ""} onRefresh={refetch} showVendedor={showVendedor} faixasConfig={faixasConfig} />
+                    <PropostaRow key={p.id} p={p} vendedor={vendedor || user?.name || ""} onRefresh={refetch} showVendedor={showVendedor} faixasConfig={faixasConfig} onMarkRecurring={marcarComoRecorrente} markingRecurring={marcarClienteRecorrente.isPending} />
                   ))}
                 </TableBody>
               </Table>
