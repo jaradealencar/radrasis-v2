@@ -103,9 +103,27 @@ type Proposta = {
   orcamentosFechados?: number;
   taxaConversao?: number | null;
   orcamentosDesde?: string | null;
+  cidadeCliente: string | null;
   estadoCliente: string | null;
   regiaoCliente: string | null;
 };
+
+function chaveCidadeFiltro(cidade: string | null | undefined): string {
+  return (cidade ?? "")
+    .trim()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLocaleLowerCase("pt-BR");
+}
+
+function atendeRegiaoSelecionada(
+  proposta: Pick<Proposta, "estadoCliente" | "regiaoCliente">,
+  regioes: string[],
+): boolean {
+  return regioes.length === 0 || regioes.some(regiao =>
+    regiao === "MS" ? proposta.estadoCliente === "MS" : proposta.regiaoCliente === regiao
+  );
+}
 
 // Limiar de compras a partir do qual o cliente é elegível a parcelamento (regra do usuário)
 const LIMIAR_PARCELAMENTO = 3;
@@ -1054,6 +1072,7 @@ export default function CRM() {
   const [apenasHoje, setApenasHoje] = useState(false);
   const [filtroProbabilidade, setFiltroProbabilidade] = useState<"todas" | "alta" | "media" | "baixa">("todas");
   const [filtroRegiao, setFiltroRegiao] = useState<string[]>([]);
+  const [filtroCidade, setFiltroCidade] = useState<string | null>(null);
   const [ordenacaoPropostas, setOrdenacaoPropostas] = useState<"padrao" | "probabilidade" | "valor">("padrao");
   const [filtroResposta, setFiltroResposta] = useState<string>("todos");
   const [filtroFaixa, setFiltroFaixa] = useState<string>("todas");
@@ -1137,6 +1156,28 @@ export default function CRM() {
   const faixasOrdenadas = useMemo(() => [faixasConfig[1], faixasConfig[2], faixasConfig[3]], [faixasConfig]);
 
   const propostas: Proposta[] = (data?.propostas ?? []) as Proposta[];
+  const cidadesDisponiveis = useMemo(() => {
+    const cidades = new Map<string, { value: string; label: string }>();
+    propostas
+      .filter(proposta => atendeRegiaoSelecionada(proposta, filtroRegiao))
+      .forEach(proposta => {
+        const cidade = proposta.cidadeCliente?.trim();
+        if (!cidade) return;
+        const estado = proposta.estadoCliente?.trim().toUpperCase() ?? "";
+        const value = `${chaveCidadeFiltro(cidade)}|${estado}`;
+        if (!cidades.has(value)) {
+          cidades.set(value, { value, label: estado ? `${cidade} (${estado})` : cidade });
+        }
+      });
+    return [...cidades.values()].sort((a, b) => a.label.localeCompare(b.label, "pt-BR"));
+  }, [propostas, filtroRegiao]);
+
+  useEffect(() => {
+    if (filtroCidade && !cidadesDisponiveis.some(cidade => cidade.value === filtroCidade)) {
+      setFiltroCidade(null);
+    }
+  }, [cidadesDisponiveis, filtroCidade]);
+
   const stats = data?.stats;
   const abertosAtualizadoEmIso = (data as any)?.abertosAtualizadoEm as string | undefined;
   const abertosAtualizadoEm = fmtTempoRelativo(abertosAtualizadoEmIso);
@@ -1211,15 +1252,14 @@ export default function CRM() {
         return prob < 25; // baixa
       });
     }
-    if (filtroRegiao.length > 0) {
-      list = list.filter(p => filtroRegiao.some(regiao =>
-        regiao === "MS" ? p.estadoCliente === "MS" : p.regiaoCliente === regiao
-      ));
+    if (filtroRegiao.length > 0) list = list.filter(p => atendeRegiaoSelecionada(p, filtroRegiao));
+    if (filtroCidade) {
+      list = list.filter(p => `${chaveCidadeFiltro(p.cidadeCliente)}|${p.estadoCliente?.trim().toUpperCase() ?? ""}` === filtroCidade);
     }
     if (ordenacaoPropostas === "valor") list = [...list].sort((a, b) => (b.valor ?? 0) - (a.valor ?? 0));
     else if (ordenacaoPropostas === "probabilidade") list = [...list].sort((a, b) => (b.probabilidadeCompra ?? -1) - (a.probabilidadeCompra ?? -1));
     return list;
-  }, [propostas, buscaPropostas, apenasNovos, apenasSemCompra6Meses, apenasPendentesAcompanhamento, apenasHoje, filtroResposta, filtroFaixa, filtroProbabilidade, filtroRegiao, ordenacaoPropostas, faixasConfig]);
+  }, [propostas, buscaPropostas, apenasNovos, apenasSemCompra6Meses, apenasPendentesAcompanhamento, apenasHoje, filtroResposta, filtroFaixa, filtroProbabilidade, filtroRegiao, filtroCidade, ordenacaoPropostas, faixasConfig]);
 
   const propostasHistorico = useMemo(() => propostas.filter(p => p.meta2Contatos), [propostas]);
   const showVendedor = !vendedor;
@@ -1725,6 +1765,22 @@ export default function CRM() {
               </div>
             </PopoverContent>
           </Popover>
+        </div>
+        <div className="flex flex-col gap-1">
+          <label className="text-xs font-semibold text-muted-foreground">Cidade</label>
+          <Select
+            value={filtroCidade ?? "todas"}
+            onValueChange={valor => setFiltroCidade(valor === "todas" ? null : valor)}
+            disabled={cidadesDisponiveis.length === 0}
+          >
+            <SelectTrigger className="h-9 text-sm w-56"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="todas">Todas as cidades</SelectItem>
+              {cidadesDisponiveis.map(cidade => (
+                <SelectItem key={cidade.value} value={cidade.value}>{cidade.label}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
       </div>
 
