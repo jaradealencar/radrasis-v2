@@ -117,6 +117,10 @@ O exemplo abaixo representa uma questão de escolha única:
 
 O editor autorizado acessa a aba **Administrar conteúdo** dentro da mesma página. Ao publicar novas matérias, use a organização já existente por setor e mantenha perguntas, respostas e explicações alinhadas a uma fonte aprovada.
 
+### Correções em múltipla seleção
+
+Em `multiple_select`, depois que o aluno responde, a correção aparece logo abaixo das alternativas julgadas errado: opções corretas que ele não marcou e distratores que marcou. Opções tratadas corretamente não recebem correção, e a lista geral do gabarito fica oculta nessa explicação.
+
 ## Testes de navegador da Escola
 
 `yarn test:e2e:school` executa os fluxos principais da Escola em Chromium. O workflow `Quality` cria um PostgreSQL descartável, aplica as migrations, semeia contas e resultados fictícios e executa matrícula, aplicação/retomada de prova, painel, ranking, edição de alternativas e gabarito, prévia de questão refeita com IA e geração de rascunho a partir de um POP. Os cenários de IA e UploadThing usam respostas simuladas; nenhum serviço externo é chamado nos testes. `yarn e2e:seed` e o servidor de teste validam que `DATABASE_URL` corresponde a `TEST_DATABASE_URL` local; nunca use esses fixtures em produção.
