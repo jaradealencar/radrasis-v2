@@ -1968,6 +1968,69 @@ export default function PerformanceComercial() {
                 </div>
               </div>
 
+              <details className="group rounded-lg border border-indigo-200 bg-white">
+                <summary className="flex cursor-pointer list-none flex-wrap items-center justify-between gap-2 rounded-lg bg-indigo-50/60 px-4 py-3 text-sm font-semibold text-slate-800 marker:hidden">
+                  <span>Resultado por vendedor e perfil de cliente</span>
+                  <span className="text-xs font-normal text-slate-600">{fmtNum(probabilidadeVendedores.vendedores.length)} vendedores · comparar realizado, modelo e pares</span>
+                </summary>
+                <div className="space-y-3 border-t border-indigo-100 p-3">
+                  <p className="text-xs leading-relaxed text-slate-600">
+                    O valor do modelo &eacute; quanto a probabilidade estimava nas propostas decididas. A diferen&ccedil;a mostra realizado menos estimado. O comparativo com pares usa propostas da mesma faixa de probabilidade e perfil; s&oacute; aparece quando h&aacute; amostra suficiente. Valores de O.S. n&atilde;o entram porque o ERP n&atilde;o liga cada venda a um or&ccedil;amento espec&iacute;fico.
+                  </p>
+                  <div className="overflow-x-auto rounded-md border border-slate-200">
+                    <Table>
+                      <TableHeader><TableRow className="bg-slate-50">
+                        <TableHead>Vendedor / perfil</TableHead>
+                        <TableHead className="text-right">Decididas (ganhos / perdas)</TableHead>
+                        <TableHead className="text-right">Ganho real / modelo (R$)</TableHead>
+                        <TableHead className="text-right">Convers&atilde;o real / modelo</TableHead>
+                        <TableHead className="text-right">Real − modelo</TableHead>
+                        <TableHead className="text-right">Pares estimado / real (R$)</TableHead>
+                        <TableHead className="text-right">Pares − real</TableHead>
+                      </TableRow></TableHeader>
+                      <TableBody>
+                        {probabilidadeVendedores.vendedores.flatMap((vendedor: any) => ([
+                          { grupo: "Geral", bucket: vendedor.geral, principal: true },
+                          { grupo: "Clientes novos", bucket: vendedor.novos, principal: false },
+                          { grupo: "Clientes antigos", bucket: vendedor.antigos, principal: false },
+                          { grupo: "Sem coorte conhecida", bucket: vendedor.semCoorteConhecida, principal: false },
+                        ] as const).map(({ grupo, bucket, principal }) => {
+                          const peer = bucket.benchmarkColegas;
+                          const diferencaModelo = bucket.valorGanhoReal - bucket.valorGanhoEsperado;
+                          return (
+                            <TableRow key={`resultado-${vendedor.vendedor}-${grupo}`} className={principal ? "bg-white" : "bg-slate-50/50"}>
+                              <TableCell className={principal ? "font-semibold text-slate-800" : "pl-8 text-slate-600"}>
+                                {principal ? vendedor.vendedor : `↳ ${grupo}`}
+                              </TableCell>
+                              <TableCell className="text-right tabular-nums">
+                                {fmtNum(bucket.decididas)} <span className="text-xs text-slate-500">({fmtNum(bucket.ganhos)} / {fmtNum(bucket.perdas)})</span>
+                              </TableCell>
+                              <TableCell className="text-right tabular-nums">
+                                {bucket.decididas > 0 ? <><div>{fmtBrl(bucket.valorGanhoReal)}</div><div className="text-xs text-slate-500">modelo: {fmtBrl(bucket.valorGanhoEsperado)}</div></> : <span className="text-slate-400">Sem decis&otilde;es</span>}
+                              </TableCell>
+                              <TableCell className="text-right tabular-nums">
+                                {bucket.decididas > 0 ? <>{fmtPct(bucket.conversaoRealPct)}<span className="text-slate-400"> / {fmtPct(bucket.conversaoEsperadaPct)}</span></> : <span className="text-slate-400">—</span>}
+                              </TableCell>
+                              <TableCell className="text-right tabular-nums">
+                                {bucket.decididas > 0 ? <span className={`font-semibold ${diferencaModelo >= 0 ? "text-emerald-700" : "text-rose-700"}`}>{diferencaModelo > 0 ? "+" : ""}{fmtBrl(diferencaModelo)}</span> : <span className="text-slate-400">—</span>}
+                              </TableCell>
+                              <TableCell className="text-right tabular-nums">
+                                {peer?.valorEsperado == null ? <span className="text-slate-400">{bucket.decididas > 0 ? "Amostra insuficiente" : "Sem decis&otilde;es"}</span> : <><div>{fmtBrl(peer.valorEsperado)}</div><div className="text-xs text-slate-500">real: {fmtBrl(peer.valorRealCoberto)} · cobertura {fmtNum(peer.cobertas)}/{fmtNum(peer.comparaveis)} ({fmtPct(peer.coberturaPct)})</div></>}
+                              </TableCell>
+                              <TableCell className="text-right tabular-nums">
+                                {peer?.diferencaValor == null ? <span className="text-slate-400">—</span> : <span className={`font-semibold ${peer.diferencaValor > 0 ? "text-rose-700" : peer.diferencaValor < 0 ? "text-emerald-700" : "text-slate-600"}`}>{peer.diferencaValor > 0 ? "+" : ""}{fmtBrl(peer.diferencaValor)}</span>}
+                              </TableCell>
+                            </TableRow>
+                          );
+                        }))}
+                        {probabilidadeVendedores.vendedores.length === 0 && <TableRow><TableCell colSpan={7} className="py-5 text-center text-sm text-slate-500">Sem vendedor associado a previs&otilde;es desta janela.</TableCell></TableRow>}
+                      </TableBody>
+                    </Table>
+                  </div>
+                  <p className="text-[11px] text-slate-500">A diferen&ccedil;a contra pares &eacute; a expectativa do grupo compar&aacute;vel menos o realizado do vendedor apenas nas propostas cobertas; sinal para an&aacute;lise, n&atilde;o comprova venda perdida.</p>
+                </div>
+              </details>
+
               <div className="rounded-lg border border-amber-200 bg-amber-50/50 p-3">
                 <div className="mb-2 flex flex-wrap items-baseline justify-between gap-2">
                   <div><h3 className="text-sm font-semibold text-slate-800">Gargalos operacionais da carteira aberta</h3><p className="text-[11px] text-slate-600">Abertas pelo status atual no MubiSys. Contatos s&atilde;o registros lan&ccedil;ados no CRM.</p></div>
