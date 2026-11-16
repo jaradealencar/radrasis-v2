@@ -45,6 +45,8 @@ const propostasAbertas = [
     sequencial: 30002,
     nomeCliente: "Cliente recorrente com dois contatos",
     qtdComprasCliente: 4,
+    diasSemComprar: 240,
+    ultimaCompraEm: new Date(Date.now() - 240 * 86_400_000).toISOString(),
     totalCompras: 4,
     totalCotacoes: 27,
     orcamentosFechados: 0,
@@ -261,6 +263,11 @@ test("mantém propostas abertas e não inventa score para cliente novo sem calib
   await expect(page.getByText(`27 cota\u00e7\u00f5es`, { exact: true })).toBeVisible();
   await expect(page.getByText("15%", { exact: true })).toBeVisible();
   await expect(page.getByText("Propostas abertas", { exact: true }).locator("..")).toContainText("2");
+
+  await page.getByRole("button", { name: /Sem compra 6\+ meses/ }).click();
+  await expect(page.getByText("#30002")).toBeVisible();
+  await expect(page.getByText("#30001")).toBeHidden();
+  await page.getByRole("button", { name: /Apenas 6\+ meses/ }).click();
 
   const filtrarPendentes = page.getByRole("button", { name: /Pendentes de acompanhamento/ });
   await expect(filtrarPendentes).toBeVisible();

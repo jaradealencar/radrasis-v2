@@ -140,6 +140,23 @@ export async function buscarOrcamentosPeriodo(di: string, df: string): Promise<a
   return itens;
 }
 
+/** Cria o índice de clientes com compra usando a mesma chave normalizada da conversão. */
+export function indexarClientesComCompraCrm(nomes: Iterable<string>): Set<string> {
+  return new Set(Array.from(nomes, normalizeEmpresaKey).filter(Boolean));
+}
+
+/** Classifica cliente como novo somente quando o histórico disponível não registra compra. */
+export function classificarClienteNovoCrm(
+  nomeCliente: string,
+  clientesComCompra: ReadonlySet<string>,
+  overrideStatus?: "recorrente" | "novo",
+): boolean {
+  if (overrideStatus === "recorrente") return false;
+  if (overrideStatus === "novo") return true;
+  const chaveCliente = normalizeEmpresaKey(nomeCliente);
+  return clientesComCompra.size > 0 && !clientesComCompra.has(chaveCliente);
+}
+
 // Janela de follow-up sugerida com base nos dados históricos.
 // NOTA (2026-09): cortes em dias CORRIDOS, independentes da config de Faixas
 // do CRM (`crmFaixaEtiquetas`, dias ÚTEIS, editável via CRMConfig/Inteligência
@@ -391,20 +408,17 @@ export const crmRouter = router({
       const perdidasSet = new Set(perdidasDb.map(p => p.orcamentoId));
       const propostasFiltradas = propostas.filter(p => !perdidasSet.has(p.id));
       // Identificar clientes com compra — usar banco local (historicoOs) para evitar falha de DNS
-      // Usar a mesma lógica do módulo Performance Comercial: .toLowerCase().trim() (sem normalização extra)
-      // O banco historico_os armazena nomes em MAIÚSCULAS sem acentos, então toLowerCase() é suficiente
-      const clientesComCompra = new Set<string>();
+      // Usar a mesma chave normalizada do módulo Performance Comercial para que
+      // variações de acento/pontuação não transformem clientes recorrentes em novos.
+      let clientesComCompra = new Set<string>();
       const overrideMap = new Map<string, "recorrente" | "novo">();
       try {
         const osEntregues = await db.select({ empresa: historicoOs.empresa }).from(historicoOs);
-        for (const row of osEntregues) {
-          const nome = (row.empresa ?? "").trim();
-          if (nome) clientesComCompra.add(nome.toLowerCase());
-        }
+        clientesComCompra = indexarClientesComCompraCrm(osEntregues.map(row => row.empresa ?? ""));
         // Carregar overrides manuais (ex: cliente marcado como recorrente manualmente)
         const overrides = await db.select().from(clienteOverrides);
         for (const ov of overrides) {
-          overrideMap.set(ov.empresa, ov.status);
+          overrideMap.set(normalizeEmpresaKey(ov.empresa), ov.status);
         }
       } catch {
         // Se falhar, clientesComCompra fica vazio — nenhuma estrela será exibida (evita falso positivo)
@@ -455,13 +469,10 @@ export const crmRouter = router({
         const nomeCliente = typeof clienteRaw === "object" && clienteRaw !== null
           ? (clienteRaw as any)?.nome ?? (clienteRaw as any)?.razao_social ?? String(clienteRaw)
           : String(clienteRaw ?? empresaRaw ?? "");
-        const clienteKey = (nomeCliente || "").toLowerCase().trim();
+        const clienteKey = normalizeEmpresaKey(nomeCliente);
         // Verificar override manual: "recorrente" exclui estrela; "novo" força estrela
         const overrideStatus = overrideMap.get(clienteKey);
-        const isNovoByHistory = clientesComCompra.size > 0 && !clientesComCompra.has(clienteKey);
-        const clienteNovo = overrideStatus === "recorrente" ? false
-          : overrideStatus === "novo" ? true
-          : isNovoByHistory;
+        const clienteNovo = classificarClienteNovoCrm(nomeCliente, clientesComCompra, overrideStatus);
         // cliente_endereco vem no próprio orçamento (confirmado em produção, 12/09/2026) —
         // mesmo formato do endereço em MubiSysOS, apesar de não estar no tipo MubiSysOrcamento.
         // normalizarUf rejeita lixo (variações, texto vazio) — melhor null do que uma UF inválida.
@@ -469,7 +480,7 @@ export const crmRouter = router({
           ? normalizarUf((orc as any).cliente_endereco[0]?.estado)
           : null;
         const regiaoCliente = estadoCliente ? (UF_PARA_REGIAO[estadoCliente] ?? null) : null;
-        const chaveCliente = normalizeEmpresaKey(nomeCliente);
+        const chaveCliente = clienteKey;
         const conversaoCliente = mapaConversao?.porCliente.get(chaveCliente);
         const qtdComprasCliente = conversaoCliente?.qtdCompras ?? 0;
         // Só faz sentido "dias sem comprar" para quem já comprou alguma vez —
