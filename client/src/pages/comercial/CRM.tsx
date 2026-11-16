@@ -18,6 +18,8 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Spinner } from "@/components/ui/spinner";
 import { Empty, EmptyHeader, EmptyMedia, EmptyTitle, EmptyDescription } from "@/components/ui/empty";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -56,6 +58,15 @@ const OPCOES_RESPOSTA = [
   { value: "garantiu_fechamento" as const, label: "Garantiu fechamento", icon: ThumbsUp, color: "text-green-600", bg: "bg-green-50 border-green-200 hover:bg-green-100", badgeBg: "bg-green-100 text-green-700 border-green-200", emoji: "🟢" },
   // O vendedor já fez o contato, mas o cliente ainda não deu devolutiva.
   { value: "aguardando_resposta" as const, label: "Vendedor aguardando resposta", icon: MessageCircle, color: "text-blue-600", bg: "bg-blue-50 border-blue-200 hover:bg-blue-100", badgeBg: "bg-blue-100 text-blue-700 border-blue-200", emoji: "🔵" },
+] as const;
+
+const OPCOES_REGIAO = [
+  { value: "Centro-Oeste", label: "Centro-Oeste (DF, GO, MS, MT)" },
+  { value: "Sudeste", label: "Sudeste (ES, MG, RJ, SP)" },
+  { value: "Sul", label: "Sul (PR, RS, SC)" },
+  { value: "Nordeste", label: "Nordeste (AL, BA, CE, MA, PB, PE, PI, RN, SE)" },
+  { value: "Norte", label: "Norte (AC, AM, AP, PA, RO, RR, TO)" },
+  { value: "MS", label: "Somente Mato Grosso do Sul (MS)" },
 ] as const;
 
 type RespostaCanal = typeof OPCOES_RESPOSTA[number]["value"];
@@ -1042,7 +1053,7 @@ export default function CRM() {
   const [apenasPendentesAcompanhamento, setApenasPendentesAcompanhamento] = useState(false);
   const [apenasHoje, setApenasHoje] = useState(false);
   const [filtroProbabilidade, setFiltroProbabilidade] = useState<"todas" | "alta" | "media" | "baixa">("todas");
-  const [filtroRegiao, setFiltroRegiao] = useState("todas");
+  const [filtroRegiao, setFiltroRegiao] = useState<string[]>([]);
   const [ordenacaoPropostas, setOrdenacaoPropostas] = useState<"padrao" | "probabilidade" | "valor">("padrao");
   const [filtroResposta, setFiltroResposta] = useState<string>("todos");
   const [filtroFaixa, setFiltroFaixa] = useState<string>("todas");
@@ -1200,8 +1211,11 @@ export default function CRM() {
         return prob < 25; // baixa
       });
     }
-    if (filtroRegiao === "MS") list = list.filter(p => p.estadoCliente === "MS");
-    else if (filtroRegiao !== "todas") list = list.filter(p => p.regiaoCliente === filtroRegiao);
+    if (filtroRegiao.length > 0) {
+      list = list.filter(p => filtroRegiao.some(regiao =>
+        regiao === "MS" ? p.estadoCliente === "MS" : p.regiaoCliente === regiao
+      ));
+    }
     if (ordenacaoPropostas === "valor") list = [...list].sort((a, b) => (b.valor ?? 0) - (a.valor ?? 0));
     else if (ordenacaoPropostas === "probabilidade") list = [...list].sort((a, b) => (b.probabilidadeCompra ?? -1) - (a.probabilidadeCompra ?? -1));
     return list;
@@ -1664,18 +1678,53 @@ export default function CRM() {
         {/* Filtro geográfico: região calculada no servidor a partir da UF do cliente */}
         <div className="flex flex-col gap-1">
           <label className="text-xs font-semibold text-muted-foreground">Região</label>
-          <Select value={filtroRegiao} onValueChange={setFiltroRegiao}>
-            <SelectTrigger className="h-9 text-sm w-56"><SelectValue /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="todas">Todas as regiões</SelectItem>
-              <SelectItem value="Centro-Oeste">Centro-Oeste (DF, GO, MS, MT)</SelectItem>
-              <SelectItem value="Sudeste">Sudeste (ES, MG, RJ, SP)</SelectItem>
-              <SelectItem value="Sul">Sul (PR, RS, SC)</SelectItem>
-              <SelectItem value="Nordeste">Nordeste (AL, BA, CE, MA, PB, PE, PI, RN, SE)</SelectItem>
-              <SelectItem value="Norte">Norte (AC, AM, AP, PA, RO, RR, TO)</SelectItem>
-              <SelectItem value="MS">Somente Mato Grosso do Sul (MS)</SelectItem>
-            </SelectContent>
-          </Select>
+          <Popover>
+            <PopoverTrigger asChild>
+              <button
+                type="button"
+                aria-label="Filtrar propostas por região"
+                className="h-9 w-56 inline-flex items-center justify-between gap-2 rounded-md border border-input bg-background px-3 text-sm shadow-xs hover:bg-accent hover:text-accent-foreground"
+              >
+                <span className="truncate">
+                  {filtroRegiao.length === 0
+                    ? "Todas as regiões"
+                    : filtroRegiao.length === 1
+                      ? OPCOES_REGIAO.find(opcao => opcao.value === filtroRegiao[0])?.label.split(" (")[0]
+                      : `${filtroRegiao.length} regiões selecionadas`}
+                </span>
+                <ChevronDown className="h-4 w-4 shrink-0 opacity-50" />
+              </button>
+            </PopoverTrigger>
+            <PopoverContent align="start" className="w-80 p-2">
+              <button
+                type="button"
+                onClick={() => setFiltroRegiao([])}
+                className="flex w-full items-center gap-2 rounded-sm px-2 py-2 text-left text-sm hover:bg-accent"
+              >
+                {filtroRegiao.length === 0 ? <CheckSquare className="h-4 w-4 text-primary" aria-hidden="true" /> : <Square className="h-4 w-4 text-muted-foreground" aria-hidden="true" />}
+                <span>Todas as regiões</span>
+              </button>
+              <div className="my-1 border-t" />
+              <div className="max-h-64 space-y-0.5 overflow-y-auto">
+                {OPCOES_REGIAO.map(opcao => (
+                  <label
+                    key={opcao.value}
+                    className="flex cursor-pointer items-center gap-2 rounded-sm px-2 py-2 text-sm hover:bg-accent"
+                  >
+                    <Checkbox
+                      checked={filtroRegiao.includes(opcao.value)}
+                      onCheckedChange={() => setFiltroRegiao(atual =>
+                        atual.includes(opcao.value)
+                          ? atual.filter(regiao => regiao !== opcao.value)
+                          : [...atual, opcao.value]
+                      )}
+                    />
+                    <span>{opcao.label}</span>
+                  </label>
+                ))}
+              </div>
+            </PopoverContent>
+          </Popover>
         </div>
       </div>
 
