@@ -144,9 +144,16 @@ function tempoSemComprar(data: unknown, diasFallback?: number | null): string | 
     return typeof diasFallback === "number" ? `${diasFallback} ${diasFallback === 1 ? "dia" : "dias"}` : null;
   }
   const { meses, dias } = duracao;
-  const parteMeses = meses > 0 ? `${meses} ${meses === 1 ? "mês" : "meses"}` : "";
-  const parteDias = dias > 0 ? `${dias} ${dias === 1 ? "dia" : "dias"}` : "";
-  return [parteMeses, parteDias].filter(Boolean).join(" e ") || "0 dias";
+  const anos = Math.floor(meses / 12);
+  const mesesRestantes = meses % 12;
+  const partes = [
+    anos > 0 ? `${anos} ${anos === 1 ? "ano" : "anos"}` : "",
+    mesesRestantes > 0 ? `${mesesRestantes} ${mesesRestantes === 1 ? "mês" : "meses"}` : "",
+    dias > 0 ? `${dias} ${dias === 1 ? "dia" : "dias"}` : "",
+  ].filter(Boolean);
+  if (partes.length === 3) return `${partes[0]}, ${partes[1]} e ${partes[2]}`;
+  if (partes.length === 2) return `${partes[0]} e ${partes[1]}`;
+  return partes[0] || "0 dias";
 }
 
 function clienteSemComprarHaSeisMeses(data: unknown, diasFallback?: number | null): boolean {
