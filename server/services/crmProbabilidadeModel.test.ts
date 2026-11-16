@@ -146,7 +146,41 @@ describe("modelo de probabilidade do CRM", () => {
     expect(result.probabilidade).not.toBeNull();
     expect(result.probabilidade).toBe(30);
     expect(result.explicacao.some((linha) => linha.includes("100 previsões históricas fora da amostra"))).toBe(true);
-    expect(result.explicacao.some((linha) => linha.includes("conversão observada do segmento 15.0% + 15 p.p., até 50%"))).toBe(true);
+    expect(result.explicacao.some((linha) => linha.includes("conversão observada do segmento 15.0% + 15 p.p., até 30%"))).toBe(true);
+  });
+
+  it("nunca passa de 30% para cliente sem compras, mesmo sem conversão individual calculável", () => {
+    const modelo = modeloVazio();
+    modelo.nTreino = CRM_PROBABILITY_MIN_TRAINING_EXAMPLES;
+    modelo.modelo.intercepto = Math.log(0.95 / 0.05);
+    modelo.modelo.calibrador = {
+      mediaLogit: 0,
+      escalaLogit: 1,
+      coeficiente: 1,
+      intercepto: 0,
+      n: 200,
+      taxaObservada: 0.42,
+    };
+    modelo.modelo.calibradorSemCompras = {
+      mediaLogit: 0,
+      escalaLogit: 1,
+      coeficiente: 1,
+      intercepto: 0,
+      n: CRM_PROBABILITY_MIN_NEW_CUSTOMER_CALIBRATION_EXAMPLES,
+      taxaObservada: 0.42,
+    };
+
+    const result = calcularProbabilidadeCrmAprendida({
+      modelo,
+      nomeCliente: "Cliente novo com ticket alto",
+      valorProposta: 15_000,
+      dataProposta: new Date("2026-01-15T12:00:00Z"),
+      regiaoCliente: "SP",
+      taxaConversaoClientePct: null,
+    });
+
+    expect(result.probabilidade).toBe(30);
+    expect(result.explicacao.some((linha) => linha.includes("até 30%"))).toBe(true);
   });
 
   it("limita a previsão de um cliente com conversão zero a 15%", () => {

@@ -3,7 +3,7 @@ import { TRPCError } from "@trpc/server";
 import { protectedProcedure, requireRole, router } from "../_core/trpc";
 import { invokeLLM } from "../_core/llm";
 import { getDb } from "../db/db";
-import { crmMetas, crmContatos, historicoOs, historicoOrcamentos, crmProbabilidadePrevisoes, clienteOverrides, crmScripts, crmFaixaEtiquetas, crmAtividadeLog, inteligenciaAcoesClientes } from "../../drizzle/schema";
+import { crmMetas, crmContatos, historicoOrcamentos, crmProbabilidadePrevisoes, clienteOverrides, crmScripts, crmFaixaEtiquetas, crmAtividadeLog, inteligenciaAcoesClientes } from "../../drizzle/schema";
 import type { CrmContato } from "../../drizzle/schema";
 import {
   CACHE_KEY_ABERTOS_PADRAO,
@@ -390,24 +390,18 @@ export const crmRouter = router({
         );
       const perdidasSet = new Set(perdidasDb.map(p => p.orcamentoId));
       const propostasFiltradas = propostas.filter(p => !perdidasSet.has(p.id));
-      // Identificar clientes com compra — usar banco local (historicoOs) para evitar falha de DNS
-      // Usar a mesma lógica do módulo Performance Comercial: .toLowerCase().trim() (sem normalização extra)
-      // O banco historico_os armazena nomes em MAIÚSCULAS sem acentos, então toLowerCase() é suficiente
-      const clientesComCompra = new Set<string>();
+      // Overrides e compras usam a mesma chave normalizada do modelo.
+      // Pontuação e acentos não podem fazer a tela e o score classificarem
+      // o mesmo cliente de formas diferentes.
       const overrideMap = new Map<string, "recorrente" | "novo">();
       try {
-        const osEntregues = await db.select({ empresa: historicoOs.empresa }).from(historicoOs);
-        for (const row of osEntregues) {
-          const nome = (row.empresa ?? "").trim();
-          if (nome) clientesComCompra.add(nome.toLowerCase());
-        }
         // Carregar overrides manuais (ex: cliente marcado como recorrente manualmente)
         const overrides = await db.select().from(clienteOverrides);
         for (const ov of overrides) {
-          overrideMap.set(ov.empresa, ov.status);
+          overrideMap.set(normalizeEmpresaKey(ov.empresa), ov.status);
         }
       } catch {
-        // Se falhar, clientesComCompra fica vazio — nenhuma estrela será exibida (evita falso positivo)
+        // Sem override disponível, a classificação usa as compras válidas do histórico.
       }
       // O score é específico de cada proposta e é reajustado a partir dos
       // desfechos históricos: ticket, idade da empresa (quando vinculada ao
@@ -455,10 +449,13 @@ export const crmRouter = router({
         const nomeCliente = typeof clienteRaw === "object" && clienteRaw !== null
           ? (clienteRaw as any)?.nome ?? (clienteRaw as any)?.razao_social ?? String(clienteRaw)
           : String(clienteRaw ?? empresaRaw ?? "");
-        const clienteKey = (nomeCliente || "").toLowerCase().trim();
-        // Verificar override manual: "recorrente" exclui estrela; "novo" força estrela
-        const overrideStatus = overrideMap.get(clienteKey);
-        const isNovoByHistory = clientesComCompra.size > 0 && !clientesComCompra.has(clienteKey);
+        const chaveCliente = normalizeEmpresaKey(nomeCliente);
+        const conversaoCliente = mapaConversao?.porCliente.get(chaveCliente);
+        const qtdComprasCliente = conversaoCliente?.qtdCompras ?? 0;
+        // O mapa compartilhado conta compras válidas e usa a mesma chave
+        // normalizada que o modelo de probabilidade.
+        const isNovoByHistory = mapaConversao !== null && qtdComprasCliente === 0;
+        const overrideStatus = overrideMap.get(chaveCliente);
         const clienteNovo = overrideStatus === "recorrente" ? false
           : overrideStatus === "novo" ? true
           : isNovoByHistory;
@@ -469,9 +466,6 @@ export const crmRouter = router({
           ? normalizarUf((orc as any).cliente_endereco[0]?.estado)
           : null;
         const regiaoCliente = estadoCliente ? (UF_PARA_REGIAO[estadoCliente] ?? null) : null;
-        const chaveCliente = normalizeEmpresaKey(nomeCliente);
-        const conversaoCliente = mapaConversao?.porCliente.get(chaveCliente);
-        const qtdComprasCliente = conversaoCliente?.qtdCompras ?? 0;
         // Só faz sentido "dias sem comprar" para quem já comprou alguma vez —
         // cliente novo não tem essa métrica (ver clienteNovo acima).
         const diasSemComprar = conversaoCliente?.ultimaCompra

@@ -246,6 +246,9 @@ test("mantém propostas abertas e não inventa score para cliente novo sem calib
   await expect(tabs.nth(0)).toHaveAttribute("data-state", "active");
 
   await expect(page.getByText("#30001")).toBeVisible();
+  const clienteNovoRow = page.getByRole("row").filter({ hasText: "#30001" });
+  const alturaLinhaNova = await clienteNovoRow.evaluate((row) => row.getBoundingClientRect().height);
+  expect(alturaLinhaNova).toBeLessThan(160);
   await expect(page.getByText("Cliente novo sem compras")).toBeVisible();
   await expect(page.getByText("2 cotações", { exact: true })).toBeVisible();
   await expect(page.getByText("0% conv.", { exact: true }).first()).toBeVisible();
