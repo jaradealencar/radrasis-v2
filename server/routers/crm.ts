@@ -493,8 +493,12 @@ export const crmRouter = router({
         // cliente_endereco vem no próprio orçamento (confirmado em produção, 12/09/2026) —
         // mesmo formato do endereço em MubiSysOS, apesar de não estar no tipo MubiSysOrcamento.
         // normalizarUf rejeita lixo (variações, texto vazio) — melhor null do que uma UF inválida.
-        const estadoCliente: string | null = Array.isArray((orc as any)?.cliente_endereco)
-          ? normalizarUf((orc as any).cliente_endereco[0]?.estado)
+        const enderecoCliente = Array.isArray((orc as any)?.cliente_endereco)
+          ? (orc as any).cliente_endereco[0]
+          : (orc as any)?.cliente_endereco ?? null;
+        const estadoCliente: string | null = normalizarUf(enderecoCliente?.estado);
+        const cidadeCliente = typeof enderecoCliente?.cidade === "string"
+          ? enderecoCliente.cidade.trim() || null
           : null;
         const regiaoCliente = estadoCliente ? (UF_PARA_REGIAO[estadoCliente] ?? null) : null;
         const { probabilidade: probabilidadeCompra, explicacao: probabilidadeExplicacao, segmentos: segmentosProbabilidade } = modeloProbabilidade
@@ -537,7 +541,7 @@ export const crmRouter = router({
         const orcamentosFechados = Math.min(conversaoCliente?.orcamentosFechados ?? 0, totalCotacoes);
         const taxaConversao = calcularTaxaConversaoCliente(totalCotacoes, orcamentosFechados, conversaoCliente?.totalOrcamentos ?? 0);
 
-        return { ...p, telefone, nomeCliente, nomeContato: p.nomeContato ?? "", clienteNovo, clienteOverrideStatus: overrideStatus ?? null, clienteOverrideId: override?.id ?? null, probabilidadeCompra, probabilidadeExplicacao, qtdComprasCliente, totalCompras: qtdComprasCliente, diasSemComprar, ultimaCompraEm, totalCotacoes, orcamentosFechados, taxaConversao, orcamentosDesde: mapaConversao?.orcamentosDesde ?? null, estadoCliente, regiaoCliente };
+        return { ...p, telefone, nomeCliente, nomeContato: p.nomeContato ?? "", clienteNovo, clienteOverrideStatus: overrideStatus ?? null, clienteOverrideId: override?.id ?? null, probabilidadeCompra, probabilidadeExplicacao, qtdComprasCliente, totalCompras: qtdComprasCliente, diasSemComprar, ultimaCompraEm, totalCotacoes, orcamentosFechados, taxaConversao, orcamentosDesde: mapaConversao?.orcamentosDesde ?? null, cidadeCliente, estadoCliente, regiaoCliente };
       });
 
       // Primeira probabilidade entregue ao CRM por proposta. Snapshot imutável:
@@ -841,7 +845,7 @@ export const crmRouter = router({
     .input(z.object({
       orcamentoId: z.string(),
       data: z.string(), // ISO string da data do contato a alterar (mesmo lookup de desfazarContato)
-      canal: z.enum(["nao_retornou", "esperando_cliente", "garantiu_fechamento", "aguardando_resposta"]),
+      canal: z.enum(["nao_retornou", "esperando_cliente", "relacionamento", "garantiu_fechamento", "aguardando_resposta"]),
       observacao: z.string().nullable().optional(),
     }))
     .mutation(async ({ ctx, input }) => {
@@ -945,7 +949,7 @@ export const crmRouter = router({
       orcamentoId: z.string(),
       empresa: z.string(),
       vendedor: z.string(),
-      canal: z.enum(["nao_retornou", "esperando_cliente", "garantiu_fechamento", "aguardando_resposta"]),
+      canal: z.enum(["nao_retornou", "esperando_cliente", "relacionamento", "garantiu_fechamento", "aguardando_resposta"]),
       observacao: z.string().nullable().optional(),
       dataContato: z.string().optional(), // ISO string da data clicada
     }))

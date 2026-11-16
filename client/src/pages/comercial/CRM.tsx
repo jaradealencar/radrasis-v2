@@ -18,6 +18,8 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Spinner } from "@/components/ui/spinner";
 import { Empty, EmptyHeader, EmptyMedia, EmptyTitle, EmptyDescription } from "@/components/ui/empty";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -53,9 +55,19 @@ const FAIXA_DEFAULTS_CLIENTE: Record<1 | 2 | 3, FaixaConfig> = {
 const OPCOES_RESPOSTA = [
   { value: "nao_retornou" as const, label: "Não retornou", icon: AlertCircle, color: "text-red-600", bg: "bg-red-50 border-red-200 hover:bg-red-100", badgeBg: "bg-red-100 text-red-700 border-red-200", emoji: "🔴" },
   { value: "esperando_cliente" as const, label: "Esperando cliente", icon: Clock, color: "text-amber-600", bg: "bg-amber-50 border-amber-200 hover:bg-amber-100", badgeBg: "bg-amber-100 text-amber-700 border-amber-200", emoji: "🟡" },
+  { value: "relacionamento" as const, label: "Relacionamento", icon: Users, color: "text-violet-600", bg: "bg-violet-50 border-violet-200 hover:bg-violet-100", badgeBg: "bg-violet-100 text-violet-700 border-violet-200", emoji: "🤝" },
   { value: "garantiu_fechamento" as const, label: "Garantiu fechamento", icon: ThumbsUp, color: "text-green-600", bg: "bg-green-50 border-green-200 hover:bg-green-100", badgeBg: "bg-green-100 text-green-700 border-green-200", emoji: "🟢" },
   // O vendedor já fez o contato, mas o cliente ainda não deu devolutiva.
   { value: "aguardando_resposta" as const, label: "Vendedor aguardando resposta", icon: MessageCircle, color: "text-blue-600", bg: "bg-blue-50 border-blue-200 hover:bg-blue-100", badgeBg: "bg-blue-100 text-blue-700 border-blue-200", emoji: "🔵" },
+] as const;
+
+const OPCOES_REGIAO = [
+  { value: "Centro-Oeste", label: "Centro-Oeste (DF, GO, MS, MT)" },
+  { value: "Sudeste", label: "Sudeste (ES, MG, RJ, SP)" },
+  { value: "Sul", label: "Sul (PR, RS, SC)" },
+  { value: "Nordeste", label: "Nordeste (AL, BA, CE, MA, PB, PE, PI, RN, SE)" },
+  { value: "Norte", label: "Norte (AC, AM, AP, PA, RO, RR, TO)" },
+  { value: "MS", label: "Somente Mato Grosso do Sul (MS)" },
 ] as const;
 
 type RespostaCanal = typeof OPCOES_RESPOSTA[number]["value"];
@@ -92,9 +104,27 @@ type Proposta = {
   orcamentosFechados?: number;
   taxaConversao?: number | null;
   orcamentosDesde?: string | null;
+  cidadeCliente: string | null;
   estadoCliente: string | null;
   regiaoCliente: string | null;
 };
+
+function chaveCidadeFiltro(cidade: string | null | undefined): string {
+  return (cidade ?? "")
+    .trim()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLocaleLowerCase("pt-BR");
+}
+
+function atendeRegiaoSelecionada(
+  proposta: Pick<Proposta, "estadoCliente" | "regiaoCliente">,
+  regioes: string[],
+): boolean {
+  return regioes.length === 0 || regioes.some(regiao =>
+    regiao === "MS" ? proposta.estadoCliente === "MS" : proposta.regiaoCliente === regiao
+  );
+}
 
 // Limiar de compras a partir do qual o cliente é elegível a parcelamento (regra do usuário)
 const LIMIAR_PARCELAMENTO = 3;
@@ -144,9 +174,16 @@ function tempoSemComprar(data: unknown, diasFallback?: number | null): string | 
     return typeof diasFallback === "number" ? `${diasFallback} ${diasFallback === 1 ? "dia" : "dias"}` : null;
   }
   const { meses, dias } = duracao;
-  const parteMeses = meses > 0 ? `${meses} ${meses === 1 ? "mês" : "meses"}` : "";
-  const parteDias = dias > 0 ? `${dias} ${dias === 1 ? "dia" : "dias"}` : "";
-  return [parteMeses, parteDias].filter(Boolean).join(" e ") || "0 dias";
+  const anos = Math.floor(meses / 12);
+  const mesesRestantes = meses % 12;
+  const partes = [
+    anos > 0 ? `${anos} ${anos === 1 ? "ano" : "anos"}` : "",
+    mesesRestantes > 0 ? `${mesesRestantes} ${mesesRestantes === 1 ? "mês" : "meses"}` : "",
+    dias > 0 ? `${dias} ${dias === 1 ? "dia" : "dias"}` : "",
+  ].filter(Boolean);
+  if (partes.length === 3) return `${partes[0]}, ${partes[1]} e ${partes[2]}`;
+  if (partes.length === 2) return `${partes[0]} e ${partes[1]}`;
+  return partes[0] || "0 dias";
 }
 
 function clienteSemComprarHaSeisMeses(data: unknown, diasFallback?: number | null): boolean {
@@ -1035,7 +1072,8 @@ export default function CRM() {
   const [apenasPendentesAcompanhamento, setApenasPendentesAcompanhamento] = useState(false);
   const [apenasHoje, setApenasHoje] = useState(false);
   const [filtroProbabilidade, setFiltroProbabilidade] = useState<"todas" | "alta" | "media" | "baixa">("todas");
-  const [filtroRegiao, setFiltroRegiao] = useState("todas");
+  const [filtroRegiao, setFiltroRegiao] = useState<string[]>([]);
+  const [filtroCidade, setFiltroCidade] = useState<string | null>(null);
   const [ordenacaoPropostas, setOrdenacaoPropostas] = useState<"padrao" | "probabilidade" | "valor">("padrao");
   const [filtroResposta, setFiltroResposta] = useState<string>("todos");
   const [filtroFaixa, setFiltroFaixa] = useState<string>("todas");
@@ -1119,6 +1157,28 @@ export default function CRM() {
   const faixasOrdenadas = useMemo(() => [faixasConfig[1], faixasConfig[2], faixasConfig[3]], [faixasConfig]);
 
   const propostas: Proposta[] = (data?.propostas ?? []) as Proposta[];
+  const cidadesDisponiveis = useMemo(() => {
+    const cidades = new Map<string, { value: string; label: string }>();
+    propostas
+      .filter(proposta => atendeRegiaoSelecionada(proposta, filtroRegiao))
+      .forEach(proposta => {
+        const cidade = proposta.cidadeCliente?.trim();
+        if (!cidade) return;
+        const estado = proposta.estadoCliente?.trim().toUpperCase() ?? "";
+        const value = `${chaveCidadeFiltro(cidade)}|${estado}`;
+        if (!cidades.has(value)) {
+          cidades.set(value, { value, label: estado ? `${cidade} (${estado})` : cidade });
+        }
+      });
+    return [...cidades.values()].sort((a, b) => a.label.localeCompare(b.label, "pt-BR"));
+  }, [propostas, filtroRegiao]);
+
+  useEffect(() => {
+    if (filtroCidade && !cidadesDisponiveis.some(cidade => cidade.value === filtroCidade)) {
+      setFiltroCidade(null);
+    }
+  }, [cidadesDisponiveis, filtroCidade]);
+
   const stats = data?.stats;
   const abertosAtualizadoEmIso = (data as any)?.abertosAtualizadoEm as string | undefined;
   const abertosAtualizadoEm = fmtTempoRelativo(abertosAtualizadoEmIso);
@@ -1193,12 +1253,14 @@ export default function CRM() {
         return prob < 25; // baixa
       });
     }
-    if (filtroRegiao === "MS") list = list.filter(p => p.estadoCliente === "MS");
-    else if (filtroRegiao !== "todas") list = list.filter(p => p.regiaoCliente === filtroRegiao);
+    if (filtroRegiao.length > 0) list = list.filter(p => atendeRegiaoSelecionada(p, filtroRegiao));
+    if (filtroCidade) {
+      list = list.filter(p => `${chaveCidadeFiltro(p.cidadeCliente)}|${p.estadoCliente?.trim().toUpperCase() ?? ""}` === filtroCidade);
+    }
     if (ordenacaoPropostas === "valor") list = [...list].sort((a, b) => (b.valor ?? 0) - (a.valor ?? 0));
     else if (ordenacaoPropostas === "probabilidade") list = [...list].sort((a, b) => (b.probabilidadeCompra ?? -1) - (a.probabilidadeCompra ?? -1));
     return list;
-  }, [propostas, buscaPropostas, apenasNovos, apenasSemCompra6Meses, apenasPendentesAcompanhamento, apenasHoje, filtroResposta, filtroFaixa, filtroProbabilidade, filtroRegiao, ordenacaoPropostas, faixasConfig]);
+  }, [propostas, buscaPropostas, apenasNovos, apenasSemCompra6Meses, apenasPendentesAcompanhamento, apenasHoje, filtroResposta, filtroFaixa, filtroProbabilidade, filtroRegiao, filtroCidade, ordenacaoPropostas, faixasConfig]);
 
   const propostasHistorico = useMemo(() => propostas.filter(p => p.meta2Contatos), [propostas]);
   const showVendedor = !vendedor;
@@ -1657,16 +1719,67 @@ export default function CRM() {
         {/* Filtro geográfico: região calculada no servidor a partir da UF do cliente */}
         <div className="flex flex-col gap-1">
           <label className="text-xs font-semibold text-muted-foreground">Região</label>
-          <Select value={filtroRegiao} onValueChange={setFiltroRegiao}>
+          <Popover>
+            <PopoverTrigger asChild>
+              <button
+                type="button"
+                aria-label="Filtrar propostas por região"
+                className="h-9 w-56 inline-flex items-center justify-between gap-2 rounded-md border border-input bg-background px-3 text-sm shadow-xs hover:bg-accent hover:text-accent-foreground"
+              >
+                <span className="truncate">
+                  {filtroRegiao.length === 0
+                    ? "Todas as regiões"
+                    : filtroRegiao.length === 1
+                      ? OPCOES_REGIAO.find(opcao => opcao.value === filtroRegiao[0])?.label.split(" (")[0]
+                      : `${filtroRegiao.length} regiões selecionadas`}
+                </span>
+                <ChevronDown className="h-4 w-4 shrink-0 opacity-50" />
+              </button>
+            </PopoverTrigger>
+            <PopoverContent align="start" className="w-80 p-2">
+              <button
+                type="button"
+                onClick={() => setFiltroRegiao([])}
+                className="flex w-full items-center gap-2 rounded-sm px-2 py-2 text-left text-sm hover:bg-accent"
+              >
+                {filtroRegiao.length === 0 ? <CheckSquare className="h-4 w-4 text-primary" aria-hidden="true" /> : <Square className="h-4 w-4 text-muted-foreground" aria-hidden="true" />}
+                <span>Todas as regiões</span>
+              </button>
+              <div className="my-1 border-t" />
+              <div className="max-h-64 space-y-0.5 overflow-y-auto">
+                {OPCOES_REGIAO.map(opcao => (
+                  <label
+                    key={opcao.value}
+                    className="flex cursor-pointer items-center gap-2 rounded-sm px-2 py-2 text-sm hover:bg-accent"
+                  >
+                    <Checkbox
+                      checked={filtroRegiao.includes(opcao.value)}
+                      onCheckedChange={() => setFiltroRegiao(atual =>
+                        atual.includes(opcao.value)
+                          ? atual.filter(regiao => regiao !== opcao.value)
+                          : [...atual, opcao.value]
+                      )}
+                    />
+                    <span>{opcao.label}</span>
+                  </label>
+                ))}
+              </div>
+            </PopoverContent>
+          </Popover>
+        </div>
+        <div className="flex flex-col gap-1">
+          <label className="text-xs font-semibold text-muted-foreground">Cidade</label>
+          <Select
+            value={filtroCidade ?? "todas"}
+            onValueChange={valor => setFiltroCidade(valor === "todas" ? null : valor)}
+            disabled={cidadesDisponiveis.length === 0}
+          >
             <SelectTrigger className="h-9 text-sm w-56"><SelectValue /></SelectTrigger>
             <SelectContent>
-              <SelectItem value="todas">Todas as regiões</SelectItem>
-              <SelectItem value="Centro-Oeste">Centro-Oeste (DF, GO, MS, MT)</SelectItem>
-              <SelectItem value="Sudeste">Sudeste (ES, MG, RJ, SP)</SelectItem>
-              <SelectItem value="Sul">Sul (PR, RS, SC)</SelectItem>
-              <SelectItem value="Nordeste">Nordeste (AL, BA, CE, MA, PB, PE, PI, RN, SE)</SelectItem>
-              <SelectItem value="Norte">Norte (AC, AM, AP, PA, RO, RR, TO)</SelectItem>
-              <SelectItem value="MS">Somente Mato Grosso do Sul (MS)</SelectItem>
+              <SelectItem value="todas">Todas as cidades</SelectItem>
+              {cidadesDisponiveis.map(cidade => (
+                <SelectItem key={cidade.value} value={cidade.value}>{cidade.label}</SelectItem>
+              ))}
             </SelectContent>
           </Select>
         </div>
@@ -1680,6 +1793,7 @@ export default function CRM() {
           { value: "_pos_orcamento", label: "Pós-orçamento", emoji: "📨", cls: "bg-blue-100 text-blue-700 border-blue-200", scriptFaixa: 0 },
           { value: "nao_retornou", label: "Não retornou", emoji: "🔴", cls: "bg-red-100 text-red-700 border-red-200", scriptFaixa: 11 },
           { value: "esperando_cliente", label: "Esperando cliente", emoji: "🟡", cls: "bg-amber-100 text-amber-700 border-amber-200", scriptFaixa: 12 },
+          { value: "relacionamento", label: "Relacionamento", emoji: "🤝", cls: "bg-violet-100 text-violet-700 border-violet-200", scriptFaixa: null },
           { value: "garantiu_fechamento", label: "Garantiu fechamento", emoji: "🟢", cls: "bg-green-100 text-green-700 border-green-200", scriptFaixa: 13 },
           { value: "aguardando_resposta", label: "Aguardando resposta", emoji: "🔵", cls: "bg-sky-100 text-sky-700 border-sky-200", scriptFaixa: null },
           { value: "_objecoes", label: "Objeções Preço", emoji: "💰", cls: "bg-violet-100 text-violet-800 border-violet-300", scriptFaixa: 20 },
