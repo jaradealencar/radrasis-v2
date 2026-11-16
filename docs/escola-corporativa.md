@@ -1,6 +1,6 @@
 # Escola Corporativa do Radrasys
 
-A Escola Corporativa organiza conteúdo por setor, matéria, aula, avaliação e questão. O primeiro percurso publicado é Comercial → **Técnicas de Closer**, baseado no POP-COM-01, versão V1.2. A navegação fica em **Operações → Escola Corporativa** (`/treinamento`).
+A Escola Corporativa organiza conteúdo por setor, matéria, aula, avaliação e questão. A matéria publicada nesta atualização é Comercial → **Atendimento Novo Cliente**, baseada no arquivo `01_POP_Atendimento_Vendedor_Letreiros_Express.docx`. O próprio arquivo está marcado como versão de trabalho e aguarda validação da direção; seu conteúdo ainda não deve ser tratado como norma aprovada. A navegação fica em **Operações → Escola Corporativa** (`/treinamento`).
 
 ## Conteúdo e manutenção
 
@@ -33,37 +33,40 @@ As avaliações são divididas automaticamente em módulos sequenciais de até 1
 
 O painel administrativo também apresenta o ranking de cada avaliação formal concluída. Cada aluno aparece uma vez por avaliação, com sua melhor nota, data da nota e quantidade de tentativas concluídas. Notas iguais compartilham a posição; as práticas não entram no ranking.
 
-## Cobertura integral da avaliação de Técnicas de Closer
+## Cobertura da matéria Atendimento Novo Cliente
 
-Após aplicar a migration `0120_closer_full_coverage`, a avaliação **Closer · Atendimento consultivo** recebe 21 questões situacionais e de conhecimento, sem apagar questões anteriores. Na seed original de `0121`, que tem oito questões, o banco totaliza 29; cada tentativa inclui todas as questões publicadas, inclusive as que instrutores adicionarem depois. A matriz liga todas as 14 seções e os anexos visuais A–F do POP-COM-01 ao banco da avaliação.
+A matéria publicada acompanha as dez partes do documento de trabalho. A avaliação **Atendimento Novo Cliente · Primeira compra** contém **29 questões**, distribuídas pelo sistema em três módulos sequenciais de até dez questões. A publicação permite o uso como treinamento, mas não significa que a direção aprovou o conteúdo. O POP continua marcado como versão de trabalho e precisa de validação antes de ser adotado como norma definitiva.
 
-| Parte do material             | Questões da avaliação                                                                                  |
-| ----------------------------- | ------------------------------------------------------------------------------------------------------ |
-| 1. Objetivo e regra central   | `venda_solucao_beneficio`                                                                              |
-| 2. Pergunta de entrada        | `pergunta_entrada_obrigatoria`, `classificacao_por_perfil`, `classificar_hibrido`                      |
-| 3. Grupo 1 — começando        | `oportunidade_grupo1`, `mapa_necessidade_evidencia`                                                    |
-| 4. Grupo 2 — fabrica          | `dois_motivos_grupo2`, `escopo_pronto_para_instalar`, `mapa_necessidade_evidencia`                     |
-| 5. Grupo 3 — terceiriza       | `diagnostico_grupo3`, `mapa_necessidade_evidencia`                                                     |
-| 6.1 Prazo                     | `prazo_confirmado`, `referencias_prazo`                                                                |
-| 6.2 Acabamento                | `objecao_acabamento`, `mapa_necessidade_evidencia`                                                     |
-| 6.3 Atendimento               | `objecao_atendimento`                                                                                  |
-| 6.4 Preço                     | `resposta_preco`, `sim_objecao_valor`, `mapa_necessidade_evidencia`                                    |
-| 7. Evidências institucionais  | `uso_responsavel_evidencias`, `mapa_necessidade_evidencia`                                             |
-| 8. Construção da argumentação | `etapas_whatsapp`, `fala_consultiva`, `etapas_argumentacao`                                            |
-| 9. Três confianças            | `tres_confiancas`                                                                                      |
-| 10. Perspectivas do comprador | `perspectivas_comprador`                                                                               |
-| 11. Registro no CRM           | `crm_qualificacao`, `crm_campos_completos`                                                             |
-| 12. Avanço para cotação       | `dados_para_cotacao`                                                                                   |
-| 13. Limites comerciais        | `limites_comerciais`, `resposta_preco`, `prazo_confirmado`, `sim_aprovacao_final`, `sim_objecao_valor` |
-| 14. Monitoramento e melhoria  | `indicadores_closer`, `lideranca_treinamento`                                                          |
-| Anexo A — Fluxograma          | `pergunta_entrada_obrigatoria`, `classificacao_por_perfil`, `mapa_necessidade_evidencia`               |
-| Anexo B — Mapa mental         | `oportunidade_grupo1`, `mapa_necessidade_evidencia`                                                    |
-| Anexo C — Resolver problemas  | `venda_solucao_beneficio`                                                                              |
-| Anexo D — Classificação       | `pergunta_entrada_obrigatoria`, `classificacao_por_perfil`, `classificar_hibrido`                      |
-| Anexo E — Grupos e interesses | `classificacao_por_perfil`, `tres_confiancas`, `perspectivas_comprador`                                |
-| Anexo F — Roteiro WhatsApp    | `etapas_whatsapp`, `etapas_argumentacao`                                                               |
+| Parte do documento de trabalho | Cobertura de treinamento |
+| ------------------------------ | ------------------------ |
+| 1. Finalidade e princípio econômico | Resolver o problema do comprador e conectar problema, proposta de valor, benefício, evidência e preço; equilibrar tempo, custo e qualidade. |
+| 2. Origem e continuidade | Diferenciar leads qualificados pelo SDR, contatos diretos e clientes antigos; ler o histórico, assumir a continuidade do atendimento e não prometer transferência de uma conversa entre números de WhatsApp. |
+| 3. Recebimento e diagnóstico | Responder com prontidão, não repetir perguntas já respondidas, separar tempo de resposta de tempo de orçamento e usar no máximo duas perguntas comerciais estratégicas como padrão. |
+| 4. Catálogo e triagem | Identificar produtos sem iluminação, iluminados, modalidades frontlight/backlight e itens não fabricados ou terceirizados; consultar a área técnica quando a combinação não estiver cadastrada. |
+| 5. Dados para cotação | Conferir modelo, material, quantidade, medidas, arte, luz, cor, acabamento, fixação e composição; distinguir fornecimento acabado de semiacabado, conferir lotes e oferecer uma ligação curta quando muitas mensagens dificultarem o levantamento. |
+| 6. Necessidade, decisão e confiança | Relacionar o perfil e o problema do comprador a um benefício pertinente; considerar as perspectivas financeira, técnica e executiva como lentes, não como rótulos fixos; usar evidência real. |
+| 7. Apresentação e retorno | Validar dados técnicos e comerciais antes de orçar, buscar um compromisso simples de retorno, destacar benefício e evidência relevantes e combinar o próximo passo. |
+| 8. Cliente final e acompanhamento | Perguntar se o revendedor compraria caso o cliente final aprovasse aquela proposta; retomar contatos conforme o compromisso e conversar sobre barreiras antes da sétima cotação sem compra. |
+| 9. Controles e melhoria | Evitar promessas sem confirmação, comparar propostas equivalentes, registrar estágio, pendências e próximos passos no CRM e acompanhar os indicadores descritos no documento. |
+| 10. Validações antes da publicação | Manter visíveis os pontos que ainda precisam de definição comercial, conferência da engenharia, definição de prazo e cadência, validação de evidências e análise de conversas reais. |
 
-Os prazos de cerca de 4 dias úteis para alguns projetos em PVC e 10 a 11 dias úteis para letreiros acabados aparecem como referências condicionais, nunca como compromisso geral. Da mesma forma, volume, carteira e processo só podem ser apresentados como evidências atuais depois de validação.
+### Triagem do catálogo prevista no documento
+
+- **Sem iluminação:** ACM espelhado recortado, ACM montado, acrílico recortado, galvanizado, inox, latão e PVC expandido recortado. O documento diz para não oferecer PVC montado.
+- **Com iluminação:** o POP descreve combinações de ACM montado, acrílico montado, alumínio ou galvanizado com face de acrílico, galvanizado ou inox backlight, latão e PVC backlight. Frontlight, backlight e borda infinita variam conforme o produto; acrílico montado é uma categoria própria, não deve ser tratado como backlight.
+- **Não fabricar ou terceirizar:** o documento lista letreiros de entrada de cidade, MDF e promocionais para festas como itens que não fabricamos; neon, frontlight/montado em PVC expandido e letreiros termoformados como terceirizados. Combinações não cadastradas precisam ser conferidas com a área técnica. A categoria 3D iluminada aparece como possibilidade futura e não integra a oferta desta versão de trabalho.
+
+### Status da fonte e validações pendentes
+
+O DOCX se identifica como **“VERSÃO DE TRABALHO — A validar com a direção antes de aplicar como norma definitiva.”** Portanto, o catálogo de combinações, os nomes e conteúdos dos níveis Essencial/Acabado/Completo, a definição comercial de acabado e semiacabado, os prazos e a cadência de acompanhamento não devem ser apresentados como regras aprovadas. Também aguardam validação: combinações de materiais, bordas, fixação e LED com a engenharia; vídeos e evidências autorizados; regras financeiras e de desconto; e a auditoria de conversas antes de padronizar argumentos específicos. O documento de trabalho menciona estes assuntos, mas sua inclusão aqui não significa aprovação.
+
+O material recomenda que, após seis orçamentos sem compra, o vendedor converse sobre barreiras antes da sétima cotação. Essa orientação também pertence à versão em validação e deve aguardar a direção antes de ser aplicada como procedimento definitivo.
+
+### Complemento de atendimento fornecido pelo usuário
+
+O script abaixo é uma orientação adicional informada diretamente pelo usuário, **não consta no POP de trabalho** e não deve ser atribuído ao documento nem apresentado como política institucional aprovada. Se for incorporado à matéria como instrução permanente, continua sujeito à validação da direção:
+
+> “Entendo. De segunda a sexta, você fala comigo: respondo rápido, acompanho seu pedido de perto e, quando precisar, verifico com a produção e te atualizo.”
 
 ## Painel de alunos e simulacro
 
@@ -84,7 +87,7 @@ O endpoint `treinamento.saveAssessment` recebe uma lista de objetos com `key`, `
 - `yes_no_matrix`: `config.statements` lista frases com `{ id, text, correctBoolean, feedback }`. `correctBoolean: true` significa Sim e `false` significa Não. O aluno responde a cada frase; cada acerto recebe a mesma parte dos pontos da questão. O servidor só envia as frases, sem o gabarito, antes do envio.
 - `short_answer`: `config.acceptedAnswers` lista respostas aceitas; a comparação ignora maiúsculas, acentos e espaços repetidos.
 
-Na avaliação Closer, as questões que pedem para julgar cada afirmação individualmente usam `yes_no_matrix`: `classificar_hibrido`, `crm_qualificacao`, `oportunidade_grupo1`, `uso_responsavel_evidencias`, `crm_campos_completos`, `dados_para_cotacao`, `limites_comerciais` e `indicadores_closer`. Use `multiple_select` quando a tarefa for escolher várias opções como um conjunto, sem pedir Sim/Não para cada frase.
+Escolha o formato de cada questão de Atendimento Novo Cliente conforme a tarefa que ela apresenta: use `yes_no_matrix` para julgar afirmações uma a uma e `multiple_select` para selecionar várias opções como um conjunto. A composição e os gabaritos desta prova continuam sujeitos à validação da direção.
 
 Na resposta e na revisão de `yes_no_matrix`, mostre cada frase com a resposta do aluno e coloque a explicação logo abaixo somente quando ele errar. O botão **Ouvir explicação** usa a voz do navegador sob demanda; a aplicação não chama IA nem envia texto ao próprio servidor para essa leitura. Nas questões de resposta curta, a transcrição pelo microfone usa o reconhecimento local do navegador quando disponível e só começa após o aluno pedir; caso contrário, o aluno pode digitar. Durante a prova, o termômetro mostra questões respondidas, questões restantes e percentual de acerto com base nos pontos obtidos nas questões respondidas.
 
@@ -126,29 +129,3 @@ Em `multiple_select`, depois que o aluno responde, a correção aparece logo aba
 `yarn test:e2e:school` executa os fluxos principais da Escola em Chromium. O workflow `Quality` cria um PostgreSQL descartável, aplica as migrations, semeia contas e resultados fictícios e executa matrícula, aplicação/retomada de prova, painel, ranking, edição de alternativas e gabarito, prévia de questão refeita com IA e geração de rascunho a partir de um POP. Os cenários de IA e UploadThing usam respostas simuladas; nenhum serviço externo é chamado nos testes. `yarn e2e:seed` e o servidor de teste validam que `DATABASE_URL` corresponde a `TEST_DATABASE_URL` local; nunca use esses fixtures em produção.
 
 Ao criar ou revisar provas, use a skill global `$escola-corporativa-provas`. Ela orienta a escrever alternativas claras, plausíveis e específicas para cada questão, sem deixar o gabarito óbvio por palavras repetidas ou por eliminação simples.
-
-## Limites do material Closer
-
-### Diagnóstico da aprovação do cliente final
-
-Complemento de treinamento fornecido pelo usuário, não uma regra textual do POP-COM-01: além de descobrir o que o cliente final ainda precisa avaliar, pergunte se o próprio intermediário aprovaria a proposta caso seu cliente fechasse agora. Isso ajuda a revelar dúvidas sobre preço, concorrentes, acabamento ou escopo. Se houver outra dúvida, responda com informação verificável e combine o próximo passo; não prometa que o cliente final aprovará.
-
-Script: “Ah, compreendi. Me diga uma coisa: vamos supor que seu cliente fechasse o pedido hoje, agora. Você aprovaria esta proposta comigo ou ainda teria algum ponto para analisar, como o preço ou a comparação com propostas concorrentes? Como você faria?”
-
-### Pedido de desconto com proposta no menor preço
-
-Na questão `resposta_preco`, o cenário considera que o cliente pede desconto mesmo com a proposta enxuta e no menor preço para aquela configuração. Informe que esse é o menor preço e que não trabalhamos com desconto. Só encaminhe a proposta ao diretor comercial para revisão se o cliente confirmar que fechará caso uma condição diferente seja aprovada. A revisão não garante aprovação.
-
-Script pronto: “Para esta configuração, este já é o menor preço e não trabalhamos com desconto. Não consigo mudar nada por conta própria. Se você confirmar que fechará o pedido caso o diretor comercial aprove uma condição diferente, posso levar a proposta para revisão. A aprovação não é garantida; retorno com a decisão antes de confirmar qualquer condição.”
-
-### Atendimento presente do vendedor
-
-Para a objeção sobre demora nas atualizações, use como evidência o atendimento pessoal informado pelo usuário: respostas rápidas, contato próximo e acompanhamento da produção quando o cliente precisar, de segunda a sexta. Esta é uma orientação interna do vendedor, não uma afirmação do POP-COM-01.
-
-Script pronto: “Entendo. De segunda a sexta, você fala comigo: respondo rápido, acompanho seu pedido de perto e, quando precisar, verifico com a produção e te atualizo.” Não prometa atendimento à noite, nos fins de semana ou 24 horas.
-
-Na questão de confiança no vendedor, inclua também atendimento com entusiasmo e fala confiante. Essa orientação foi fornecida pelo usuário e não deve ser atribuída ao POP-COM-01.
-
-O POP-COM-01 apresenta seis etapas de atendimento pelo WhatsApp, não seis perguntas-guia. Não estabelece uma cadência de follow-up para cliente sem retorno nem procedimento específico para aprovação do cliente final. As simulações iniciais praticam diagnóstico, postura, clareza e alinhamento do próximo passo, sem inventar prazos ou condições comerciais.
-
-Prazos citados para alguns projetos são referências e exigem confirmação por modelo e capacidade. Números institucionais requerem validação antes de uso externo. Qualquer alternativa de preço depende de revisão técnica, explicitação das diferenças e reorçamento. “Pronto para instalar” só pode ser usado quando todos os componentes da opção estiverem incluídos.
