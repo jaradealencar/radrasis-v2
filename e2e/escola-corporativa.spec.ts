@@ -3,7 +3,7 @@ import { expect, test } from "@playwright/test";
 const studentLogin = "e2e.aluno@local.internal";
 const adminLogin = "e2e.instrutor@local.internal";
 const password = "School-E2E-only-Password-2026!";
-const assessmentTitle = "Closer · Atendimento consultivo";
+const assessmentTitle = "Atendimento Novo Cliente · Primeira compra";
 
 async function login(page: import("@playwright/test").Page, username: string) {
   await page.goto("/login");
@@ -26,7 +26,7 @@ test("aluno se matricula, retoma prova e instrutor aplica uma avaliação", asyn
   await expect(
     page
       .locator('[data-slot="card-title"]')
-      .filter({ hasText: "Técnicas de Closer" })
+      .filter({ hasText: "Atendimento Novo Cliente" })
   ).toBeVisible();
   await expect(
     page.getByRole("button", { name: "Matricular-se" })
@@ -41,7 +41,7 @@ test("aluno se matricula, retoma prova e instrutor aplica uma avaliação", asyn
   await page.getByRole("button", { name: "Matricular-se" }).click();
   await expect(page.getByText(/Matriculado ·/)).toBeVisible();
   await page.getByRole("button", { name: "Praticar", exact: true }).click();
-  await expect(page.getByText(/Questão 1 de \d+/)).toBeVisible();
+  await expect(page.getByText(/Questão 1 de 29/)).toBeVisible();
   await page
     .getByRole("button", { name: "Sair e retomar depois", exact: true })
     .click();
@@ -51,7 +51,7 @@ test("aluno se matricula, retoma prova e instrutor aplica uma avaliação", asyn
 
   await page.reload();
   await page.getByRole("button", { name: "Retomar prática" }).click();
-  await expect(page.getByText(/Questão 1 de \d+/)).toBeVisible();
+  await expect(page.getByText(/Questão 1 de 29/)).toBeVisible();
 
   const adminContext = await browser.newContext();
   const adminPage = await adminContext.newPage();
@@ -85,7 +85,7 @@ test("aluno se matricula, retoma prova e instrutor aplica uma avaliação", asyn
 
   await page.reload();
   await page.getByRole("button", { name: "Iniciar prova formal" }).click();
-  await expect(page.getByText(/Questão 1 de \d+/)).toBeVisible();
+  await expect(page.getByText(/Questão 1 de 29/)).toBeVisible();
   await page
     .getByRole("button", { name: "Sair e retomar depois", exact: true })
     .click();
@@ -94,7 +94,7 @@ test("aluno se matricula, retoma prova e instrutor aplica uma avaliação", asyn
   ).toBeVisible();
   await page.reload();
   await page.getByRole("button", { name: "Continuar prova" }).click();
-  await expect(page.getByText(/Questão 1 de \d+/)).toBeVisible();
+  await expect(page.getByText(/Questão 1 de 29/)).toBeVisible();
 });
 
 test("painel do instrutor apresenta notas e ranking das provas formais", async ({
@@ -136,7 +136,7 @@ test("instrutor edita alternativas e gabarito e revisa uma questão refeita com 
     .getByTestId("assessment-editor-selector")
     .selectOption({ label: assessmentTitle });
 
-  const question = page.getByTestId("assessment-question-prazo_confirmado");
+  const question = page.getByTestId("assessment-question-pop_tempo_resposta_calculo");
   await expect(question).toBeVisible();
   await expect(question.getByText("Gabarito: 1 certa(s)")).toBeVisible();
 

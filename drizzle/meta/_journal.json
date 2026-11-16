@@ -939,6 +939,13 @@
       "when": 1794711550143,
       "tag": "0139_slim_karen_page",
       "breakpoints": true
+    },
+    {
+      "idx": 134,
+      "version": "7",
+      "when": 1794848447231,
+      "tag": "0140_atendimento_novo_cliente",
+      "breakpoints": true
     }
   ]
 }
