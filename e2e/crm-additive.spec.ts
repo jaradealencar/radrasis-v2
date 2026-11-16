@@ -17,13 +17,15 @@ const propostaBase = {
   probabilidadeCompra: null,
   probabilidadeExplicacao: ["Sem amostra de treino no ambiente de teste."],
   qtdComprasCliente: 0,
+  qtdOrdensServicoCliente: 0,
   diasSemComprar: null,
   ultimaCompraEm: null,
   totalCotacoes: 1,
   totalCompras: 0,
   orcamentosFechados: 0,
   taxaConversao: 0,
-  orcamentosDesde: null,
+  orcamentosDesde: "01/2026",
+  orcamentosCoberturaCompleta: false,
   estadoCliente: null,
 };
 
@@ -49,10 +51,13 @@ const propostasAbertas = [
     estadoCliente: "SP",
     regiaoCliente: "Sudeste",
     qtdComprasCliente: 4,
+    qtdOrdensServicoCliente: 4,
     diasSemComprar: 240,
     ultimaCompraEm: new Date(Date.now() - 240 * 86_400_000).toISOString(),
     totalCompras: 4,
     totalCotacoes: 27,
+    orcamentosDesde: "03/2023",
+    orcamentosCoberturaCompleta: false,
     orcamentosFechados: 0,
     taxaConversao: 0,
     probabilidadeCompra: 15,
@@ -259,7 +264,7 @@ test("mantém propostas abertas e não inventa score para cliente novo sem calib
   await tabs.nth(1).click();
   await expect(page.getByText("#30001")).toBeVisible();
   await expect(page.getByText("Cliente novo sem compras")).toBeVisible();
-  await expect(page.getByText("2 cotações", { exact: true })).toBeVisible();
+  await expect(page.getByText("≥2 cotações", { exact: true })).toBeVisible();
   const faixas = page.getByTestId("faixas-acompanhamento").first();
   await expect(faixas).toHaveCSS("flex-direction", "row");
   const blocosFaixa = faixas.locator(":scope > div");
@@ -277,7 +282,8 @@ test("mantém propostas abertas e não inventa score para cliente novo sem calib
   await expect(filtrosAvancados).toHaveJSProperty("open", true);
 
   await expect(page.getByText("#30002")).toBeVisible();
-  await expect(page.getByText(`27 cota\u00e7\u00f5es`, { exact: true })).toBeVisible();
+  await expect(page.getByText(`≥27 cota\u00e7\u00f5es`, { exact: true })).toBeVisible();
+  await expect(page.getByText("4 O.S.", { exact: true })).toBeVisible();
   await expect(page.getByText("15%", { exact: true })).toBeVisible();
   await expect(page.getByText("Propostas abertas", { exact: true }).locator("..")).toContainText("2");
 

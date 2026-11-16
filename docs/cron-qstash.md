@@ -184,6 +184,21 @@ npx tsx server/scripts/backfill-historico-orcamentos.ts --gravar --confirmo-alvo
 
 Gravar em produção exige autorização explícita (ver AGENTS.md).
 
+### Backfill do histórico do CRM e IDs de cliente
+
+`historico_os.clienteId` vincula as O.S. ao mesmo ID do cliente usado nos orçamentos, evitando depender de igualdade entre nome fantasia e razão social. O sync diário passa a preencher esse campo nas O.S. novas. Para preencher o histórico já existente e completar a cobertura de orçamentos, use `server/scripts/backfill-historico-crm.ts` depois de aplicar a migration que adiciona a coluna.
+
+O script percorre os meses em sequência, desde `03/2023` até o mês atual por padrão, e faz upsert dos históricos de O.S. e orçamentos. É retomável; intervalos menores podem ser passados com `--desde=AAAA-MM --ate=AAAA-MM`. Se uma janela falhar ou a paginação vier incompleta, rode o intervalo novamente. O upsert preserva telefone já gravado quando a API não fornece um número.
+
+O CRM continua exibindo as cotações como mínimo (`≥`) mesmo depois do backfill: hoje não há um marcador persistente que prove a conclusão de cada janela mensal, então linhas existentes não são prova suficiente de cobertura integral.
+
+```bash
+npx tsx server/scripts/backfill-historico-crm.ts --gravar --confirmo-alvo=host/banco
+npx tsx server/scripts/backfill-historico-crm.ts --desde=2023-03 --ate=2024-12 --gravar --confirmo-alvo=host/banco
+```
+
+O script recusa gravação sem `--gravar` e sem confirmação exata do alvo do `DATABASE_URL`. Gravar em produção exige autorização explícita (ver AGENTS.md).
+
 ## Sincronização de abertos do CRM (`mubisys_api_cache`, chave legada `crm_abertos_15d`)
 
 Criado em 12/09/2026 para corrigir o CRM de Propostas (`client/src/pages/comercial/CRM.tsx`

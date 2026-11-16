@@ -26,7 +26,7 @@
  * DRE granular linha a linha.
  */
 
-import { queryDatabase } from '../db/db-connection';
+import { queryDatabase, safeErrorType } from '../db/db-connection';
 import { listarOSMubiSys, listarOrcamentosMubiSys, type MubiSysOS, type MubiSysOrcamento } from '../integrations/mubisys-client';
 
 export interface SincronizarHistoricoResultado {
@@ -35,6 +35,7 @@ export interface SincronizarHistoricoResultado {
   osProcessadas: number;
   orcamentosProcessados: number;
   status: 'SUCESSO' | 'ERRO';
+  completo?: boolean;
   mensagemErro?: string;
 }
 
@@ -66,7 +67,7 @@ function primeiroTelefone(os: MubiSysOS): string {
 }
 
 const HISTORICO_OS_COLS = [
-  'osNumero', 'tipoOs', 'empresa', 'trabalho', 'logistica', 'dataAprovacao', 'dataEntrega', 'dataFaturamento',
+  'osNumero', 'clienteId', 'tipoOs', 'empresa', 'trabalho', 'logistica', 'dataAprovacao', 'dataEntrega', 'dataFaturamento',
   'status', 'vendedor', 'valorTotal', 'descontos', 'valorOs', 'materiaPrima', 'custoFixo', 'maoDeObra',
   'tarifasFinanceiras', 'comissoesInternas', 'comissoesExternas', 'terceirizados', 'tributos', 'custosTotal',
   'resultadoReais', 'resultadoPct', 'contribuicaoReais', 'contribuicaoPct', 'cidade', 'estado', 'telefone', 'mes', 'ano',
@@ -88,6 +89,7 @@ function osParaLinha(os: MubiSysOS, mes: number, ano: number): Record<string, un
 
   return {
     osNumero: String(os.sequencial_ordem || os.numero_pedido_compra || os.id || ''),
+    clienteId: Number.isInteger((os as any).cliente_id) && (os as any).cliente_id > 0 ? (os as any).cliente_id : null,
     tipoOs: os.tipo ?? '',
     empresa: nomeCliente(os.cliente),
     trabalho: os.nome_trabalho ?? null,
@@ -144,7 +146,11 @@ export function orcParaLinha(orc: MubiSysOrcamento, mes: number, ano: number): R
 export async function upsertEmLotes(table: string, cols: string[], linhas: Record<string, unknown>[], conflictCol: string, batchSize = 150) {
   if (linhas.length === 0) return 0;
   const colList = cols.map(c => `"${c}"`).join(', ');
-  const updateSet = cols.filter(c => c !== conflictCol).map(c => `"${c}" = EXCLUDED."${c}"`).join(', ');
+  const updateSet = cols.filter(c => c !== conflictCol).map(c =>
+    table === 'historico_os' && c === 'telefone'
+      ? '"telefone" = COALESCE(EXCLUDED."telefone", historico_os."telefone")'
+      : `"${c}" = EXCLUDED."${c}"`
+  ).join(', ');
 
   let processadas = 0;
   for (let i = 0; i < linhas.length; i += batchSize) {
@@ -279,10 +285,17 @@ export async function sincronizarHistoricoDoMubiSys(mes: number, ano: number): P
 
     console.log(`✅ [SYNC-HISTORICO] ${pad(mes)}/${ano}: ${osProcessadas} OS, ${orcamentosProcessados} orçamentos`);
 
-    return { mes, ano, osProcessadas, orcamentosProcessados, status: 'SUCESSO' };
+    return {
+      mes,
+      ano,
+      osProcessadas,
+      orcamentosProcessados,
+      status: 'SUCESSO',
+      completo: osCompleto && orcCompleto && janelasFalhadas.length === 0,
+    };
   } catch (erro: any) {
-    console.error(`❌ [SYNC-HISTORICO] Erro ao sincronizar ${mes}/${ano}:`, erro);
-    return { mes, ano, osProcessadas: 0, orcamentosProcessados: 0, status: 'ERRO', mensagemErro: erro?.message || 'Erro desconhecido' };
+    console.error(`❌ [SYNC-HISTORICO] Erro ao sincronizar ${mes}/${ano}:`, safeErrorType(erro));
+    return { mes, ano, osProcessadas: 0, orcamentosProcessados: 0, status: 'ERRO', completo: false, mensagemErro: erro?.message || 'Erro desconhecido' };
   }
 }
 

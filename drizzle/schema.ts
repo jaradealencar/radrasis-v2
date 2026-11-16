@@ -2239,6 +2239,9 @@ export type InsertMetaComercial = typeof metasComerciais.$inferInsert;
 export const historicoOs = pgTable("historico_os", {
   id: serial("id").primaryKey(),
   osNumero: varchar("osNumero", { length: 32 }),
+  // ID estável do cliente no MubiSys, necessário para cruzar o histórico com
+  // orçamentos sem depender de variações no nome fantasia/razão social.
+  clienteId: integer("clienteId"),
   tipoOs: varchar("tipoOs", { length: 64 }),
   empresa: varchar("empresa", { length: 256 }),
   trabalho: text("trabalho"),
