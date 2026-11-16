@@ -1,0 +1,2 @@
+ALTER TABLE "crm_probabilidade_previsoes" ADD COLUMN "mubisys_orcamento_id" varchar(32);--> statement-breakpoint
+CREATE INDEX "crm_probabilidade_previsoes_mubisys_id_idx" ON "crm_probabilidade_previsoes" USING btree ("mubisys_orcamento_id");

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   calcularMetricasProbabilidade,
   construirPainelProbabilidade,
+  resolverDesfechoMonitorado,
   type PrevisaoCrmMonitorada,
 } from "./crmProbabilidadePerformance";
 
@@ -84,5 +85,157 @@ describe("métricas do painel de probabilidade do CRM", () => {
     expect(obter("conversaoEsperadaPct").meses.map(mes =>
       mes.valor === null ? null : Number(mes.valor.toFixed(6))
     )).toEqual([90, 80, 45]);
+  });
+});
+
+describe("resolução de desfecho monitorado do CRM", () => {
+  it.each([
+    {
+      desfechosCrm: [1] as Array<0 | 1>,
+      esperado: {
+        situacao: "ganho_crm",
+        desfecho: 1,
+        desfechoConsiderandoVencidas: 1,
+        origem: "crm",
+      },
+    },
+    {
+      desfechosCrm: [0] as Array<0 | 1>,
+      esperado: {
+        situacao: "perda_crm",
+        desfecho: 0,
+        desfechoConsiderandoVencidas: 0,
+        origem: "crm",
+      },
+    },
+  ])("preserva o desfecho explícito do CRM: $esperado.situacao", ({ desfechosCrm, esperado }) => {
+    expect(resolverDesfechoMonitorado({
+      statusMubiSys: "em aberto",
+      existeNoHistorico: true,
+      dataCadastro: "2026-11-01",
+      validade: "30",
+      desfechosCrm,
+      agora: new Date("2026-11-15T12:00:00.000Z"),
+    })).toEqual(esperado);
+  });
+
+  it.each([
+    {
+      statusMubiSys: "aprovado",
+      desfechosCrm: [0] as Array<0 | 1>,
+    },
+    {
+      statusMubiSys: "em aberto",
+      desfechosCrm: [1, 0] as Array<0 | 1>,
+    },
+    {
+      statusMubiSys: "Orc.: Aprovado | OS.: Cancelada",
+      desfechosCrm: [1] as Array<0 | 1>,
+    },
+  ])("marca fontes contraditórias como conflito: $statusMubiSys / $desfechosCrm", ({ statusMubiSys, desfechosCrm }) => {
+    expect(resolverDesfechoMonitorado({
+      statusMubiSys,
+      existeNoHistorico: true,
+      dataCadastro: "2026-11-01",
+      validade: "30",
+      desfechosCrm,
+      agora: new Date("2026-11-15T12:00:00.000Z"),
+    })).toEqual({
+      situacao: "conflito",
+      desfecho: null,
+      desfechoConsiderandoVencidas: null,
+      origem: null,
+    });
+  });
+
+  it("mantém uma proposta aberta dentro do prazo sem rotulá-la como perda", () => {
+    expect(resolverDesfechoMonitorado({
+      statusMubiSys: "em aberto",
+      existeNoHistorico: true,
+      dataCadastro: "2026-11-01",
+      validade: "30",
+      agora: new Date("2026-11-15T12:00:00.000Z"),
+    })).toEqual({
+      situacao: "aberta_na_validade",
+      desfecho: null,
+      desfechoConsiderandoVencidas: null,
+      origem: null,
+    });
+  });
+
+  it("marca uma proposta aberta vencida como perda presumida sem convertê-la em desfecho confirmado", () => {
+    expect(resolverDesfechoMonitorado({
+      statusMubiSys: "em aberto",
+      existeNoHistorico: true,
+      dataCadastro: "2026-10-01",
+      validade: "30",
+      agora: new Date("2026-11-15T12:00:00.000Z"),
+    })).toEqual({
+      situacao: "perda_presumida_validade",
+      desfecho: null,
+      desfechoConsiderandoVencidas: 0,
+      origem: "presumida",
+    });
+  });
+
+  it("uses 30 days only when validity is missing", () => {
+    expect(resolverDesfechoMonitorado({
+      statusMubiSys: "em aberto",
+      existeNoHistorico: true,
+      dataCadastro: "2026-10-01",
+      validade: null,
+      agora: new Date("2026-11-15T12:00:00.000Z"),
+    })).toMatchObject({
+      situacao: "perda_presumida_validade",
+      desfecho: null,
+      desfechoConsiderandoVencidas: 0,
+      origem: "presumida",
+    });
+  });
+
+  it("requires the recognized open status before presuming a loss from age", () => {
+    expect(resolverDesfechoMonitorado({
+      statusMubiSys: "pendente",
+      existeNoHistorico: true,
+      dataCadastro: "2026-09-01",
+      validade: "10",
+      agora: new Date("2026-11-15T12:00:00.000Z"),
+    })).toMatchObject({
+      situacao: "status_nao_reconhecido",
+      desfecho: null,
+      desfechoConsiderandoVencidas: null,
+      origem: null,
+    });
+  });
+
+  it.each([
+    {
+      statusMubiSys: "em aberto",
+      existeNoHistorico: false,
+      esperado: "sem_historico",
+    },
+    {
+      statusMubiSys: null,
+      existeNoHistorico: true,
+      esperado: "sem_status",
+    },
+    {
+      statusMubiSys: "aguardando aprovação externa",
+      existeNoHistorico: true,
+      esperado: "status_nao_reconhecido",
+    },
+  ] as const)("distingue histórico/status ausente ou não reconhecido ($esperado)", ({ statusMubiSys, existeNoHistorico, esperado }) => {
+    expect(resolverDesfechoMonitorado({
+      statusMubiSys,
+      existeNoHistorico,
+      dataCadastro: "2026-11-01",
+      validade: "30",
+      agora: new Date("2026-11-15T12:00:00.000Z"),
+    })).toEqual({
+      situacao: esperado,
+      desfecho: null,
+      desfechoConsiderandoVencidas: null,
+      origem: null,
+    });
   });
 });

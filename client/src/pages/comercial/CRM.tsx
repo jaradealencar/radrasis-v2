@@ -244,6 +244,42 @@ function ProbabilidadeBadge({ p, explicacao }: { p: number | null; explicacao: s
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
+function CotacoesBadge({
+  total,
+  clienteNovo,
+  compacto = false,
+  mostrarEstrela = false,
+}: {
+  total?: number;
+  clienteNovo: boolean;
+  compacto?: boolean;
+  mostrarEstrela?: boolean;
+}) {
+  const quantidade = Math.max(1, total ?? 1);
+  const texto = compacto
+    ? `${quantidade} cot.`
+    : `${quantidade} ${quantidade === 1 ? "cotação" : "cotações"}`;
+  const cor = clienteNovo
+    ? "bg-amber-50 text-amber-800 border-amber-300"
+    : "bg-slate-50 text-slate-700 border-slate-200";
+
+  return (
+    <TooltipProvider>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full border text-[10px] font-semibold cursor-default ${cor} ${compacto ? "flex-shrink-0" : ""}`}>
+            {mostrarEstrela && clienteNovo && <Star className="w-2.5 h-2.5 text-yellow-500 fill-yellow-400" />}
+            {texto}
+          </span>
+        </TooltipTrigger>
+        <TooltipContent side="top" className="text-xs max-w-[220px]">
+          {quantidade} {quantidade === 1 ? "cotação registrada" : "cotações registradas"} no sistema{clienteNovo ? "; cliente ainda sem compras anteriores" : ""}.
+        </TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
+  );
+}
+
 const fmt = (v: number) => v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 
 function fmtShort(d: Date) {
@@ -531,7 +567,7 @@ function PropostaRow({ p, vendedor, onRefresh, showVendedor, faixasConfig }: {
                   setObs(contato.obs ?? "");
                 }}
                 title={`${canalInfo.label} — clique para alterar`}
-                className="w-6 h-6 rounded flex items-center justify-center text-sm hover:opacity-70 transition-opacity cursor-pointer bg-white border border-gray-200 shadow-sm"
+                className="w-5 h-5 rounded flex items-center justify-center text-xs hover:opacity-70 transition-opacity cursor-pointer bg-white border border-gray-200 shadow-sm"
               >{canalInfo.emoji}</button>
             );
           }
@@ -540,10 +576,10 @@ function PropostaRow({ p, vendedor, onRefresh, showVendedor, faixasConfig }: {
             <button key={i}
               onClick={(e) => { e.stopPropagation(); setModalContato({ date: dt }); setPedindoRemocao(false); setRespostaSelecionada(null); setObs(""); }}
               title={`Registrar contato em ${fmtShort(dt)}`}
-              className={`w-6 h-6 rounded border-2 bg-white active:scale-95 transition-all cursor-pointer flex items-center justify-center ${
+              className={`w-5 h-5 rounded border-2 bg-white active:scale-95 transition-all cursor-pointer flex items-center justify-center ${
                 isFuture ? "border-blue-200 hover:border-blue-400 hover:bg-blue-50 text-blue-400" : "border-gray-300 hover:border-blue-500 hover:bg-blue-50"
               }`}
-            ><span className="text-[7px] font-bold text-gray-500 leading-tight">{fmtShort(dt)}</span></button>
+            ><span className="text-[6px] font-bold text-gray-500 leading-tight">{fmtShort(dt)}</span></button>
           );
         })}
       </div>
@@ -554,7 +590,7 @@ function PropostaRow({ p, vendedor, onRefresh, showVendedor, faixasConfig }: {
     <>
       <TableRow className={`transition-colors ${rowBg}`}>
         {/* Nº OS */}
-        <TableCell>
+        <TableCell className="w-[82px] px-1.5 py-1">
           <a href={urlOrcamentoMubiSys(p.id)} target="_blank" rel="noopener noreferrer"
             className="text-blue-600 hover:text-blue-800 font-bold text-sm underline underline-offset-2"
             title="Abrir este orçamento no MubiSys">
@@ -564,15 +600,15 @@ function PropostaRow({ p, vendedor, onRefresh, showVendedor, faixasConfig }: {
         </TableCell>
 
         {/* Miniatura / Razão Social */}
-        <TableCell className="min-w-[170px] whitespace-normal">
-          <div className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-full flex items-center justify-center text-white text-xs font-bold flex-shrink-0"
+        <TableCell className="w-[230px] min-w-0 whitespace-normal px-1.5 py-1">
+          <div className="flex items-center gap-1.5">
+            <div className="w-7 h-7 rounded-full flex items-center justify-center text-white text-[10px] font-bold flex-shrink-0"
               style={{ backgroundColor: `hsl(${(p.nomeCliente.charCodeAt(0) * 47) % 360}, 60%, 45%)` }}>
               {p.nomeCliente.slice(0, 2).toUpperCase()}
             </div>
             <div className="min-w-0">
               <div className="flex items-center gap-1">
-                <span className="font-semibold text-sm leading-tight truncate max-w-[120px]" title={p.nomeCliente}>{p.nomeCliente}</span>
+                <span className="font-semibold text-sm leading-tight truncate max-w-[112px]" title={p.nomeCliente}>{p.nomeCliente}</span>
                 {p.clienteNovo && (
                   <TooltipProvider>
                     <Tooltip>
@@ -607,23 +643,10 @@ function PropostaRow({ p, vendedor, onRefresh, showVendedor, faixasConfig }: {
                   </span>
                 )}
               </div>
-              <div className="flex items-center gap-1.5 flex-wrap">
+              <div className="flex items-center gap-1 flex-wrap">
                 <span className="text-xs text-muted-foreground">{fmt(p.valor)}</span>
                 <ProbabilidadeBadge p={p.probabilidadeCompra} explicacao={p.probabilidadeExplicacao} />
-                {p.clienteNovo && (
-                  <TooltipProvider>
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <span className="inline-flex items-center px-1.5 py-0.5 rounded-full border text-[10px] font-semibold bg-amber-50 text-amber-800 border-amber-300 cursor-default">
-                          {p.totalCotacoes === 1 ? "1ª cotação" : `${p.totalCotacoes || 1} cotações`}
-                        </span>
-                      </TooltipTrigger>
-                      <TooltipContent side="top" className="text-xs max-w-[220px]">
-                        Cliente novo (sem compras anteriores). Já realizou {p.totalCotacoes || 1} {(p.totalCotacoes || 1) === 1 ? "cotação" : "cotações"} no sistema.
-                      </TooltipContent>
-                    </Tooltip>
-                  </TooltipProvider>
-                )}
+                <CotacoesBadge total={p.totalCotacoes} clienteNovo={p.clienteNovo} />
                 {p.qtdComprasCliente > 0 && (
                   <TooltipProvider>
                     <Tooltip>
@@ -687,7 +710,7 @@ function PropostaRow({ p, vendedor, onRefresh, showVendedor, faixasConfig }: {
         </TableCell>
 
         {/* Nome do Contato / WhatsApp */}
-        <TableCell className="min-w-[140px] whitespace-normal">
+        <TableCell className="w-[120px] min-w-0 whitespace-normal px-1.5 py-1">
           <div className="text-sm font-medium">{p.nomeContato || "—"}</div>
           {waLink && (
             <WhatsAppScriptsPopover
@@ -709,7 +732,7 @@ function PropostaRow({ p, vendedor, onRefresh, showVendedor, faixasConfig }: {
           )}
         </TableCell>
 
-        <TableCell className="min-w-[125px]">
+        <TableCell className="w-[105px] min-w-0 whitespace-normal px-1.5 py-1">
           {ultimoContato ? (
             <>
               <div className="text-xs font-medium">{fmtDate(ultimoContato.data)}</div>
@@ -718,7 +741,7 @@ function PropostaRow({ p, vendedor, onRefresh, showVendedor, faixasConfig }: {
           ) : <span className="text-xs text-amber-700 font-medium">Ainda não contatado</span>}
         </TableCell>
 
-        <TableCell className="min-w-[145px]">
+        <TableCell className="w-[120px] min-w-0 whitespace-normal px-1.5 py-1">
           <span className={`inline-flex rounded-full border px-2 py-0.5 text-[10px] font-semibold ${acaoCor}`}>{proximaAcao.rotulo}</span>
           {proximaAcao.data && <div className="mt-1 text-[10px] text-muted-foreground">{fmtShort(proximaAcao.data)}</div>}
           <button
@@ -739,14 +762,14 @@ function PropostaRow({ p, vendedor, onRefresh, showVendedor, faixasConfig }: {
 
         {/* Vendedor (quando "todos") */}
         {showVendedor && (
-          <TableCell>
+          <TableCell className="w-[115px] px-1.5 py-1">
             <span className="text-xs font-medium text-blue-600 bg-blue-50 px-2 py-0.5 rounded-full border border-blue-100">{p.vendedor}</span>
           </TableCell>
         )}
 
         {/* Faixas agrupadas */}
-        <TableCell className="whitespace-normal">
-          <div className="flex gap-1.5 flex-wrap">
+        <TableCell className="w-[414px] min-w-[414px] whitespace-normal px-1 py-1">
+          <div className="flex flex-nowrap gap-1 [&>div]:w-[134px] [&>div]:shrink-0 [&>div]:px-1.5 [&>div]:py-1">
             <ScriptsFaixaPopover
               faixa={1} label={faixasConfig[1].label} bgCls="bg-yellow-50 border-yellow-200"
               nomeCliente={nomeParaMensagem(p)}
@@ -781,20 +804,20 @@ function PropostaRow({ p, vendedor, onRefresh, showVendedor, faixasConfig }: {
         </TableCell>
 
         {/* Perdida */}
-        <TableCell className="text-center">
+        <TableCell className="w-[56px] px-1 py-1 text-center">
           <button onClick={() => marcarPerdida.mutate({ orcamentoId: p.id, vendedor: vendedor || p.vendedor, empresa: p.nomeCliente })}
             disabled={marcarPerdida.isPending}
-            className="w-8 h-8 rounded-full bg-red-100 hover:bg-red-200 text-red-600 flex items-center justify-center mx-auto transition-colors"
+            className="w-7 h-7 rounded-full bg-red-100 hover:bg-red-200 text-red-600 flex items-center justify-center mx-auto transition-colors"
             title="Marcar como perdida">
             {marcarPerdida.isPending ? <Spinner className="size-3.5" /> : <XCircle className="w-3.5 h-3.5" />}
           </button>
         </TableCell>
 
         {/* Venci */}
-        <TableCell className="text-center">
+        <TableCell className="w-[56px] px-1 py-1 text-center">
           <button onClick={() => marcarGanha.mutate({ orcamentoId: p.id, vendedor: vendedor || p.vendedor, empresa: p.nomeCliente })}
             disabled={marcarGanha.isPending}
-            className="w-8 h-8 rounded-full bg-green-100 hover:bg-green-200 text-green-600 flex items-center justify-center mx-auto transition-colors"
+            className="w-7 h-7 rounded-full bg-green-100 hover:bg-green-200 text-green-600 flex items-center justify-center mx-auto transition-colors"
             title="Marcar como ganha">
             {marcarGanha.isPending ? <Spinner className="size-3.5" /> : <Trophy className="w-3.5 h-3.5" />}
           </button>
@@ -968,9 +991,8 @@ export default function CRM() {
   const [ordenacaoPropostas, setOrdenacaoPropostas] = useState<"padrao" | "probabilidade" | "valor">("padrao");
   const [filtroResposta, setFiltroResposta] = useState<string>("todos");
   const [filtroFaixa, setFiltroFaixa] = useState<string>("todas");
-  // Mantém Propostas como tela inicial; os painéis novos ficam disponíveis
-  // como abas adicionais sem substituir o fluxo clássico do CRM.
-  const [abaAtiva, setAbaAtiva] = useState<string>("propostas");
+  // Mantém a tela inicial e a ordem de abas que o time já conhecia na sexta.
+  const [abaAtiva, setAbaAtiva] = useState<string>("fila");
   const [buscaPropostas, setBuscaPropostas] = useState("");
   const [filtroFila, setFiltroFila] = useState<"todas" | TipoProximaAcao>("todas");
   const [filtroSugestoes, setFiltroSugestoes] = useState<"todas" | "reativar">("todas");
@@ -1283,6 +1305,33 @@ export default function CRM() {
         </div>
       )}
 
+      {/* Alerta de atraso */}
+      {propostasAtrasadas.length > 0 && (
+        <div className="flex items-start gap-3 bg-red-50 border border-red-300 rounded-xl p-4 shadow-sm">
+          <AlertTriangle className="w-5 h-5 text-red-500 flex-shrink-0 mt-0.5" />
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-semibold text-red-700">
+              {propostasAtrasadas.length} proposta{propostasAtrasadas.length > 1 ? "s" : ""} com acompanhamento atrasado!
+            </p>
+            <p className="text-xs text-red-600 mt-0.5">
+              Há datas de follow-up que já passaram sem contato registrado. Priorize essas propostas!
+            </p>
+            <div className="flex flex-wrap gap-1 mt-2">
+              {propostasAtrasadas.slice(0, 5).map(p => (
+                <span key={p.id} className="text-xs bg-red-100 text-red-700 px-2 py-0.5 rounded-full font-medium border border-red-200">
+                  #{p.sequencial || p.id} — {p.nomeCliente.slice(0, 20)}
+                </span>
+              ))}
+              {propostasAtrasadas.length > 5 && (
+                <span className="text-xs bg-red-100 text-red-700 px-2 py-0.5 rounded-full font-medium border border-red-200">
+                  +{propostasAtrasadas.length - 5} mais
+                </span>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Sub-abas do CRM */}
       {modeloProbabilidade?.status === "amostra_insuficiente" && (
         <div className="mb-4 flex items-start gap-3 bg-amber-50 border border-amber-300 rounded-xl p-3 shadow-sm" role="status">
@@ -1310,9 +1359,16 @@ export default function CRM() {
       )}
       <Tabs value={abaAtiva} onValueChange={setAbaAtiva} className="w-full">
         <TabsList className="grid w-full grid-cols-2 md:grid-cols-4 xl:grid-cols-7 mb-4 h-auto">
+          <TabsTrigger value="fila" className="gap-1.5">
+            <ListTodo className="w-3.5 h-3.5" /> Fila de trabalho
+            <Badge variant="secondary" className="text-[10px] px-1.5 py-0">{filaCounts.todas}</Badge>
+          </TabsTrigger>
           <TabsTrigger value="propostas" className="gap-1.5">
             Propostas
             <Badge variant="secondary" className="text-[10px] px-1.5 py-0">{propostasAtivas.length}</Badge>
+          </TabsTrigger>
+          <TabsTrigger value="desempenho" className="gap-1.5">
+            <BarChart3 className="w-3.5 h-3.5" /> Desempenho
           </TabsTrigger>
           <TabsTrigger value="agenda" className="gap-1.5">
             Agenda de Hoje
@@ -1320,7 +1376,7 @@ export default function CRM() {
           </TabsTrigger>
           <TabsTrigger value="sugestoes" className="gap-1.5">
             <Target className="w-3.5 h-3.5" />
-            Sugestões de Contato
+            Reativar clientes
             {sugestoesData && sugestoesData.sugestoes.length > 0 && (
               <Badge variant="secondary" className="text-[10px] px-1.5 py-0 bg-indigo-100 text-indigo-700">{sugestoesData.sugestoes.length}</Badge>
             )}
@@ -1332,13 +1388,6 @@ export default function CRM() {
           <TabsTrigger value="auditoria" className="gap-1.5">
             <Activity className="w-3.5 h-3.5" />
             Auditoria
-          </TabsTrigger>
-          <TabsTrigger value="fila" className="gap-1.5">
-            <ListTodo className="w-3.5 h-3.5" /> Fila de trabalho
-            <Badge variant="secondary" className="text-[10px] px-1.5 py-0">{filaCounts.todas}</Badge>
-          </TabsTrigger>
-          <TabsTrigger value="desempenho" className="gap-1.5">
-            <BarChart3 className="w-3.5 h-3.5" /> Desempenho
           </TabsTrigger>
         </TabsList>
 
@@ -1357,32 +1406,6 @@ export default function CRM() {
               </div>
             </div>
           </div>
-
-          {propostasAtrasadas.length > 0 && (
-            <div className="flex items-start gap-3 rounded-xl border border-red-300 bg-red-50 p-4 shadow-sm">
-              <AlertTriangle className="mt-0.5 h-5 w-5 flex-shrink-0 text-red-500" />
-              <div className="min-w-0 flex-1">
-                <p className="text-sm font-semibold text-red-700">
-                  {propostasAtrasadas.length} proposta{propostasAtrasadas.length > 1 ? "s" : ""} com acompanhamento atrasado!
-                </p>
-                <p className="mt-0.5 text-xs text-red-600">
-                  Há datas de follow-up que já passaram sem contato registrado. Priorize essas propostas!
-                </p>
-                <div className="mt-2 flex flex-wrap gap-1">
-                  {propostasAtrasadas.slice(0, 5).map(p => (
-                    <span key={p.id} className="rounded-full border border-red-200 bg-red-100 px-2 py-0.5 text-xs font-medium text-red-700">
-                      #{p.sequencial || p.id} — {p.nomeCliente.slice(0, 20)}
-                    </span>
-                  ))}
-                  {propostasAtrasadas.length > 5 && (
-                    <span className="rounded-full border border-red-200 bg-red-100 px-2 py-0.5 text-xs font-medium text-red-700">
-                      +{propostasAtrasadas.length - 5} mais
-                    </span>
-                  )}
-                </div>
-              </div>
-            </div>
-          )}
 
           <div className="flex flex-col gap-3 rounded-xl border bg-white p-3 shadow-sm">
             <label className="relative block flex-1">
@@ -1438,7 +1461,7 @@ export default function CRM() {
           placeholder="Buscar cliente, telefone, vendedor ou número da proposta"
           className="h-10 w-full rounded-xl border bg-white pl-9 pr-3 text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
       </label>
-      <details open className="group rounded-xl border bg-white shadow-sm">
+      <details className="group rounded-xl border bg-white shadow-sm">
         <summary className="flex cursor-pointer list-none items-center gap-2 px-4 py-3 text-sm font-semibold text-slate-700">
           <SlidersHorizontal className="h-4 w-4" /> Filtros avançados
           <span className="text-xs font-normal text-muted-foreground">vendedor, datas, perfil de cliente, acompanhamento</span>
@@ -1661,7 +1684,7 @@ export default function CRM() {
 
       {/* Tabela principal */}
       <div className="bg-white border rounded-xl shadow-sm overflow-hidden">
-        <div className="px-5 py-3 border-b flex items-center justify-between">
+        <div className="px-4 py-2.5 border-b flex items-center justify-between">
           <h2 className="font-bold text-sm flex items-center gap-2">
             Propostas em Aberto <Badge variant="secondary">{propostasAtivas.length}</Badge>
           </h2>
@@ -1694,18 +1717,18 @@ export default function CRM() {
             </EmptyHeader>
           </Empty>
         ) : (
-          <Table>
+          <Table className={`table-fixed ${showVendedor ? "min-w-[1298px]" : "min-w-[1183px]"} [&_th]:h-9 [&_th]:px-1.5 [&_th]:py-1 [&_th]:text-[11px] [&_th]:leading-tight [&_td]:px-1.5 [&_td]:py-1`}>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Nº OS</TableHead>
-                  <TableHead>Miniatura / Razão Social</TableHead>
-                  <TableHead>Nome do Cliente</TableHead>
-                  <TableHead>Último contato</TableHead>
-                  <TableHead>Próxima ação</TableHead>
-                  {showVendedor && <TableHead>Vendedor</TableHead>}
-                  <TableHead>Faixas de Acompanhamento</TableHead>
-                  <TableHead className="text-center">Perdida</TableHead>
-                  <TableHead className="text-center">Venci</TableHead>
+                  <TableHead className="w-[82px] whitespace-normal">Nº OS</TableHead>
+                  <TableHead className="w-[230px] whitespace-normal">Miniatura / Razão Social</TableHead>
+                  <TableHead className="w-[120px] whitespace-normal">Nome do Cliente</TableHead>
+                  <TableHead className="w-[105px] whitespace-normal">Último contato</TableHead>
+                  <TableHead className="w-[120px] whitespace-normal">Próxima ação</TableHead>
+                  {showVendedor && <TableHead className="w-[115px] whitespace-normal">Vendedor</TableHead>}
+                  <TableHead className="w-[414px] whitespace-normal">Faixas de Acompanhamento</TableHead>
+                  <TableHead className="w-[56px] whitespace-normal text-center">Perdida</TableHead>
+                  <TableHead className="w-[56px] whitespace-normal text-center">Venci</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -1751,15 +1774,7 @@ export default function CRM() {
                     <div key={p.id} className="flex items-center gap-2 bg-white rounded border border-yellow-100 px-2 py-1">
                       <span className="text-xs font-bold text-yellow-700">#{p.sequencial || p.id}</span>
                       <span className="text-xs text-gray-700 truncate flex-1" title={p.nomeCliente}>{p.nomeCliente}</span>
-                      {p.clienteNovo && (
-                        <span
-                          className="inline-flex items-center gap-0.5 text-[10px] font-semibold text-amber-800 bg-amber-50 border border-amber-200 rounded px-1 flex-shrink-0"
-                          title={`Cliente novo — ${p.totalCotacoes || 1} ${(p.totalCotacoes || 1) === 1 ? "cotação registrada" : "cotações registradas"}`}
-                        >
-                          <Star className="w-2.5 h-2.5 text-yellow-500 fill-yellow-400" />
-                          {p.totalCotacoes === 1 ? "1ª cot." : `${p.totalCotacoes || 1} cot.`}
-                        </span>
-                      )}
+                      <CotacoesBadge total={p.totalCotacoes} clienteNovo={p.clienteNovo} compacto mostrarEstrela />
                       <WhatsAppAgendaBotao p={p} faixa={1} faixasConfig={faixasConfig} />
                     </div>
                   ))}
@@ -1783,15 +1798,7 @@ export default function CRM() {
                     <div key={p.id} className="flex items-center gap-2 bg-white rounded border border-pink-100 px-2 py-1">
                       <span className="text-xs font-bold text-pink-700">#{p.sequencial || p.id}</span>
                       <span className="text-xs text-gray-700 truncate flex-1" title={p.nomeCliente}>{p.nomeCliente}</span>
-                      {p.clienteNovo && (
-                        <span
-                          className="inline-flex items-center gap-0.5 text-[10px] font-semibold text-amber-800 bg-amber-50 border border-amber-200 rounded px-1 flex-shrink-0"
-                          title={`Cliente novo — ${p.totalCotacoes || 1} ${(p.totalCotacoes || 1) === 1 ? "cotação registrada" : "cotações registradas"}`}
-                        >
-                          <Star className="w-2.5 h-2.5 text-yellow-500 fill-yellow-400" />
-                          {p.totalCotacoes === 1 ? "1ª cot." : `${p.totalCotacoes || 1} cot.`}
-                        </span>
-                      )}
+                      <CotacoesBadge total={p.totalCotacoes} clienteNovo={p.clienteNovo} compacto mostrarEstrela />
                       <WhatsAppAgendaBotao p={p} faixa={2} faixasConfig={faixasConfig} />
                     </div>
                   ))}
@@ -1815,15 +1822,7 @@ export default function CRM() {
                     <div key={p.id} className="flex items-center gap-2 bg-white rounded border border-orange-100 px-2 py-1">
                       <span className="text-xs font-bold text-orange-700">#{p.sequencial || p.id}</span>
                       <span className="text-xs text-gray-700 truncate flex-1" title={p.nomeCliente}>{p.nomeCliente}</span>
-                      {p.clienteNovo && (
-                        <span
-                          className="inline-flex items-center gap-0.5 text-[10px] font-semibold text-amber-800 bg-amber-50 border border-amber-200 rounded px-1 flex-shrink-0"
-                          title={`Cliente novo — ${p.totalCotacoes || 1} ${(p.totalCotacoes || 1) === 1 ? "cotação registrada" : "cotações registradas"}`}
-                        >
-                          <Star className="w-2.5 h-2.5 text-yellow-500 fill-yellow-400" />
-                          {p.totalCotacoes === 1 ? "1ª cot." : `${p.totalCotacoes || 1} cot.`}
-                        </span>
-                      )}
+                      <CotacoesBadge total={p.totalCotacoes} clienteNovo={p.clienteNovo} compacto mostrarEstrela />
                       <WhatsAppAgendaBotao p={p} faixa={3} faixasConfig={faixasConfig} />
                     </div>
                   ))}

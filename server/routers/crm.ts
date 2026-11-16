@@ -543,6 +543,7 @@ export const crmRouter = router({
             const dataProposta = parseDate(proposta.dataCriacao);
             return [{
               orcNumero,
+              mubisysOrcamentoId: String(proposta.id ?? "").trim() || null,
               dataProposta,
               probabilidadePct: proposta.probabilidadeCompra,
               modeloVersao: CRM_PROBABILITY_MODEL_VERSION,
@@ -558,7 +559,10 @@ export const crmRouter = router({
             }];
           });
           if (snapshots.length) {
-            await db.insert(crmProbabilidadePrevisoes).values(snapshots).onConflictDoNothing();
+            await db.insert(crmProbabilidadePrevisoes).values(snapshots).onConflictDoUpdate({
+              target: crmProbabilidadePrevisoes.orcNumero,
+              set: { mubisysOrcamentoId: sql`excluded.mubisys_orcamento_id` },
+            });
           }
         } catch (error) {
           console.error("[CRM-PROBABILIDADE] Snapshot não registrado:", safeErrorType(error));
