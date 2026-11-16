@@ -100,6 +100,8 @@ export interface ConversaoCliente {
    * Usado por ex. para elegibilidade de parcelamento (clientes com mais de
    * N compras). */
   qtdCompras: number;
+  /** Quantidade total de O.S. encontradas; pode incluir retrabalho, amostra ou cancelada. */
+  qtdOrdensServico: number;
   /** Data da compra mais recente (historico_os.dataAprovacao ou
    * historico_orcamentos.dataCadastro para orçamentos ganhos) — null quando
    * o cliente não tem nenhuma compra registrada localmente. Usada para
@@ -107,10 +109,14 @@ export interface ConversaoCliente {
   ultimaCompra: Date | null;
   /** Números dos orçamentos conhecidos no histórico (para deduplicar com abertos e contar cotações). */
   orcNumeros?: Set<string>;
+  /** Números dos orçamentos ganhos, para unir fontes parciais por nome e por ID. */
+  orcNumerosFechados?: Set<string>;
 }
 
 export interface MapaConversaoClientes {
   porCliente: Map<string, ConversaoCliente>;
+  /** O mesmo histórico agrupado pelo ID estável do MubiSys quando disponível. */
+  porClienteId: Map<number, ConversaoCliente>;
   /** Taxa de conversão agregada de toda a carteira (fallback para amostra pequena). */
   taxaGeral: number;
   /** Mês ("MM/AAAA") do orçamento mais antigo em historico_orcamentos — a taxa de conversão
@@ -118,6 +124,7 @@ export interface MapaConversaoClientes {
    * das OS e começa antes (medido em 27/10/2026: orçamentos desde 01/2026, OS desde 05/2023).
    * null quando não há nenhum orçamento no histórico. */
   orcamentosDesde: string | null;
+  orcamentosCoberturaCompleta: boolean;
 }
 
 /** Menor mês/ano entre as linhas, no formato "MM/AAAA" (null sem linhas). */
@@ -158,6 +165,9 @@ export interface OsParaContagem {
 
 export interface OrcGanhoParaContagem {
   empresa: string | null;
+  clienteId?: number | null;
+  orcNumero?: string | null;
+  dataCadastro?: string | null;
   mes: number;
   ano: number;
 }
@@ -208,6 +218,8 @@ type DbClient = { select: Function };
  */
 export async function construirMapaConversaoClientes(db: any): Promise<MapaConversaoClientes> {
   const linhas = await db.select({
+    id: historicoOrcamentos.id,
+    clienteId: historicoOrcamentos.clienteId,
     empresa: historicoOrcamentos.empresa,
     status: historicoOrcamentos.status,
     total: historicoOrcamentos.total,
@@ -217,34 +229,55 @@ export async function construirMapaConversaoClientes(db: any): Promise<MapaConve
     ano: historicoOrcamentos.ano,
   }).from(historicoOrcamentos);
 
-  const porCliente = new Map<string, { total: number; fechados: number; somaValor: number; qtdComValor: number; ultimaCompra: Date | null; orcNumeros: Set<string> }>();
+  const porCliente = new Map<string, { somaValor: number; qtdComValor: number; ultimaCompra: Date | null; orcNumeros: Set<string>; orcNumerosFechados: Set<string> }>();
+  const porClienteIdDados = new Map<number, { somaValor: number; qtdComValor: number; ultimaCompra: Date | null; orcNumeros: Set<string>; orcNumerosFechados: Set<string> }>();
   const orcamentosGanhos: OrcGanhoParaContagem[] = [];
   let totalGeral = 0;
   let fechadosGeral = 0;
 
-  for (const r of linhas as Array<{ empresa: string | null; status: string | null; total: string | null; dataCadastro: string | null; orcNumero: string | null; mes: number; ano: number }>) {
+  for (const r of linhas as Array<{ id: number; clienteId: number | null; empresa: string | null; status: string | null; total: string | null; dataCadastro: string | null; orcNumero: string | null; mes: number; ano: number }>) {
     const empresaKey = normalizeEmpresaKey(r.empresa ?? "");
-    if (!empresaKey) continue;
     const fechou = STATUS_GANHO.has((r.status ?? "").trim().toLowerCase());
     const valor = r.total != null ? parseFloat(r.total) : NaN;
-    if (fechou) orcamentosGanhos.push({ empresa: r.empresa, mes: r.mes, ano: r.ano });
+    const numero = String(r.orcNumero ?? r.id);
+    if (fechou && (empresaKey || (Number.isInteger(r.clienteId) && (r.clienteId ?? 0) > 0))) {
+      orcamentosGanhos.push({ empresa: r.empresa, clienteId: r.clienteId, orcNumero: numero, dataCadastro: r.dataCadastro, mes: r.mes, ano: r.ano });
+    }
 
-    let acc = porCliente.get(empresaKey);
-    if (!acc) {
-      acc = { total: 0, fechados: 0, somaValor: 0, qtdComValor: 0, ultimaCompra: null, orcNumeros: new Set<string>() };
-      porCliente.set(empresaKey, acc);
+    if (empresaKey) {
+      let acc = porCliente.get(empresaKey);
+      if (!acc) {
+        acc = { somaValor: 0, qtdComValor: 0, ultimaCompra: null, orcNumeros: new Set<string>(), orcNumerosFechados: new Set<string>() };
+        porCliente.set(empresaKey, acc);
+      }
+      const novoOrcamento = !acc.orcNumeros.has(numero);
+      acc.orcNumeros.add(numero);
+      if (fechou) acc.orcNumerosFechados.add(numero);
+      if (novoOrcamento && !isNaN(valor)) { acc.somaValor += valor; acc.qtdComValor++; }
+      if (fechou) {
+        // Sem data de fechamento própria em historico_orcamentos — usa a data
+        // do orçamento como proxy da compra (mesma fonte já usada para contar
+        // esse orçamento como "compra" em qtdCompras).
+        const data = parseDataFlexivel(r.dataCadastro);
+        if (data && (!acc.ultimaCompra || data > acc.ultimaCompra)) acc.ultimaCompra = data;
+      }
     }
-    acc.total++;
-    if (r.orcNumero) acc.orcNumeros.add(String(r.orcNumero));
-    if (fechou) {
-      acc.fechados++;
-      // Sem data de fechamento própria em historico_orcamentos — usa a data
-      // do orçamento como proxy da compra (mesma fonte já usada para contar
-      // esse orçamento como "compra" em qtdCompras).
-      const data = parseDataFlexivel(r.dataCadastro);
-      if (data && (!acc.ultimaCompra || data > acc.ultimaCompra)) acc.ultimaCompra = data;
+
+    if (Number.isInteger(r.clienteId) && (r.clienteId ?? 0) > 0) {
+      let accId = porClienteIdDados.get(r.clienteId!);
+      if (!accId) {
+        accId = { somaValor: 0, qtdComValor: 0, ultimaCompra: null, orcNumeros: new Set<string>(), orcNumerosFechados: new Set<string>() };
+        porClienteIdDados.set(r.clienteId!, accId);
+      }
+      const novoOrcamento = !accId.orcNumeros.has(numero);
+      accId.orcNumeros.add(numero);
+      if (fechou) accId.orcNumerosFechados.add(numero);
+      if (novoOrcamento && !isNaN(valor)) { accId.somaValor += valor; accId.qtdComValor++; }
+      if (fechou) {
+        const data = parseDataFlexivel(r.dataCadastro);
+        if (data && (!accId.ultimaCompra || data > accId.ultimaCompra)) accId.ultimaCompra = data;
+      }
     }
-    if (!isNaN(valor)) { acc.somaValor += valor; acc.qtdComValor++; }
 
     totalGeral++;
     if (fechou) fechadosGeral++;
@@ -257,6 +290,8 @@ export async function construirMapaConversaoClientes(db: any): Promise<MapaConve
   // historico_os voltou a rodar (o sync grava as duas no mesmo mês), e a mesma compra
   // passou a contar duas vezes; retrabalho, amostra, cortesia e cancelada também entravam.
   const osRows = await db.select({
+    osNumero: historicoOs.osNumero,
+    clienteId: historicoOs.clienteId,
     empresa: historicoOs.empresa,
     dataAprovacao: historicoOs.dataAprovacao,
     tipoOs: historicoOs.tipoOs,
@@ -265,6 +300,64 @@ export async function construirMapaConversaoClientes(db: any): Promise<MapaConve
     ano: historicoOs.ano,
   }).from(historicoOs);
   const qtdComprasPorCliente = contarComprasPorCliente(osRows as OsParaContagem[], orcamentosGanhos);
+  const osValidasPorClienteId = new Map<number, Set<string>>();
+  const osTotaisPorClienteId = new Map<number, Set<string>>();
+  const mesesComOs = new Set<number>();
+  const ultimaCompraOsPorClienteId = new Map<number, Date>();
+  const osTotaisPorCliente = new Map<string, Set<string>>();
+  const osValidasPorCliente = new Map<string, Set<string>>();
+  let osFallbackIndex = 0;
+  for (const r of osRows as Array<{ clienteId: number | null; osNumero: string | null; empresa: string | null; dataAprovacao: string | null; tipoOs: string | null; status: string | null; mes: number; ano: number }>) {
+    osFallbackIndex++;
+    const mesRef = r.ano * 12 + r.mes;
+    mesesComOs.add(mesRef);
+    const numeroOs = String(r.osNumero ?? `sem-numero:${mesRef}:${osFallbackIndex}`);
+    const empresaKey = normalizeEmpresaKey(r.empresa ?? "");
+    if (empresaKey) {
+      const totalPorNome = osTotaisPorCliente.get(empresaKey) ?? new Set<string>();
+      totalPorNome.add(numeroOs);
+      osTotaisPorCliente.set(empresaKey, totalPorNome);
+      if (isOsNormalDb(r)) {
+        const validasPorNome = osValidasPorCliente.get(empresaKey) ?? new Set<string>();
+        validasPorNome.add(numeroOs);
+        osValidasPorCliente.set(empresaKey, validasPorNome);
+      }
+    }
+
+    const clienteId = r.clienteId;
+    if (Number.isInteger(clienteId) && (clienteId ?? 0) > 0) {
+      const totalPorId = osTotaisPorClienteId.get(clienteId!) ?? new Set<string>();
+      totalPorId.add(numeroOs);
+      osTotaisPorClienteId.set(clienteId!, totalPorId);
+      if (!isOsNormalDb(r)) continue;
+      const numeros = osValidasPorClienteId.get(clienteId!) ?? new Set<string>();
+      numeros.add(numeroOs);
+      osValidasPorClienteId.set(clienteId!, numeros);
+      const data = parseDataFlexivel(r.dataAprovacao);
+      if (data) {
+        const atual = ultimaCompraOsPorClienteId.get(clienteId!);
+        if (!atual || data > atual) ultimaCompraOsPorClienteId.set(clienteId!, data);
+      }
+      continue;
+    }
+  }
+  for (const quote of orcamentosGanhos) {
+    const clienteId = quote.clienteId;
+    if (!Number.isInteger(clienteId) || (clienteId ?? 0) <= 0) continue;
+    const mesRef = quote.ano * 12 + quote.mes;
+    // Use the same month-level coverage rule as the name-based aggregation.
+    // During ID backfill, historical O.S. may still have clienteId=null; using
+    // only per-ID months would count a won quote twice in those months.
+    if (mesesComOs.has(mesRef)) continue;
+    const numeros = osValidasPorClienteId.get(clienteId!) ?? new Set<string>();
+    numeros.add(`orcamento-ganho:${clienteId}:${quote.orcNumero ?? `${mesRef}:${numeros.size}`}`);
+    osValidasPorClienteId.set(clienteId!, numeros);
+    const data = parseDataFlexivel(quote.dataCadastro ?? null);
+    if (data) {
+      const atual = ultimaCompraOsPorClienteId.get(clienteId!);
+      if (!atual || data > atual) ultimaCompraOsPorClienteId.set(clienteId!, data);
+    }
+  }
   const ultimaCompraOsPorCliente = new Map<string, Date>();
   for (const r of osRows as Array<{ empresa: string | null; dataAprovacao: string | null; tipoOs: string | null; status: string | null }>) {
     if (!isOsNormalDb(r)) continue;
@@ -284,25 +377,84 @@ export async function construirMapaConversaoClientes(db: any): Promise<MapaConve
       : !ultimaOs ? acc.ultimaCompra
       : acc.ultimaCompra > ultimaOs ? acc.ultimaCompra : ultimaOs;
     resultado.set(empresaKey, {
-      totalOrcamentos: acc.total,
-      orcamentosFechados: acc.fechados,
-      taxaIndividual: acc.total >= MIN_AMOSTRA_TAXA_INDIVIDUAL ? (acc.fechados / acc.total) * 100 : null,
+      totalOrcamentos: acc.orcNumeros.size,
+      orcamentosFechados: acc.orcNumerosFechados.size,
+      taxaIndividual: acc.orcNumeros.size >= MIN_AMOSTRA_TAXA_INDIVIDUAL ? (acc.orcNumerosFechados.size / acc.orcNumeros.size) * 100 : null,
       ticketMedio: acc.qtdComValor > 0 ? acc.somaValor / acc.qtdComValor : null,
       qtdCompras: qtdComprasPorCliente.get(empresaKey) ?? 0,
+      qtdOrdensServico: osTotaisPorCliente.get(empresaKey)?.size ?? 0,
       ultimaCompra,
       orcNumeros: acc.orcNumeros,
+      orcNumerosFechados: acc.orcNumerosFechados,
     });
   }
   // Clientes com OS mas sem nenhum orçamento correspondente em historico_orcamentos
   // (bases diferentes, cobertura não é 100% igual) — ainda entram no mapa só com qtdCompras.
   for (const [empresaKey, qtd] of qtdComprasPorCliente.entries()) {
     if (!resultado.has(empresaKey)) {
-      resultado.set(empresaKey, { totalOrcamentos: 0, orcamentosFechados: 0, taxaIndividual: null, ticketMedio: null, qtdCompras: qtd, ultimaCompra: ultimaCompraOsPorCliente.get(empresaKey) ?? null, orcNumeros: new Set<string>() });
+      resultado.set(empresaKey, { totalOrcamentos: 0, orcamentosFechados: 0, taxaIndividual: null, ticketMedio: null, qtdCompras: qtd, qtdOrdensServico: osTotaisPorCliente.get(empresaKey)?.size ?? 0, ultimaCompra: ultimaCompraOsPorCliente.get(empresaKey) ?? null, orcNumeros: new Set<string>() });
     }
+  }
+  for (const [empresaKey, osNumeros] of osTotaisPorCliente) {
+    if (resultado.has(empresaKey)) continue;
+    resultado.set(empresaKey, {
+      totalOrcamentos: 0,
+      orcamentosFechados: 0,
+      taxaIndividual: null,
+      ticketMedio: null,
+      qtdCompras: qtdComprasPorCliente.get(empresaKey) ?? 0,
+      qtdOrdensServico: osNumeros.size,
+      ultimaCompra: ultimaCompraOsPorCliente.get(empresaKey) ?? null,
+      orcNumeros: new Set<string>(),
+    });
   }
 
   const taxaGeral = totalGeral > 0 ? (fechadosGeral / totalGeral) * 100 : 0;
-  return { porCliente: resultado, taxaGeral, orcamentosDesde: primeiroMesDoHistorico(linhas as Array<{ mes: number; ano: number }>) };
+  const resultadoPorId = new Map<number, ConversaoCliente>();
+  for (const [clienteId, acc] of porClienteIdDados) {
+    const ultimaOs = ultimaCompraOsPorClienteId.get(clienteId) ?? null;
+    const ultimaCompra = !acc.ultimaCompra ? ultimaOs
+      : !ultimaOs ? acc.ultimaCompra
+      : acc.ultimaCompra > ultimaOs ? acc.ultimaCompra : ultimaOs;
+    resultadoPorId.set(clienteId, {
+      totalOrcamentos: acc.orcNumeros.size,
+      orcamentosFechados: acc.orcNumerosFechados.size,
+      taxaIndividual: acc.orcNumeros.size >= MIN_AMOSTRA_TAXA_INDIVIDUAL
+        ? (acc.orcNumerosFechados.size / acc.orcNumeros.size) * 100
+        : null,
+      ticketMedio: acc.qtdComValor > 0 ? acc.somaValor / acc.qtdComValor : null,
+      qtdCompras: osValidasPorClienteId.get(clienteId)?.size ?? 0,
+      qtdOrdensServico: osTotaisPorClienteId.get(clienteId)?.size ?? 0,
+      ultimaCompra,
+      orcNumeros: acc.orcNumeros,
+      orcNumerosFechados: acc.orcNumerosFechados,
+    });
+  }
+  for (const [clienteId, osNumeros] of osTotaisPorClienteId) {
+    if (resultadoPorId.has(clienteId)) continue;
+    resultadoPorId.set(clienteId, {
+      totalOrcamentos: 0,
+      orcamentosFechados: 0,
+      taxaIndividual: null,
+      ticketMedio: null,
+      qtdCompras: osValidasPorClienteId.get(clienteId)?.size ?? 0,
+      qtdOrdensServico: osNumeros.size,
+      ultimaCompra: ultimaCompraOsPorClienteId.get(clienteId) ?? null,
+      orcNumeros: new Set<string>(),
+    });
+  }
+
+  const orcamentosDesde = primeiroMesDoHistorico(linhas as Array<{ mes: number; ano: number }>);
+  return {
+    porCliente: resultado,
+    porClienteId: resultadoPorId,
+    taxaGeral,
+    orcamentosDesde,
+    // No marker records successful monthly syncs durably. Presence of rows
+    // cannot prove that every API page/window was imported, so counts remain
+    // explicitly lower bounds until that metadata exists.
+    orcamentosCoberturaCompleta: false,
+  };
 }
 
 /** Amostra mínima (ganhos+perdidos) para confiar na taxa de conversão de uma

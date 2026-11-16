@@ -82,6 +82,7 @@ type Proposta = {
   probabilidadeCompra: number | null;
   probabilidadeExplicacao: string[];
   qtdComprasCliente: number;
+  qtdOrdensServicoCliente: number;
   /** Dias desde a última compra registrada no histórico local — null quando
    * o cliente é novo (sem nenhuma compra anterior) ou não há data disponível. */
   diasSemComprar: number | null;
@@ -92,6 +93,7 @@ type Proposta = {
   orcamentosFechados?: number;
   taxaConversao?: number | null;
   orcamentosDesde?: string | null;
+  orcamentosCoberturaCompleta?: boolean;
   estadoCliente: string | null;
   regiaoCliente: string | null;
 };
@@ -249,18 +251,23 @@ function ProbabilidadeBadge({ p, explicacao }: { p: number | null; explicacao: s
 function CotacoesBadge({
   total,
   clienteNovo,
+  orcamentosDesde,
+  coberturaCompleta = false,
   compacto = false,
   mostrarEstrela = false,
 }: {
   total?: number;
   clienteNovo: boolean;
+  orcamentosDesde?: string | null;
+  coberturaCompleta?: boolean;
   compacto?: boolean;
   mostrarEstrela?: boolean;
 }) {
   const quantidade = Math.max(1, total ?? 1);
+  const prefixo = coberturaCompleta ? "" : "≥";
   const texto = compacto
-    ? `${quantidade} cot.`
-    : `${quantidade} ${quantidade === 1 ? "cotação" : "cotações"}`;
+    ? `${prefixo}${quantidade} cot.`
+    : `${prefixo}${quantidade} ${quantidade === 1 ? "cotação" : "cotações"}`;
   const cor = clienteNovo
     ? "bg-amber-50 text-amber-800 border-amber-300"
     : "bg-slate-50 text-slate-700 border-slate-200";
@@ -275,7 +282,10 @@ function CotacoesBadge({
           </span>
         </TooltipTrigger>
         <TooltipContent side="top" className="text-xs max-w-[220px]">
-          {quantidade} {quantidade === 1 ? "cotação registrada" : "cotações registradas"} no sistema{clienteNovo ? "; cliente ainda sem compras anteriores" : ""}.
+          {coberturaCompleta
+            ? `${quantidade} ${quantidade === 1 ? "cotação registrada" : "cotações registradas"} no histórico completo.`
+            : `Pelo menos ${quantidade} ${quantidade === 1 ? "cotação registrada" : "cotações registradas"}${orcamentosDesde ? ` desde ${orcamentosDesde}` : " no histórico disponível"}; o total pode ser maior.`}
+          {clienteNovo ? " Cliente sem compras anteriores registradas." : ""}
         </TooltipContent>
       </Tooltip>
     </TooltipProvider>
@@ -673,8 +683,8 @@ function PropostaRow({ p, vendedor, onRefresh, showVendedor, faixasConfig, onMar
               <div className="flex items-center gap-1 flex-wrap">
                 <span className="text-xs text-muted-foreground">{fmt(p.valor)}</span>
                 <ProbabilidadeBadge p={p.probabilidadeCompra} explicacao={p.probabilidadeExplicacao} />
-                <CotacoesBadge total={p.totalCotacoes} clienteNovo={p.clienteNovo} />
-                {p.qtdComprasCliente > 0 && (
+                <CotacoesBadge total={p.totalCotacoes} clienteNovo={p.clienteNovo} orcamentosDesde={p.orcamentosDesde} coberturaCompleta={p.orcamentosCoberturaCompleta} />
+                {(p.qtdOrdensServicoCliente > 0 || p.qtdComprasCliente > 0) && (
                   <TooltipProvider>
                     <Tooltip>
                       <TooltipTrigger asChild>
@@ -683,15 +693,20 @@ function PropostaRow({ p, vendedor, onRefresh, showVendedor, faixasConfig, onMar
                             ? "font-bold bg-indigo-100 text-indigo-700 border-indigo-200"
                             : "text-gray-500 bg-gray-50 border-gray-200"
                         }`}>
-                          {p.qtdComprasCliente}x comprou
+                          {p.qtdOrdensServicoCliente > 0
+                            ? `${p.qtdOrdensServicoCliente} O.S.`
+                            : `${p.qtdComprasCliente} compra${p.qtdComprasCliente === 1 ? "" : "s"}`}
                         </span>
                       </TooltipTrigger>
                       <TooltipContent side="top" className="text-xs max-w-[220px]">
+                        {p.qtdOrdensServicoCliente > 0
+                          ? `${p.qtdOrdensServicoCliente} O.S. no histórico; ${p.qtdComprasCliente} compra${p.qtdComprasCliente === 1 ? "" : "s"} válida${p.qtdComprasCliente === 1 ? "" : "s"}.`
+                          : `${p.qtdComprasCliente} compra${p.qtdComprasCliente === 1 ? "" : "s"} registrada${p.qtdComprasCliente === 1 ? "" : "s"} por orçamento ganho; sem O.S. associada no histórico.`}
                         {p.qtdComprasCliente > LIMIAR_PARCELAMENTO
-                          ? `Elegível a parcelamento (mais de ${LIMIAR_PARCELAMENTO} compras no histórico)`
-                          : `${p.qtdComprasCliente} compra${p.qtdComprasCliente === 1 ? "" : "s"} no histórico`}
+                          ? ` Elegível a parcelamento (mais de ${LIMIAR_PARCELAMENTO} compras).`
+                          : ""}
                         <br />
-                        <span className="text-gray-400">Conta as O.S. válidas do histórico local (a partir de 2023), sem retrabalho, amostra, cortesia nem cancelada.</span>
+                        <span className="text-gray-400">Compras válidas excluem retrabalho, amostra, cortesia e O.S. cancelada.</span>
                       </TooltipContent>
                     </Tooltip>
                   </TooltipProvider>
@@ -1812,7 +1827,7 @@ export default function CRM() {
                     <div key={p.id} className="flex items-center gap-2 bg-white rounded border border-yellow-100 px-2 py-1">
                       <span className="text-xs font-bold text-yellow-700">#{p.sequencial || p.id}</span>
                       <span className="text-xs text-gray-700 truncate flex-1" title={p.nomeCliente}>{p.nomeCliente}</span>
-                      <CotacoesBadge total={p.totalCotacoes} clienteNovo={p.clienteNovo} compacto mostrarEstrela />
+                      <CotacoesBadge total={p.totalCotacoes} clienteNovo={p.clienteNovo} orcamentosDesde={p.orcamentosDesde} coberturaCompleta={p.orcamentosCoberturaCompleta} compacto mostrarEstrela />
                       <WhatsAppAgendaBotao p={p} faixa={1} faixasConfig={faixasConfig} />
                     </div>
                   ))}
@@ -1836,7 +1851,7 @@ export default function CRM() {
                     <div key={p.id} className="flex items-center gap-2 bg-white rounded border border-pink-100 px-2 py-1">
                       <span className="text-xs font-bold text-pink-700">#{p.sequencial || p.id}</span>
                       <span className="text-xs text-gray-700 truncate flex-1" title={p.nomeCliente}>{p.nomeCliente}</span>
-                      <CotacoesBadge total={p.totalCotacoes} clienteNovo={p.clienteNovo} compacto mostrarEstrela />
+                      <CotacoesBadge total={p.totalCotacoes} clienteNovo={p.clienteNovo} orcamentosDesde={p.orcamentosDesde} coberturaCompleta={p.orcamentosCoberturaCompleta} compacto mostrarEstrela />
                       <WhatsAppAgendaBotao p={p} faixa={2} faixasConfig={faixasConfig} />
                     </div>
                   ))}
@@ -1860,7 +1875,7 @@ export default function CRM() {
                     <div key={p.id} className="flex items-center gap-2 bg-white rounded border border-orange-100 px-2 py-1">
                       <span className="text-xs font-bold text-orange-700">#{p.sequencial || p.id}</span>
                       <span className="text-xs text-gray-700 truncate flex-1" title={p.nomeCliente}>{p.nomeCliente}</span>
-                      <CotacoesBadge total={p.totalCotacoes} clienteNovo={p.clienteNovo} compacto mostrarEstrela />
+                      <CotacoesBadge total={p.totalCotacoes} clienteNovo={p.clienteNovo} orcamentosDesde={p.orcamentosDesde} coberturaCompleta={p.orcamentosCoberturaCompleta} compacto mostrarEstrela />
                       <WhatsAppAgendaBotao p={p} faixa={3} faixasConfig={faixasConfig} />
                     </div>
                   ))}
