@@ -34,6 +34,8 @@ const propostasAbertas = [
     sequencial: 30001,
     nomeCliente: "Cliente novo sem compras",
     clienteNovo: true,
+    estadoCliente: "MS",
+    regiaoCliente: "Centro-Oeste",
     totalCotacoes: 2,
     taxaConversao: 0,
     probabilidadeCompra: null,
@@ -44,6 +46,8 @@ const propostasAbertas = [
     id: "erp-30002",
     sequencial: 30002,
     nomeCliente: "Cliente recorrente com dois contatos",
+    estadoCliente: "SP",
+    regiaoCliente: "Sudeste",
     qtdComprasCliente: 4,
     diasSemComprar: 240,
     ultimaCompraEm: new Date(Date.now() - 240 * 86_400_000).toISOString(),
@@ -269,6 +273,18 @@ test("mantém propostas abertas e não inventa score para cliente novo sem calib
   await expect(page.getByText("#30002")).toBeVisible();
   await expect(page.getByText("#30001")).toBeHidden();
   await page.getByRole("button", { name: /Apenas 6\+ meses/ }).click();
+
+  const filtroRegiao = page.getByText("Região", { exact: true }).locator("..").getByRole("combobox");
+  await filtroRegiao.click();
+  await page.getByRole("option", { name: "Centro-Oeste" }).click();
+  await expect(page.getByText("#30001")).toBeVisible();
+  await expect(page.getByText("#30002")).toBeHidden();
+  await filtroRegiao.click();
+  await page.getByRole("option", { name: "Sudeste" }).click();
+  await expect(page.getByText("#30002")).toBeVisible();
+  await expect(page.getByText("#30001")).toBeHidden();
+  await filtroRegiao.click();
+  await page.getByRole("option", { name: "Todas as regiões" }).click();
 
   const filtrarPendentes = page.getByRole("button", { name: /Pendentes de acompanhamento/ });
   await expect(filtrarPendentes).toBeVisible();

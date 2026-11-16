@@ -59,6 +59,8 @@ const OPCOES_RESPOSTA = [
 ] as const;
 
 type RespostaCanal = typeof OPCOES_RESPOSTA[number]["value"];
+const REGIOES_BRASIL = ["Centro-Oeste", "Sudeste", "Sul", "Nordeste", "Norte"] as const;
+type FiltroRegiao = "todas" | typeof REGIOES_BRASIL[number];
 
 type Proposta = {
   id: string;
@@ -91,6 +93,7 @@ type Proposta = {
   taxaConversao?: number | null;
   orcamentosDesde?: string | null;
   estadoCliente: string | null;
+  regiaoCliente: string | null;
 };
 
 // Limiar de compras a partir do qual o cliente é elegível a parcelamento (regra do usuário)
@@ -1143,9 +1146,10 @@ export default function CRM() {
       });
     }
     if (apenasMS) list = list.filter(p => p.estadoCliente === "MS");
+    if (filtroRegiao !== "todas") list = list.filter(p => p.regiaoCliente === filtroRegiao);
     if (ordenarPorProbabilidade) list = [...list].sort((a, b) => (b.probabilidadeCompra ?? -1) - (a.probabilidadeCompra ?? -1));
     return list;
-  }, [propostas, buscaPropostas, apenasNovos, apenasSemCompra6Meses, apenasPendentesAcompanhamento, apenasHoje, filtroResposta, filtroFaixa, filtroProbabilidade, apenasMS, ordenarPorProbabilidade, faixasConfig]);
+  }, [propostas, buscaPropostas, apenasNovos, apenasSemCompra6Meses, apenasPendentesAcompanhamento, apenasHoje, filtroResposta, filtroFaixa, filtroProbabilidade, filtroRegiao, apenasMS, ordenarPorProbabilidade, faixasConfig]);
 
   const propostasHistorico = useMemo(() => propostas.filter(p => p.meta2Contatos), [propostas]);
   const showVendedor = !vendedor;
@@ -1599,6 +1603,16 @@ export default function CRM() {
             }`}>
             {apenasMS ? "Só MS ✕" : "Só MS"}
           </button>
+        </div>
+        <div className="flex flex-col gap-1">
+          <label className="text-xs font-semibold text-muted-foreground">Região</label>
+          <Select value={filtroRegiao} onValueChange={(value) => setFiltroRegiao(value as FiltroRegiao)}>
+            <SelectTrigger className="h-9 text-sm w-40"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="todas">Todas as regiões</SelectItem>
+              {REGIOES_BRASIL.map(regiao => <SelectItem key={regiao} value={regiao}>{regiao}</SelectItem>)}
+            </SelectContent>
+          </Select>
         </div>
       </div>
 
