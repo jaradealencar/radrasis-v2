@@ -72,6 +72,8 @@ type Proposta = {
   diasAberto: number;
   janela: string;
   clienteNovo: boolean;
+  clienteOverrideStatus?: "recorrente" | "novo" | null;
+  clienteOverrideId?: number | null;
   contato1: { data: string; canal: string; obs: string | null } | null;
   contato2: { data: string; canal: string; obs: string | null } | null;
   qtdContatos: number;
@@ -152,7 +154,8 @@ function clienteSemComprarHaSeisMeses(data: unknown, diasFallback?: number | nul
   return duracao ? duracao.meses >= 6 : typeof diasFallback === "number" && diasFallback >= MESES_REATIVACAO_DIAS;
 }
 
-function isClienteReativacao(p: Pick<Proposta, "clienteNovo" | "diasSemComprar" | "ultimaCompraEm">): boolean {
+function isClienteReativacao(p: Pick<Proposta, "clienteNovo" | "clienteOverrideStatus" | "diasSemComprar" | "ultimaCompraEm">): boolean {
+  if (p.clienteOverrideStatus === "recorrente") return false;
   return !p.clienteNovo && clienteSemComprarHaSeisMeses(p.ultimaCompraEm, p.diasSemComprar);
 }
 
@@ -427,8 +430,8 @@ function getCanalInfo(canal: string) {
 }
 
 // ─── PropostaRow ─────────────────────────────────────────────────────────────
-function PropostaRow({ p, vendedor, onRefresh, showVendedor, faixasConfig }: {
-  p: Proposta; vendedor: string; onRefresh: () => void; showVendedor: boolean;
+function PropostaRow({ p, vendedor, onRefresh, onRefreshRecorrencia, showVendedor, faixasConfig }: {
+  p: Proposta; vendedor: string; onRefresh: () => void; onRefreshRecorrencia: () => void | Promise<unknown>; showVendedor: boolean;
   faixasConfig: Record<1 | 2 | 3, FaixaConfig>;
 }) {
   // modalContato: null = fechado; { date } = aberto (registro novo OU edição de um já existente
@@ -480,6 +483,21 @@ function PropostaRow({ p, vendedor, onRefresh, showVendedor, faixasConfig }: {
 
   const marcarGanha = trpc.crm.marcarGanha.useMutation({
     onSuccess: () => { toast.success("Proposta marcada como ganha! 🎉"); onRefresh(); },
+    onError: (e: { message: string }) => toast.error(e.message),
+  });
+
+  const marcarClienteRecorrente = trpc.performanceComercial.upsertClienteOverride.useMutation({
+    onSuccess: async () => {
+      toast.success(`${p.nomeCliente} marcado como cliente recorrente.`);
+      await onRefreshRecorrencia();
+    },
+    onError: (e: { message: string }) => toast.error(e.message),
+  });
+  const removerMarcaRecorrente = trpc.performanceComercial.deleteClienteOverride.useMutation({
+    onSuccess: async () => {
+      toast.success("Marca manual removida; a classificação automática foi restaurada.");
+      await onRefreshRecorrencia();
+    },
     onError: (e: { message: string }) => toast.error(e.message),
   });
 
@@ -637,6 +655,20 @@ function PropostaRow({ p, vendedor, onRefresh, showVendedor, faixasConfig }: {
                     </Tooltip>
                   </TooltipProvider>
                 )}
+                {p.clienteOverrideStatus === "recorrente" && (
+                  <TooltipProvider>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <span className="inline-flex items-center rounded-full border border-emerald-200 bg-emerald-50 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-700 cursor-default">
+                          Cliente recorrente
+                        </span>
+                      </TooltipTrigger>
+                      <TooltipContent side="top" className="text-xs">
+                        Classificação manual: não será sinalizado como novo ou para reativação.
+                      </TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
+                )}
                 {p.estadoCliente && (
                   <span className="flex-shrink-0 text-[10px] font-bold text-slate-500 bg-slate-100 border border-slate-200 rounded px-1" title={`Cliente em ${p.estadoCliente}`}>
                     {p.estadoCliente}
@@ -684,7 +716,7 @@ function PropostaRow({ p, vendedor, onRefresh, showVendedor, faixasConfig }: {
                     </Tooltip>
                   </TooltipProvider>
                 )}
-                {p.diasSemComprar != null && (
+                {p.diasSemComprar != null && p.clienteOverrideStatus !== "recorrente" && (
                   <TooltipProvider>
                     <Tooltip>
                       <TooltipTrigger asChild>
@@ -703,6 +735,22 @@ function PropostaRow({ p, vendedor, onRefresh, showVendedor, faixasConfig }: {
                       </TooltipContent>
                     </Tooltip>
                   </TooltipProvider>
+                )}
+              </div>
+              <div className="mt-1">
+                {p.clienteOverrideStatus === "recorrente" && p.clienteOverrideId != null ? (
+                  <Button size="sm" variant="ghost" className="h-6 px-1.5 text-[10px] text-muted-foreground"
+                    disabled={removerMarcaRecorrente.isPending}
+                    onClick={() => removerMarcaRecorrente.mutate({ id: p.clienteOverrideId! })}>
+                    {removerMarcaRecorrente.isPending ? <Spinner /> : "Desfazer marcação"}
+                  </Button>
+                ) : (
+                  <Button size="sm" variant="outline" className="h-6 gap-1 px-1.5 text-[10px]"
+                    disabled={marcarClienteRecorrente.isPending}
+                    onClick={() => marcarClienteRecorrente.mutate({ empresaOriginal: p.nomeCliente, status: "recorrente", motivo: "Marcação manual no CRM" })}>
+                    {marcarClienteRecorrente.isPending ? <Spinner /> : <CheckCircle2 className="h-3 w-3" />}
+                    Marcar recorrente
+                  </Button>
                 )}
               </div>
             </div>
@@ -1063,6 +1111,9 @@ export default function CRM() {
     { vendedor: vendedor || undefined },
     { refetchOnWindowFocus: false, retry: 1 }
   );
+  const atualizarClassificacaoClientes = async () => {
+    await Promise.all([refetch(), refetchSugestoes()]);
+  };
   const { data: faixasData } = trpc.crm.getFaixaEtiquetas.useQuery();
   const faixasConfig: Record<1 | 2 | 3, FaixaConfig> = faixasData ?? FAIXA_DEFAULTS_CLIENTE;
   const faixasOrdenadas = useMemo(() => [faixasConfig[1], faixasConfig[2], faixasConfig[3]], [faixasConfig]);
@@ -1447,7 +1498,7 @@ export default function CRM() {
                   <TableHead>Nº proposta</TableHead><TableHead>Cliente</TableHead><TableHead>Contato</TableHead><TableHead>Último contato</TableHead><TableHead>Próxima ação</TableHead>
                   {showVendedor && <TableHead>Vendedor</TableHead>}<TableHead>Agenda</TableHead><TableHead className="text-center">Perdida</TableHead><TableHead className="text-center">Ganha</TableHead>
                 </TableRow></TableHeader>
-                <TableBody>{propostasFila.map(p => <PropostaRow key={p.id} p={p} vendedor={vendedor || user?.name || ""} onRefresh={refetch} showVendedor={showVendedor} faixasConfig={faixasConfig} />)}</TableBody>
+                <TableBody>{propostasFila.map(p => <PropostaRow key={p.id} p={p} vendedor={vendedor || user?.name || ""} onRefresh={refetch} onRefreshRecorrencia={atualizarClassificacaoClientes} showVendedor={showVendedor} faixasConfig={faixasConfig} />)}</TableBody>
               </Table>
             )}
           </div>
@@ -1733,7 +1784,7 @@ export default function CRM() {
               </TableHeader>
               <TableBody>
                 {propostasAtivas.map(p => (
-                  <PropostaRow key={p.id} p={p} vendedor={vendedor || user?.name || ""} onRefresh={refetch} showVendedor={showVendedor} faixasConfig={faixasConfig} />
+                  <PropostaRow key={p.id} p={p} vendedor={vendedor || user?.name || ""} onRefresh={refetch} onRefreshRecorrencia={atualizarClassificacaoClientes} showVendedor={showVendedor} faixasConfig={faixasConfig} />
                 ))}
               </TableBody>
             </Table>
@@ -1917,7 +1968,7 @@ export default function CRM() {
                 </TableHeader>
                 <TableBody>
                   {propostasHistorico.map(p => (
-                    <PropostaRow key={p.id} p={p} vendedor={vendedor || user?.name || ""} onRefresh={refetch} showVendedor={showVendedor} faixasConfig={faixasConfig} />
+                    <PropostaRow key={p.id} p={p} vendedor={vendedor || user?.name || ""} onRefresh={refetch} onRefreshRecorrencia={atualizarClassificacaoClientes} showVendedor={showVendedor} faixasConfig={faixasConfig} />
                   ))}
                 </TableBody>
               </Table>

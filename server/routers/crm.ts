@@ -416,21 +416,22 @@ export const crmRouter = router({
         );
       const perdidasSet = new Set(perdidasDb.map(p => p.orcamentoId));
       const propostasFiltradas = propostas.filter(p => !perdidasSet.has(p.id));
-      // Identificar clientes com compra — usar banco local (historicoOs) para evitar falha de DNS
-      // Usar a mesma lógica do módulo Performance Comercial: .toLowerCase().trim() (sem normalização extra)
-      // O banco historico_os armazena nomes em MAIÚSCULAS sem acentos, então toLowerCase() é suficiente
+      // Identificar clientes com compra usando chaves normalizadas para tolerar
+      // acentos e pontuação diferentes entre ERP, O.S. e cadastro do cliente.
       const clientesComCompra = new Set<string>();
-      const overrideMap = new Map<string, "recorrente" | "novo">();
+      const overrideMap = new Map<string, { id: number; status: "recorrente" | "novo" }>();
       try {
         const osEntregues = await db.select({ empresa: historicoOs.empresa }).from(historicoOs);
         for (const row of osEntregues) {
           const nome = (row.empresa ?? "").trim();
-          if (nome) clientesComCompra.add(nome.toLowerCase());
+          const chave = normalizeEmpresaKey(nome);
+          if (chave) clientesComCompra.add(chave);
         }
         // Carregar overrides manuais (ex: cliente marcado como recorrente manualmente)
         const overrides = await db.select().from(clienteOverrides);
         for (const ov of overrides) {
-          overrideMap.set(ov.empresa, ov.status);
+          const chave = normalizeEmpresaKey(ov.empresa || ov.empresaOriginal || "");
+          if (chave) overrideMap.set(chave, { id: ov.id, status: ov.status });
         }
       } catch {
         // Se falhar, clientesComCompra fica vazio — nenhuma estrela será exibida (evita falso positivo)
@@ -481,9 +482,10 @@ export const crmRouter = router({
         const nomeCliente = typeof clienteRaw === "object" && clienteRaw !== null
           ? (clienteRaw as any)?.nome ?? (clienteRaw as any)?.razao_social ?? String(clienteRaw)
           : String(clienteRaw ?? empresaRaw ?? "");
-        const clienteKey = (nomeCliente || "").toLowerCase().trim();
+        const clienteKey = normalizeEmpresaKey(nomeCliente || "");
         // Verificar override manual: "recorrente" exclui estrela; "novo" força estrela
-        const overrideStatus = overrideMap.get(clienteKey);
+        const override = overrideMap.get(clienteKey);
+        const overrideStatus = override?.status;
         const isNovoByHistory = clientesComCompra.size > 0 && !clientesComCompra.has(clienteKey);
         const clienteNovo = overrideStatus === "recorrente" ? false
           : overrideStatus === "novo" ? true
@@ -508,13 +510,20 @@ export const crmRouter = router({
         if (segmentosProbabilidade) segmentosProbabilidadePorProposta.set(p.id, segmentosProbabilidade);
         const chaveCliente = normalizeEmpresaKey(nomeCliente);
         const conversaoCliente = mapaConversao?.porCliente.get(chaveCliente);
+        const clienteIdRaw = Number(orc?.cliente_id ?? (p as any).clienteId);
+        const clienteId = Number.isInteger(clienteIdRaw) && clienteIdRaw > 0 ? clienteIdRaw : null;
+        const ultimaCompraPorId = clienteId ? mapaConversao?.porClienteId.get(clienteId) ?? null : null;
+        const ultimaCompraPorNome = conversaoCliente?.ultimaCompra ?? null;
+        const ultimaCompra = !ultimaCompraPorId ? ultimaCompraPorNome
+          : !ultimaCompraPorNome || ultimaCompraPorId > ultimaCompraPorNome ? ultimaCompraPorId
+          : ultimaCompraPorNome;
         const qtdComprasCliente = conversaoCliente?.qtdCompras ?? 0;
         // Só faz sentido "dias sem comprar" para quem já comprou alguma vez —
         // cliente novo não tem essa métrica (ver clienteNovo acima).
-        const diasSemComprar = conversaoCliente?.ultimaCompra
-          ? Math.floor((Date.now() - conversaoCliente.ultimaCompra.getTime()) / (1000 * 60 * 60 * 24))
+        const diasSemComprar = ultimaCompra
+          ? Math.floor((Date.now() - ultimaCompra.getTime()) / (1000 * 60 * 60 * 24))
           : null;
-        const ultimaCompraEm = conversaoCliente?.ultimaCompra?.toISOString() ?? null;
+        const ultimaCompraEm = ultimaCompra?.toISOString() ?? null;
         const orcsHist = conversaoCliente?.orcNumeros ?? new Set<string>();
         const orcsAbertos = (chaveCliente ? orcsAbertosPorCliente.get(chaveCliente) : undefined) ?? new Set<string>();
         const todosOrcsDoCliente = new Set<string>([...orcsHist, ...orcsAbertos]);
@@ -528,7 +537,7 @@ export const crmRouter = router({
         const orcamentosFechados = Math.min(conversaoCliente?.orcamentosFechados ?? 0, totalCotacoes);
         const taxaConversao = calcularTaxaConversaoCliente(totalCotacoes, orcamentosFechados, conversaoCliente?.totalOrcamentos ?? 0);
 
-        return { ...p, telefone, nomeCliente, nomeContato: p.nomeContato ?? "", clienteNovo, probabilidadeCompra, probabilidadeExplicacao, qtdComprasCliente, totalCompras: qtdComprasCliente, diasSemComprar, ultimaCompraEm, totalCotacoes, orcamentosFechados, taxaConversao, orcamentosDesde: mapaConversao?.orcamentosDesde ?? null, estadoCliente, regiaoCliente };
+        return { ...p, telefone, nomeCliente, nomeContato: p.nomeContato ?? "", clienteNovo, clienteOverrideStatus: overrideStatus ?? null, clienteOverrideId: override?.id ?? null, probabilidadeCompra, probabilidadeExplicacao, qtdComprasCliente, totalCompras: qtdComprasCliente, diasSemComprar, ultimaCompraEm, totalCotacoes, orcamentosFechados, taxaConversao, orcamentosDesde: mapaConversao?.orcamentosDesde ?? null, estadoCliente, regiaoCliente };
       });
 
       // Primeira probabilidade entregue ao CRM por proposta. Snapshot imutável:
@@ -1380,8 +1389,17 @@ export const crmRouter = router({
       const contatadasEsteMes = await db.select().from(inteligenciaAcoesClientes)
         .where(and(...filtrosContatadas));
 
+      // Uma correção explícita para cliente recorrente prevalece sobre os sinais
+      // automáticos da fila até que o usuário remova essa marcação no CRM.
+      const overridesRecorrentes = await db.select({ empresa: clienteOverrides.empresa, empresaOriginal: clienteOverrides.empresaOriginal })
+        .from(clienteOverrides)
+        .where(eq(clienteOverrides.status, "recorrente"));
+      const empresasRecorrentes = new Set(overridesRecorrentes.map(ov => normalizeEmpresaKey(ov.empresa || ov.empresaOriginal || "")));
+      const sugestoesPendentes = pendentesRows.filter(a => !empresasRecorrentes.has(normalizeEmpresaKey(a.empresa ?? "")));
+      const sugestoesContatadas = contatadasEsteMes.filter(a => !empresasRecorrentes.has(normalizeEmpresaKey(a.empresa ?? "")));
+
       return {
-        sugestoes: pendentesRows.map(a => ({
+        sugestoes: sugestoesPendentes.map(a => ({
           id: a.id,
           tipo: a.tipo,
           empresa: a.empresa,
@@ -1390,7 +1408,7 @@ export const crmRouter = router({
           score: a.prioridade,
           evidencia: JSON.parse(a.evidenciaJson) as Record<string, unknown>,
         })),
-        contatadasEsteMes: contatadasEsteMes.length,
+        contatadasEsteMes: sugestoesContatadas.length,
       };
     }),
 
