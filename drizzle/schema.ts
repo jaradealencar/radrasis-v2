@@ -3249,6 +3249,7 @@ export type InsertCrmAtividadeLog = typeof crmAtividadeLog.$inferInsert;
 export const crmProbabilidadePrevisoes = pgTable("crm_probabilidade_previsoes", {
   id: serial("id").primaryKey(),
   orcNumero: varchar("orc_numero", { length: 32 }).notNull(),
+  mubisysOrcamentoId: varchar("mubisys_orcamento_id", { length: 32 }),
   dataProposta: timestamp("data_proposta"),
   exibidaEm: timestamp("exibida_em").defaultNow().notNull(),
   probabilidadePct: integer("probabilidade_pct").notNull(),
@@ -3265,6 +3266,7 @@ export const crmProbabilidadePrevisoes = pgTable("crm_probabilidade_previsoes", 
   createdAt: timestamp("created_at").defaultNow().notNull(),
 }, (table) => ({
   orcNumeroUnique: uniqueIndex("crm_probabilidade_previsoes_orc_numero_unique").on(table.orcNumero),
+  mubisysOrcamentoIdIdx: index("crm_probabilidade_previsoes_mubisys_id_idx").on(table.mubisysOrcamentoId),
   exibidaEmIdx: index("crm_probabilidade_previsoes_exibida_em_idx").on(table.exibidaEm),
   vendedorExibidaEmIdx: index("crm_probabilidade_previsoes_vendedor_exibida_em_idx").on(table.vendedor, table.exibidaEm),
 }));
