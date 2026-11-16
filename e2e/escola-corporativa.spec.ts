@@ -79,7 +79,7 @@ test("aluno se matricula, retoma prova e instrutor aplica uma avaliação", asyn
     .getByRole("button", { name: "Aplicar prova", exact: true })
     .click();
   await expect(
-    adminPage.getByText("2 tentativa(s) permitida(s)")
+    adminPage.getByText("2 tentativa(s) permitida(s)").first()
   ).toBeVisible();
   await adminContext.close();
 
