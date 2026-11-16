@@ -11,7 +11,7 @@ import {
   calcularFunilOrcamentos, calcularPrevisaoComercial, calcularRecompraNovosReativados, calcularTempoOrcamentoPedido,
   calcularConversaoPorFaixaTicket, calcularFunilMensal,
   montarContextoAssistenteClientes, PROMPT_ASSISTENTE_CLIENTES_V1, VERSAO_PROMPT_ASSISTENTE_CLIENTES,
-  DICIONARIO_METRICAS, DIAS_COOLDOWN_ACAO_RESOLVIDA, VERSAO_REGRA_ATUAL, parseDataFlexivel,
+  DICIONARIO_METRICAS, DIAS_COOLDOWN_ACAO_RESOLVIDA, VERSAO_REGRA_ATUAL, parseDataFlexivel, STATUS_ABERTO,
   type AnaliseCliente,
 } from "../services/inteligenciaClientes";
 import { calcularPainelMeta } from "../services/painelMeta";
@@ -1730,6 +1730,8 @@ type LinhaProbabilidadeVendedor = {
   situacaoDesfecho: SituacaoDesfechoMonitorado;
   origemDesfecho: "mubisys" | "crm" | "mubisys_e_crm" | "presumida" | null;
   aberta: boolean;
+  contatoRegistrado: boolean;
+  semContatoRegistrado7Dias: boolean;
   grupoCliente: "novo" | "antigo" | "desconhecido";
   faixaProbabilidade: string;
 };
@@ -1741,9 +1743,14 @@ type BucketProbabilidadeVendedor = {
   perdas: number;
   semDesfecho: number;
   abertas: number;
+  valorAbertas: number;
   perdasPresumidas: number;
   abertasNaValidade: number;
   abertasSemData: number;
+  abertasSemContato: number;
+  potencialSemContato: number;
+  abertasSemContatoRegistrado7Dias: number;
+  potencialSemContatoRegistrado7Dias: number;
   semHistorico: number;
   semStatus: number;
   statusAmbiguo: number;
@@ -1801,6 +1808,8 @@ function calcularBucketProbabilidadeVendedor(args: {
   const ganhos = decididas.filter(linha => linha.desfecho === 1);
   const perdas = decididas.filter(linha => linha.desfecho === 0);
   const abertas = linhas.filter(linha => linha.aberta);
+  const abertasSemContato = abertas.filter(linha => !linha.contatoRegistrado);
+  const abertasSemContatoRegistrado7Dias = abertas.filter(linha => linha.semContatoRegistrado7Dias);
   const decididasConsiderandoVencidas = linhas.filter(linha => linha.desfechoConsiderandoVencidas !== null);
   const ganhosConsiderandoVencidas = decididasConsiderandoVencidas.filter(linha => linha.desfechoConsiderandoVencidas === 1).length;
   const perdasPresumidas = linhas.filter(linha => linha.situacaoDesfecho === "perda_presumida_validade").length;
@@ -1880,11 +1889,18 @@ function calcularBucketProbabilidadeVendedor(args: {
     decididas: decididas.length,
     ganhos: ganhos.length,
     perdas: perdas.length,
-    semDesfecho: linhas.length - decididas.length - abertas.length - perdasPresumidas,
+    // Perdas presumidas por validade ainda são propostas abertas no ERP; a
+    // validade vencida é um alerta operacional, não um desfecho confirmado.
+    semDesfecho: linhas.length - decididas.length - abertas.length,
     abertas: abertas.length,
+    valorAbertas: arredondarProbabilidade(abertas.reduce((soma, linha) => soma + linha.valor, 0)),
     perdasPresumidas,
     abertasNaValidade,
     abertasSemData,
+    abertasSemContato: abertasSemContato.length,
+    potencialSemContato: arredondarProbabilidade(abertasSemContato.reduce((soma, linha) => soma + linha.probabilidade * linha.valor, 0)),
+    abertasSemContatoRegistrado7Dias: abertasSemContatoRegistrado7Dias.length,
+    potencialSemContatoRegistrado7Dias: arredondarProbabilidade(abertasSemContatoRegistrado7Dias.reduce((soma, linha) => soma + linha.probabilidade * linha.valor, 0)),
     semHistorico,
     semStatus,
     statusAmbiguo,
@@ -1915,12 +1931,16 @@ export const performanceComercialRouter = router({
   // desfecho explícito sincronizado depois. A comparação de colegas é por
   // faixa de probabilidade e coorte, para não comparar carteiras diferentes.
   getProbabilidadeVendedores: publicProcedure
-    .input(z.object({ mes: z.number().int().min(1).max(12), ano: z.number().int().min(2020).max(2100) }))
+    .input(z.object({
+      mes: z.number().int().min(1).max(12),
+      ano: z.number().int().min(2020).max(2100),
+      janelaMeses: z.union([z.literal(1), z.literal(3)]).default(3),
+    }))
     .query(async ({ input }) => {
       const db = await getDb();
       if (!db) {
         return {
-          periodo: { mes: input.mes, ano: input.ano },
+          periodo: { mes: input.mes, ano: input.ano, janelaMeses: input.janelaMeses },
           cobertura: {
             propostasNoHistorico: 0, propostasMonitoradas: 0, propostasCorrespondidas: 0,
             propostasSemScore: 0, snapshotsSemHistorico: 0, snapshotsComHistoricoAmbiguo: 0,
@@ -1957,9 +1977,15 @@ export const performanceComercialRouter = router({
       ]);
 
       const normalizarOrcNumero = (value: string | null | undefined) => String(value ?? "").trim();
+      const inicioPeriodo = new Date(input.ano, input.mes - input.janelaMeses, 1);
+      const fimPeriodo = new Date(input.ano, input.mes, 1);
+      const dentroPeriodo = (ano: number, mes: number) => {
+        const data = new Date(ano, mes - 1, 1);
+        return data >= inicioPeriodo && data < fimPeriodo;
+      };
       const historicosPorNumero = new Map<string, typeof historicoLinhas>();
       const numerosHistoricoMes = new Set(historicoLinhas
-        .filter(row => row.mes === input.mes && row.ano === input.ano)
+        .filter(row => dentroPeriodo(row.ano, row.mes))
         .map(row => normalizarOrcNumero(row.orcNumero))
         .filter(Boolean));
       for (const row of historicoLinhas) {
@@ -1975,21 +2001,23 @@ export const performanceComercialRouter = router({
         const dataBase = row.dataProposta
           ?? parseDataFlexivel(historico?.dataCadastro ?? null)
           ?? row.exibidaEm;
-        return dataBase.getFullYear() === input.ano && dataBase.getMonth() + 1 === input.mes;
+        return dataBase >= inicioPeriodo && dataBase < fimPeriodo;
       });
       const idsMubiSys = [...new Set(snapshotsDaCoorte
         .map(row => String(row.mubisysOrcamentoId ?? "").trim())
         .filter(Boolean))];
-      const contatosFinais = idsMubiSys.length
-        ? await db.select({ orcamentoId: crmContatos.orcamentoId, canal: crmContatos.canal })
+      const contatosMonitorados = idsMubiSys.length
+        ? await db.select({ orcamentoId: crmContatos.orcamentoId, canal: crmContatos.canal, contatadoEm: crmContatos.contatadoEm })
             .from(crmContatos)
-            .where(and(
-              inArray(crmContatos.orcamentoId, idsMubiSys),
-              inArray(crmContatos.canal, ["perdida", "garantiu_fechamento"]),
-            ))
+            .where(inArray(crmContatos.orcamentoId, idsMubiSys))
         : [];
       const desfechosCrmPorId = new Map<string, Array<0 | 1>>();
-      for (const contato of contatosFinais) {
+      const contatosPorId = new Map<string, typeof contatosMonitorados>();
+      for (const contato of contatosMonitorados) {
+        const registros = contatosPorId.get(contato.orcamentoId) ?? [];
+        registros.push(contato);
+        contatosPorId.set(contato.orcamentoId, registros);
+        if (contato.canal !== "perdida" && contato.canal !== "garantiu_fechamento") continue;
         const desfechos = desfechosCrmPorId.get(contato.orcamentoId) ?? [];
         desfechos.push(contato.canal === "garantiu_fechamento" ? 1 : 0);
         desfechosCrmPorId.set(contato.orcamentoId, desfechos);
@@ -2033,10 +2061,18 @@ export const performanceComercialRouter = router({
         const coorte = normalizarChaveProbabilidade(row.coorteCliente);
         const grupoCliente: LinhaProbabilidadeVendedor["grupoCliente"] = coorte === "sem compra anterior"
           ? "novo"
-          : coorte && coorte !== "coorte desconhecida"
+          : ["ate 2022", "2023-2024", "2025+"].includes(coorte)
             ? "antigo"
             : "desconhecido";
         const valor = Number(row.valorProposta ?? 0);
+        const contatosDaProposta = idMubiSys ? contatosPorId.get(idMubiSys) ?? [] : [];
+        const contatosRegulares = contatosDaProposta.filter(contato => contato.canal !== "perdida" && contato.canal !== "garantiu_fechamento");
+        const ultimoContato = contatosRegulares.reduce<Date | null>((maisRecente, contato) => {
+          const data = new Date(contato.contatadoEm);
+          return !maisRecente || data > maisRecente ? data : maisRecente;
+        }, null);
+        const statusAberto = normalizarChaveProbabilidade(historico?.status) === STATUS_ABERTO;
+        const atualizacaoAntiga = ultimoContato !== null && Date.now() - ultimoContato.getTime() > 7 * 24 * 60 * 60 * 1000;
         linhas.push({
           vendedor,
           vendedorKey,
@@ -2046,7 +2082,9 @@ export const performanceComercialRouter = router({
           desfechoConsiderandoVencidas: desfecho.desfechoConsiderandoVencidas,
           situacaoDesfecho: historicos.length > 1 && desfecho.origem !== "crm" ? "status_ambiguo" : desfecho.situacao,
           origemDesfecho: historicos.length > 1 && desfecho.origem !== "crm" ? null : desfecho.origem,
-          aberta: desfecho.situacao === "aberta_na_validade" || desfecho.situacao === "aberta_sem_data",
+          aberta: statusAberto && desfecho.desfecho === null,
+          contatoRegistrado: contatosRegulares.length > 0,
+          semContatoRegistrado7Dias: statusAberto && atualizacaoAntiga,
           grupoCliente,
           faixaProbabilidade: faixaProbabilidadeVendedor(score),
         });
@@ -2079,11 +2117,17 @@ export const performanceComercialRouter = router({
             vendedorKey,
             calcularBenchmark: true,
           }),
+          semCoorteConhecida: calcularBucketProbabilidadeVendedor({
+            linhas: grupo.linhas.filter(linha => linha.grupoCliente === "desconhecido"),
+            linhasParaBenchmark: linhas,
+            vendedorKey,
+            calcularBenchmark: true,
+          }),
         }))
         .sort((a, b) => b.geral.monitoradas - a.geral.monitoradas || a.vendedor.localeCompare(b.vendedor, "pt-BR"));
 
       return {
-        periodo: { mes: input.mes, ano: input.ano },
+        periodo: { mes: input.mes, ano: input.ano, janelaMeses: input.janelaMeses, inicioMes: inicioPeriodo.getMonth() + 1, inicioAno: inicioPeriodo.getFullYear() },
         cobertura: {
           propostasNoHistorico,
           propostasMonitoradas: propostasMonitoradasNumeros.size,
