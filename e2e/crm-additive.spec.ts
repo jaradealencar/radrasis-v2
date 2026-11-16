@@ -257,6 +257,14 @@ test("mantém propostas abertas e não inventa score para cliente novo sem calib
   expect(alturaLinhaNova).toBeLessThan(160);
   await expect(page.getByText("Cliente novo sem compras")).toBeVisible();
   await expect(page.getByText("2 cotações", { exact: true })).toBeVisible();
+  const faixas = page.getByTestId("faixas-acompanhamento").first();
+  await expect(faixas).toHaveCSS("flex-direction", "row");
+  const blocosFaixa = faixas.locator(":scope > div");
+  await expect(blocosFaixa).toHaveCount(3);
+  const posicoes = await blocosFaixa.evaluateAll(elementos =>
+    elementos.map(elemento => elemento.getBoundingClientRect().top)
+  );
+  expect(Math.max(...posicoes) - Math.min(...posicoes)).toBeLessThanOrEqual(1);
   await expect(page.getByText("0% conv.", { exact: true }).first()).toBeVisible();
   await expect(page.getByText("S/D", { exact: true }).first()).toBeVisible();
 

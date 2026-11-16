@@ -550,10 +550,10 @@ function PropostaRow({ p, vendedor, onRefresh, showVendedor, faixasConfig }: {
   // Renderiza apenas o conteúdo interno das datas (usado pelo ScriptsFaixaPopover)
   const renderFaixaContent = (faixaDates: Date[]) => (
     <>
-      <div className="text-[8px] text-center text-gray-400 mb-1.5 leading-tight">
+      <div className="text-[8px] text-center text-gray-400 mb-0.5 leading-tight">
         {faixaDates.map(dt => fmtShort(dt)).join(" ")}
       </div>
-      <div className="flex gap-1 justify-center">
+      <div className="flex flex-nowrap gap-1 justify-center">
         {faixaDates.map((dt, i) => {
           const key = toDateKey(dt);
           const contato = contatoMap[key];
@@ -770,10 +770,10 @@ function PropostaRow({ p, vendedor, onRefresh, showVendedor, faixasConfig }: {
         )}
 
         {/* Faixas agrupadas */}
-        <TableCell className="w-[414px] min-w-[414px] whitespace-normal px-1 py-1">
-          <div className="flex flex-nowrap gap-1 [&>div]:w-[134px] [&>div]:shrink-0 [&>div]:px-1.5 [&>div]:py-1">
+        <TableCell className="w-[414px] min-w-[414px] whitespace-normal px-1 py-0.5 align-top">
+          <div data-testid="faixas-acompanhamento" className="flex flex-row flex-nowrap items-start gap-1.5 [&>div]:w-[134px] [&>div]:shrink-0 [&>div]:px-1.5 [&>div]:py-1">
             <ScriptsFaixaPopover
-              faixa={1} label={faixasConfig[1].label} bgCls="bg-yellow-50 border-yellow-200"
+              compact faixa={1} label={faixasConfig[1].label} bgCls="bg-yellow-50 border-yellow-200"
               nomeCliente={nomeParaMensagem(p)}
               produto={`OS #${p.sequencial || p.id}`}
               valor={fmt(p.valor)}
@@ -783,7 +783,7 @@ function PropostaRow({ p, vendedor, onRefresh, showVendedor, faixasConfig }: {
               {renderFaixaContent(datasDaFaixa(dates, faixasConfig[1]))}
             </ScriptsFaixaPopover>
             <ScriptsFaixaPopover
-              faixa={2} label={faixasConfig[2].label} bgCls="bg-pink-50 border-pink-200"
+              compact faixa={2} label={faixasConfig[2].label} bgCls="bg-pink-50 border-pink-200"
               nomeCliente={nomeParaMensagem(p)}
               produto={`OS #${p.sequencial || p.id}`}
               valor={fmt(p.valor)}
@@ -793,7 +793,7 @@ function PropostaRow({ p, vendedor, onRefresh, showVendedor, faixasConfig }: {
               {renderFaixaContent(datasDaFaixa(dates, faixasConfig[2]))}
             </ScriptsFaixaPopover>
             <ScriptsFaixaPopover
-              faixa={3} label={faixasConfig[3].label} bgCls="bg-orange-50 border-orange-200"
+              compact faixa={3} label={faixasConfig[3].label} bgCls="bg-orange-50 border-orange-200"
               nomeCliente={nomeParaMensagem(p)}
               produto={`OS #${p.sequencial || p.id}`}
               valor={fmt(p.valor)}
@@ -989,6 +989,7 @@ export default function CRM() {
   const [apenasPendentesAcompanhamento, setApenasPendentesAcompanhamento] = useState(false);
   const [apenasHoje, setApenasHoje] = useState(false);
   const [filtroProbabilidade, setFiltroProbabilidade] = useState<"todas" | "alta" | "media" | "baixa">("todas");
+  const [filtroRegiao, setFiltroRegiao] = useState<FiltroRegiao>("todas");
   const [apenasMS, setApenasMS] = useState(false);
   const [ordenarPorProbabilidade, setOrdenarPorProbabilidade] = useState(false);
   const [filtroResposta, setFiltroResposta] = useState<string>("todos");
