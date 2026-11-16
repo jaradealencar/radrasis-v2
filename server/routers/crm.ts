@@ -20,7 +20,9 @@ import {
 import {
   construirModeloProbabilidadeCrm,
   calcularProbabilidadeCrmAprendida,
+  limitarScoreCrmClienteNovo,
   CRM_PROBABILITY_MIN_TRAINING_EXAMPLES,
+  CRM_PROBABILITY_NEW_CUSTOMER_MAX_PCT,
   CRM_PROBABILITY_MODEL_VERSION,
   classificarDesfechoExplicito,
 } from "../services/crmProbabilidadeModel";
@@ -485,7 +487,7 @@ export const crmRouter = router({
         const orcamentosFechados = Math.min(conversaoCliente?.orcamentosFechados ?? 0, totalCotacoes);
         const taxaConversao = calcularTaxaConversaoCliente(totalCotacoes, orcamentosFechados, conversaoCliente?.totalOrcamentos ?? 0);
 
-        const { probabilidade: probabilidadeCompra, explicacao: probabilidadeExplicacao, segmentos: segmentosProbabilidade } = modeloProbabilidade
+        const calculoProbabilidade = modeloProbabilidade
           ? calcularProbabilidadeCrmAprendida({
               modelo: modeloProbabilidade,
               nomeCliente,
@@ -496,6 +498,13 @@ export const crmRouter = router({
               taxaConversaoClientePct: taxaConversao,
             })
           : { probabilidade: null as number | null, explicacao: [] as string[], segmentos: null };
+        const probabilidadeCompra = limitarScoreCrmClienteNovo(calculoProbabilidade.probabilidade, clienteNovo);
+        const probabilidadeExplicacao = calculoProbabilidade.probabilidade !== null
+          && probabilidadeCompra !== null
+          && probabilidadeCompra < calculoProbabilidade.probabilidade
+          ? [...calculoProbabilidade.explicacao, `Teto final de segurança: o CRM classifica este cliente como novo; score limitado a ${CRM_PROBABILITY_NEW_CUSTOMER_MAX_PCT}%.`]
+          : calculoProbabilidade.explicacao;
+        const segmentosProbabilidade = calculoProbabilidade.segmentos;
         if (segmentosProbabilidade) segmentosProbabilidadePorProposta.set(p.id, segmentosProbabilidade);
 
         return { ...p, telefone, nomeCliente, nomeContato: p.nomeContato ?? "", clienteNovo, probabilidadeCompra, probabilidadeExplicacao, qtdComprasCliente, totalCompras: qtdComprasCliente, diasSemComprar, ultimaCompraEm, totalCotacoes, orcamentosFechados, taxaConversao, orcamentosDesde: mapaConversao?.orcamentosDesde ?? null, estadoCliente, regiaoCliente };

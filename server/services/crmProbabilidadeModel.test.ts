@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   calcularProbabilidadeCrmAprendida,
+  limitarScoreCrmClienteNovo,
   CRM_PROBABILITY_FEATURE_NAMES,
   CRM_PROBABILITY_MIN_TRAINING_EXAMPLES,
   CRM_PROBABILITY_MIN_NEW_CUSTOMER_CALIBRATION_EXAMPLES,
@@ -45,6 +46,13 @@ function modeloVazio(): ModeloProbabilidadeCrm {
 }
 
 describe("modelo de probabilidade do CRM", () => {
+  it("aplica o teto final de 30% sempre que a lista classifica a proposta como cliente novo", () => {
+    expect(limitarScoreCrmClienteNovo(53, true)).toBe(30);
+    expect(limitarScoreCrmClienteNovo(30, true)).toBe(30);
+    expect(limitarScoreCrmClienteNovo(53, false)).toBe(53);
+    expect(limitarScoreCrmClienteNovo(null, true)).toBeNull();
+  });
+
   it.each([
     ["faturado", 1],
     ["concluído", 1],

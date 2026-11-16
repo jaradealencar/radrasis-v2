@@ -33,8 +33,14 @@ export const CRM_PROBABILITY_MIN_TRAINING_EXAMPLES = 300;
 /** Score de cliente sem compras só é exibido com calibração temporal própria do segmento. */
 export const CRM_PROBABILITY_MIN_NEW_CUSTOMER_CALIBRATION_EXAMPLES = 100;
 const CRM_PROBABILITY_NEW_CUSTOMER_MAX_UPLIFT_PP = 15;
-const CRM_PROBABILITY_NEW_CUSTOMER_MAX_PCT = 30;
+export const CRM_PROBABILITY_NEW_CUSTOMER_MAX_PCT = 30;
 const CRM_PROBABILITY_CLIENT_CONVERSION_MAX_UPLIFT_PP = 15;
+
+/** Defesa final para qualquer proposta que o CRM apresente como cliente novo. */
+export function limitarScoreCrmClienteNovo(probabilidade: number | null, clienteNovo: boolean): number | null {
+  if (probabilidade === null || !clienteNovo) return probabilidade;
+  return Math.min(CRM_PROBABILITY_NEW_CUSTOMER_MAX_PCT, probabilidade);
+}
 
 const NUMERIC_FEATURES = [
   "ticketLog", "idadeEmpresaLog", "recenciaCompraMesesLog", "frequenciaRfm12mLog",
