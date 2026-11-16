@@ -965,7 +965,7 @@ export default function CRM() {
   const [apenasHoje, setApenasHoje] = useState(false);
   const [filtroProbabilidade, setFiltroProbabilidade] = useState<"todas" | "alta" | "media" | "baixa">("todas");
   const [filtroRegiao, setFiltroRegiao] = useState("todas");
-  const [ordenarPorProbabilidade, setOrdenarPorProbabilidade] = useState(false);
+  const [ordenacaoPropostas, setOrdenacaoPropostas] = useState<"padrao" | "probabilidade" | "valor">("padrao");
   const [filtroResposta, setFiltroResposta] = useState<string>("todos");
   const [filtroFaixa, setFiltroFaixa] = useState<string>("todas");
   // Mantém Propostas como tela inicial; os painéis novos ficam disponíveis
@@ -1122,9 +1122,10 @@ export default function CRM() {
     }
     if (filtroRegiao === "MS") list = list.filter(p => p.estadoCliente === "MS");
     else if (filtroRegiao !== "todas") list = list.filter(p => p.regiaoCliente === filtroRegiao);
-    if (ordenarPorProbabilidade) list = [...list].sort((a, b) => (b.probabilidadeCompra ?? -1) - (a.probabilidadeCompra ?? -1));
+    if (ordenacaoPropostas === "valor") list = [...list].sort((a, b) => (b.valor ?? 0) - (a.valor ?? 0));
+    else if (ordenacaoPropostas === "probabilidade") list = [...list].sort((a, b) => (b.probabilidadeCompra ?? -1) - (a.probabilidadeCompra ?? -1));
     return list;
-  }, [propostas, buscaPropostas, apenasNovos, apenasSemCompra6Meses, apenasPendentesAcompanhamento, apenasHoje, filtroResposta, filtroFaixa, filtroProbabilidade, filtroRegiao, ordenarPorProbabilidade, faixasConfig]);
+  }, [propostas, buscaPropostas, apenasNovos, apenasSemCompra6Meses, apenasPendentesAcompanhamento, apenasHoje, filtroResposta, filtroFaixa, filtroProbabilidade, filtroRegiao, ordenacaoPropostas, faixasConfig]);
 
   const propostasHistorico = useMemo(() => propostas.filter(p => p.meta2Contatos), [propostas]);
   const showVendedor = !vendedor;
@@ -1561,11 +1562,21 @@ export default function CRM() {
                 <SelectItem value="baixa">🔴 Baixa (&lt;25%)</SelectItem>
               </SelectContent>
             </Select>
-            <button onClick={() => setOrdenarPorProbabilidade(v => !v)}
+            <button onClick={() => setOrdenacaoPropostas(v => v === "probabilidade" ? "padrao" : "probabilidade")}
               className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-full border transition-all h-9 ${
-                ordenarPorProbabilidade ? "bg-green-600 text-white border-green-600 shadow-sm" : "bg-white text-gray-600 border-gray-300 hover:border-green-500"
+                ordenacaoPropostas === "probabilidade" ? "bg-green-600 text-white border-green-600 shadow-sm" : "bg-white text-gray-600 border-gray-300 hover:border-green-500"
               }`}>
-              <TrendingUp className="w-3.5 h-3.5" /> {ordenarPorProbabilidade ? "Ordenado ✕" : "Ordenar"}
+              <TrendingUp className="w-3.5 h-3.5" /> {ordenacaoPropostas === "probabilidade" ? "Ordenado ✕" : "Ordenar"}
+            </button>
+            <button
+              type="button"
+              aria-pressed={ordenacaoPropostas === "valor"}
+              title="Ordenar propostas do maior para o menor valor"
+              onClick={() => setOrdenacaoPropostas(v => v === "valor" ? "padrao" : "valor")}
+              className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-full border transition-all h-9 ${
+                ordenacaoPropostas === "valor" ? "bg-blue-600 text-white border-blue-600 shadow-sm" : "bg-white text-gray-600 border-gray-300 hover:border-blue-500"
+              }`}>
+              R$ {ordenacaoPropostas === "valor" ? "Maior Valor ✕" : "Maior Valor"}
             </button>
           </div>
         </div>
