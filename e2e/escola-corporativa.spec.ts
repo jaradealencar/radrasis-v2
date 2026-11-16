@@ -522,7 +522,9 @@ test("pratica mostra correcoes apenas nas opcoes julgadas errado", async ({
     })
   );
 
-  await page.getByRole("button", { name: "Praticar", exact: true }).click();
+  await page
+    .getByRole("button", { name: /^(Praticar|Retomar pr\u00e1tica)$/ })
+    .click();
   await expect(page.getByText("Quais opcoes estao corretas?")).toBeVisible();
   await page.getByRole("checkbox", { name: "Opcao certa marcada" }).check();
   await page.getByRole("checkbox", { name: "Opcao errada marcada" }).check();
