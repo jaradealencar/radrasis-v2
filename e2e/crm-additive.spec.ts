@@ -104,6 +104,11 @@ const crmData = {
 
 function respostaProcedimento(path: string) {
   if (path === "crm.getPropostas") return crmData;
+  if (path === "performanceComercial.upsertClienteOverride") {
+    const clienteMarcado = propostasAbertas.find(proposta => proposta.clienteNovo);
+    if (clienteMarcado) clienteMarcado.clienteNovo = false;
+    return { ok: true };
+  }
   if (path === "crm.getVendedores") return [{ nome: "Vendedora de teste" }];
   if (path === "crm.getSugestoesContato") return { sugestoes: [] };
   if (path === "crm.getFaixaEtiquetas") {
@@ -300,6 +305,11 @@ test("mantém propostas abertas e não inventa score para cliente novo sem calib
   await expect(page.getByText("#30001")).toBeVisible();
   await expect(page.getByText("#30002")).toBeHidden();
   await expect(page.getByRole("button", { name: /Todas as abertas/ })).toBeVisible();
+
+  await page.getByRole("button", { name: "Clientes novos" }).click();
+  await expect(page.getByText("#30001")).toBeVisible();
+  await page.getByRole("button", { name: "Marcar Cliente novo sem compras como recorrente" }).click();
+  await expect(page.getByText("#30001")).toBeHidden();
 });
 
 test("mantém os indicadores gerais e remove a tabela vendedor na previsão", async ({ page }) => {
