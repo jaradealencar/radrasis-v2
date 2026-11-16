@@ -91,6 +91,7 @@ type Proposta = {
   taxaConversao?: number | null;
   orcamentosDesde?: string | null;
   estadoCliente: string | null;
+  regiaoCliente: string | null;
 };
 
 // Limiar de compras a partir do qual o cliente é elegível a parcelamento (regra do usuário)
@@ -963,7 +964,7 @@ export default function CRM() {
   const [apenasPendentesAcompanhamento, setApenasPendentesAcompanhamento] = useState(false);
   const [apenasHoje, setApenasHoje] = useState(false);
   const [filtroProbabilidade, setFiltroProbabilidade] = useState<"todas" | "alta" | "media" | "baixa">("todas");
-  const [apenasMS, setApenasMS] = useState(false);
+  const [filtroRegiao, setFiltroRegiao] = useState("todas");
   const [ordenarPorProbabilidade, setOrdenarPorProbabilidade] = useState(false);
   const [filtroResposta, setFiltroResposta] = useState<string>("todos");
   const [filtroFaixa, setFiltroFaixa] = useState<string>("todas");
@@ -1119,10 +1120,11 @@ export default function CRM() {
         return prob < 25; // baixa
       });
     }
-    if (apenasMS) list = list.filter(p => p.estadoCliente === "MS");
+    if (filtroRegiao === "MS") list = list.filter(p => p.estadoCliente === "MS");
+    else if (filtroRegiao !== "todas") list = list.filter(p => p.regiaoCliente === filtroRegiao);
     if (ordenarPorProbabilidade) list = [...list].sort((a, b) => (b.probabilidadeCompra ?? -1) - (a.probabilidadeCompra ?? -1));
     return list;
-  }, [propostas, buscaPropostas, apenasNovos, apenasSemCompra6Meses, apenasPendentesAcompanhamento, apenasHoje, filtroResposta, filtroFaixa, filtroProbabilidade, apenasMS, ordenarPorProbabilidade, faixasConfig]);
+  }, [propostas, buscaPropostas, apenasNovos, apenasSemCompra6Meses, apenasPendentesAcompanhamento, apenasHoje, filtroResposta, filtroFaixa, filtroProbabilidade, filtroRegiao, ordenarPorProbabilidade, faixasConfig]);
 
   const propostasHistorico = useMemo(() => propostas.filter(p => p.meta2Contatos), [propostas]);
   const showVendedor = !vendedor;
@@ -1567,15 +1569,21 @@ export default function CRM() {
             </button>
           </div>
         </div>
-        {/* Filtro por estado do cliente (MS) */}
+        {/* Filtro geográfico: região calculada no servidor a partir da UF do cliente */}
         <div className="flex flex-col gap-1">
-          <label className="text-xs font-semibold text-transparent select-none">.</label>
-          <button onClick={() => setApenasMS(v => !v)}
-            className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-full border transition-all h-9 ${
-              apenasMS ? "bg-slate-700 text-white border-slate-700 shadow-sm" : "bg-white text-gray-600 border-gray-300 hover:border-slate-500"
-            }`}>
-            {apenasMS ? "Só MS ✕" : "Só MS"}
-          </button>
+          <label className="text-xs font-semibold text-muted-foreground">Região</label>
+          <Select value={filtroRegiao} onValueChange={setFiltroRegiao}>
+            <SelectTrigger className="h-9 text-sm w-56"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="todas">Todas as regiões</SelectItem>
+              <SelectItem value="Centro-Oeste">Centro-Oeste (DF, GO, MS, MT)</SelectItem>
+              <SelectItem value="Sudeste">Sudeste (ES, MG, RJ, SP)</SelectItem>
+              <SelectItem value="Sul">Sul (PR, RS, SC)</SelectItem>
+              <SelectItem value="Nordeste">Nordeste (AL, BA, CE, MA, PB, PE, PI, RN, SE)</SelectItem>
+              <SelectItem value="Norte">Norte (AC, AM, AP, PA, RO, RR, TO)</SelectItem>
+              <SelectItem value="MS">Somente Mato Grosso do Sul (MS)</SelectItem>
+            </SelectContent>
+          </Select>
         </div>
       </div>
 
