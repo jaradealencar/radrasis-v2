@@ -179,13 +179,39 @@ export function enriquecerPropostaComContatos(o: any, contatos: CrmContato[]) {
   const contatosOrc: any[] = Array.isArray(o.cliente_contato) ? o.cliente_contato : [];
   const primeiroContatoOrc = contatosOrc[0];
   const nomeContato = primeiroContatoOrc?.nome_contato ?? primeiroContatoOrc?.nome ?? "";
+  const numeroFinanceiro = (valor: unknown): number => {
+    if (typeof valor === "number") return Number.isFinite(valor) ? valor : 0;
+    const texto = String(valor ?? "").trim();
+    if (!texto) return 0;
+    const normalizado = texto.includes(",")
+      ? texto.lastIndexOf(",") > texto.lastIndexOf(".")
+        ? texto.replace(/\./g, "").replace(",", ".")
+        : texto.replace(/,/g, "")
+      : texto;
+    const numero = Number(normalizado);
+    return Number.isFinite(numero) ? numero : 0;
+  };
+  const custo = numeroFinanceiro(o.valor_custo);
+  const margem = numeroFinanceiro(o.valor_margem);
+  const valorPeloCustoEMargem = custo + margem;
+  const valorDosItens = Array.isArray(o.itens)
+    ? o.itens.reduce((total: number, item: any) => total + numeroFinanceiro(item?.valor_total), 0)
+    : 0;
+  // Orçamentos abertos podem trazer `valor_total` com um valor parcial. Use a
+  // composição comercial do ERP (a mesma regra do Performance Comercial); se
+  // ela não estiver disponível, some as linhas e só então use o total bruto.
+  const valorProposta = valorPeloCustoEMargem > 0
+    ? valorPeloCustoEMargem
+    : valorDosItens > 0
+      ? valorDosItens
+      : numeroFinanceiro(o.valor_total);
   return {
     id: orcId,
     sequencial: o.sequencial_orcamento,
     nomeContato,
     empresa: o.empresa,
     vendedor: o.vendedor,
-    valor: parseFloat(o.valor_total ?? "0"),
+    valor: valorProposta,
     dataCriacao: o.data_cadastro,
     diasAberto: diasCriado,
     janela: janelaSugerida(diasCriado),
