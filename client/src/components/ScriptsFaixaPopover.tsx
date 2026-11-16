@@ -45,6 +45,8 @@ interface Props {
   label: string;
   bgCls: string;
   children: React.ReactNode;
+  /** Compacta a faixa quando ela é exibida junto às demais na linha da proposta. */
+  compact?: boolean;
   // Dados da proposta para substituição de variáveis
   nomeCliente?: string;
   produto?: string;
@@ -536,7 +538,7 @@ function AddScriptForm({ faixa, onAdded }: { faixa: number; onAdded: () => void 
 }
 
 // ─── Popover principal ────────────────────────────────────────────────────────
-export function ScriptsFaixaPopover({ faixa, label, bgCls, children, nomeCliente, produto, valor, vendedor, whatsappLink }: Props) {
+export function ScriptsFaixaPopover({ faixa, label, bgCls, children, nomeCliente, produto, valor, vendedor, whatsappLink, compact = false }: Props) {
   const [open, setOpen] = useState(false);
   const [localOrder, setLocalOrder] = useState<number[]>([]);
   const colors = FAIXA_COLORS[faixa];
@@ -606,11 +608,11 @@ export function ScriptsFaixaPopover({ faixa, label, bgCls, children, nomeCliente
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
         <div
-          className={`rounded-lg border px-2 py-1.5 cursor-pointer hover:ring-2 hover:ring-offset-1 hover:ring-blue-400 transition-all ${bgCls}`}
+          className={`rounded-lg border cursor-pointer hover:ring-2 hover:ring-offset-1 hover:ring-blue-400 transition-all ${compact ? "w-[128px] shrink-0 p-1" : "px-2 py-1.5"} ${bgCls}`}
           title={`Ver scripts de vendas — ${label}`}
         >
-          <div className="flex items-center gap-1 mb-1">
-            <div className="text-[9px] font-bold text-center text-gray-500 uppercase tracking-wide flex-1">{label}</div>
+          <div className={`flex items-center gap-1 ${compact ? "mb-0.5" : "mb-1"}`}>
+            <div className={`${compact ? "text-[8px]" : "text-[9px]"} font-bold text-center text-gray-500 uppercase tracking-wide flex-1`}>{label}</div>
             <MessageSquareText className="w-3 h-3 text-gray-400 flex-shrink-0" />
           </div>
           {children}

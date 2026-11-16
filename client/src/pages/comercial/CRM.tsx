@@ -550,10 +550,10 @@ function PropostaRow({ p, vendedor, onRefresh, showVendedor, faixasConfig }: {
   // Renderiza apenas o conteúdo interno das datas (usado pelo ScriptsFaixaPopover)
   const renderFaixaContent = (faixaDates: Date[]) => (
     <>
-      <div className="text-[8px] text-center text-gray-400 mb-1.5 leading-tight">
+      <div className="text-[8px] text-center text-gray-400 mb-0.5 leading-tight">
         {faixaDates.map(dt => fmtShort(dt)).join(" ")}
       </div>
-      <div className="flex gap-1 justify-center">
+      <div className="flex flex-nowrap gap-1 justify-center">
         {faixaDates.map((dt, i) => {
           const key = toDateKey(dt);
           const contato = contatoMap[key];
@@ -569,7 +569,7 @@ function PropostaRow({ p, vendedor, onRefresh, showVendedor, faixasConfig }: {
                   setObs(contato.obs ?? "");
                 }}
                 title={`${canalInfo.label} — clique para alterar`}
-                className="w-6 h-6 rounded flex items-center justify-center text-sm hover:opacity-70 transition-opacity cursor-pointer bg-white border border-gray-200 shadow-sm"
+                className="w-5 h-5 rounded flex items-center justify-center text-xs hover:opacity-70 transition-opacity cursor-pointer bg-white border border-gray-200 shadow-sm"
               >{canalInfo.emoji}</button>
             );
           }
@@ -578,10 +578,10 @@ function PropostaRow({ p, vendedor, onRefresh, showVendedor, faixasConfig }: {
             <button key={i}
               onClick={(e) => { e.stopPropagation(); setModalContato({ date: dt }); setPedindoRemocao(false); setRespostaSelecionada(null); setObs(""); }}
               title={`Registrar contato em ${fmtShort(dt)}`}
-              className={`w-6 h-6 rounded border-2 bg-white active:scale-95 transition-all cursor-pointer flex items-center justify-center ${
+              className={`w-5 h-5 rounded border-2 bg-white active:scale-95 transition-all cursor-pointer flex items-center justify-center ${
                 isFuture ? "border-blue-200 hover:border-blue-400 hover:bg-blue-50 text-blue-400" : "border-gray-300 hover:border-blue-500 hover:bg-blue-50"
               }`}
-            ><span className="text-[7px] font-bold text-gray-500 leading-tight">{fmtShort(dt)}</span></button>
+            ><span className="text-[6px] font-bold text-gray-500 leading-tight">{fmtShort(dt)}</span></button>
           );
         })}
       </div>
@@ -592,7 +592,7 @@ function PropostaRow({ p, vendedor, onRefresh, showVendedor, faixasConfig }: {
     <>
       <TableRow className={`transition-colors ${rowBg}`}>
         {/* Nº OS */}
-        <TableCell>
+        <TableCell className="w-[82px] px-1.5 py-1">
           <a href={urlOrcamentoMubiSys(p.id)} target="_blank" rel="noopener noreferrer"
             className="text-blue-600 hover:text-blue-800 font-bold text-sm underline underline-offset-2"
             title="Abrir este orçamento no MubiSys">
@@ -602,15 +602,15 @@ function PropostaRow({ p, vendedor, onRefresh, showVendedor, faixasConfig }: {
         </TableCell>
 
         {/* Miniatura / Razão Social */}
-        <TableCell className="min-w-[170px] whitespace-normal">
-          <div className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-full flex items-center justify-center text-white text-xs font-bold flex-shrink-0"
+        <TableCell className="w-[230px] min-w-0 whitespace-normal px-1.5 py-1">
+          <div className="flex items-center gap-1.5">
+            <div className="w-7 h-7 rounded-full flex items-center justify-center text-white text-[10px] font-bold flex-shrink-0"
               style={{ backgroundColor: `hsl(${(p.nomeCliente.charCodeAt(0) * 47) % 360}, 60%, 45%)` }}>
               {p.nomeCliente.slice(0, 2).toUpperCase()}
             </div>
             <div className="min-w-0">
               <div className="flex items-center gap-1">
-                <span className="font-semibold text-sm leading-tight truncate max-w-[120px]" title={p.nomeCliente}>{p.nomeCliente}</span>
+                <span className="font-semibold text-sm leading-tight truncate max-w-[112px]" title={p.nomeCliente}>{p.nomeCliente}</span>
                 {p.clienteNovo && (
                   <TooltipProvider>
                     <Tooltip>
@@ -645,7 +645,7 @@ function PropostaRow({ p, vendedor, onRefresh, showVendedor, faixasConfig }: {
                   </span>
                 )}
               </div>
-              <div className="flex items-center gap-1.5 flex-wrap">
+              <div className="flex items-center gap-1 flex-wrap">
                 <span className="text-xs text-muted-foreground">{fmt(p.valor)}</span>
                 <ProbabilidadeBadge p={p.probabilidadeCompra} explicacao={p.probabilidadeExplicacao} />
                 <CotacoesBadge total={p.totalCotacoes} clienteNovo={p.clienteNovo} />
@@ -712,7 +712,7 @@ function PropostaRow({ p, vendedor, onRefresh, showVendedor, faixasConfig }: {
         </TableCell>
 
         {/* Nome do Contato / WhatsApp */}
-        <TableCell className="min-w-[140px] whitespace-normal">
+        <TableCell className="w-[120px] min-w-0 whitespace-normal px-1.5 py-1">
           <div className="text-sm font-medium">{p.nomeContato || "—"}</div>
           {waLink && (
             <WhatsAppScriptsPopover
@@ -734,7 +734,7 @@ function PropostaRow({ p, vendedor, onRefresh, showVendedor, faixasConfig }: {
           )}
         </TableCell>
 
-        <TableCell className="min-w-[125px]">
+        <TableCell className="w-[105px] min-w-0 whitespace-normal px-1.5 py-1">
           {ultimoContato ? (
             <>
               <div className="text-xs font-medium">{fmtDate(ultimoContato.data)}</div>
@@ -743,7 +743,7 @@ function PropostaRow({ p, vendedor, onRefresh, showVendedor, faixasConfig }: {
           ) : <span className="text-xs text-amber-700 font-medium">Ainda não contatado</span>}
         </TableCell>
 
-        <TableCell className="min-w-[145px]">
+        <TableCell className="w-[120px] min-w-0 whitespace-normal px-1.5 py-1">
           <span className={`inline-flex rounded-full border px-2 py-0.5 text-[10px] font-semibold ${acaoCor}`}>{proximaAcao.rotulo}</span>
           {proximaAcao.data && <div className="mt-1 text-[10px] text-muted-foreground">{fmtShort(proximaAcao.data)}</div>}
           <button
@@ -764,16 +764,16 @@ function PropostaRow({ p, vendedor, onRefresh, showVendedor, faixasConfig }: {
 
         {/* Vendedor (quando "todos") */}
         {showVendedor && (
-          <TableCell>
+          <TableCell className="w-[115px] px-1.5 py-1">
             <span className="text-xs font-medium text-blue-600 bg-blue-50 px-2 py-0.5 rounded-full border border-blue-100">{p.vendedor}</span>
           </TableCell>
         )}
 
         {/* Faixas agrupadas */}
-        <TableCell className="whitespace-normal">
-          <div className="flex gap-1.5 flex-wrap">
+        <TableCell className="w-[414px] min-w-[414px] whitespace-normal px-1 py-0.5 align-top">
+          <div data-testid="faixas-acompanhamento" className="flex flex-row flex-nowrap items-start gap-1.5">
             <ScriptsFaixaPopover
-              faixa={1} label={faixasConfig[1].label} bgCls="bg-yellow-50 border-yellow-200"
+              compact faixa={1} label={faixasConfig[1].label} bgCls="bg-yellow-50 border-yellow-200"
               nomeCliente={nomeParaMensagem(p)}
               produto={`OS #${p.sequencial || p.id}`}
               valor={fmt(p.valor)}
@@ -783,7 +783,7 @@ function PropostaRow({ p, vendedor, onRefresh, showVendedor, faixasConfig }: {
               {renderFaixaContent(datasDaFaixa(dates, faixasConfig[1]))}
             </ScriptsFaixaPopover>
             <ScriptsFaixaPopover
-              faixa={2} label={faixasConfig[2].label} bgCls="bg-pink-50 border-pink-200"
+              compact faixa={2} label={faixasConfig[2].label} bgCls="bg-pink-50 border-pink-200"
               nomeCliente={nomeParaMensagem(p)}
               produto={`OS #${p.sequencial || p.id}`}
               valor={fmt(p.valor)}
@@ -793,7 +793,7 @@ function PropostaRow({ p, vendedor, onRefresh, showVendedor, faixasConfig }: {
               {renderFaixaContent(datasDaFaixa(dates, faixasConfig[2]))}
             </ScriptsFaixaPopover>
             <ScriptsFaixaPopover
-              faixa={3} label={faixasConfig[3].label} bgCls="bg-orange-50 border-orange-200"
+              compact faixa={3} label={faixasConfig[3].label} bgCls="bg-orange-50 border-orange-200"
               nomeCliente={nomeParaMensagem(p)}
               produto={`OS #${p.sequencial || p.id}`}
               valor={fmt(p.valor)}
@@ -806,20 +806,20 @@ function PropostaRow({ p, vendedor, onRefresh, showVendedor, faixasConfig }: {
         </TableCell>
 
         {/* Perdida */}
-        <TableCell className="text-center">
+        <TableCell className="w-[56px] px-1 py-1 text-center">
           <button onClick={() => marcarPerdida.mutate({ orcamentoId: p.id, vendedor: vendedor || p.vendedor, empresa: p.nomeCliente })}
             disabled={marcarPerdida.isPending}
-            className="w-8 h-8 rounded-full bg-red-100 hover:bg-red-200 text-red-600 flex items-center justify-center mx-auto transition-colors"
+            className="w-7 h-7 rounded-full bg-red-100 hover:bg-red-200 text-red-600 flex items-center justify-center mx-auto transition-colors"
             title="Marcar como perdida">
             {marcarPerdida.isPending ? <Spinner className="size-3.5" /> : <XCircle className="w-3.5 h-3.5" />}
           </button>
         </TableCell>
 
         {/* Venci */}
-        <TableCell className="text-center">
+        <TableCell className="w-[56px] px-1 py-1 text-center">
           <button onClick={() => marcarGanha.mutate({ orcamentoId: p.id, vendedor: vendedor || p.vendedor, empresa: p.nomeCliente })}
             disabled={marcarGanha.isPending}
-            className="w-8 h-8 rounded-full bg-green-100 hover:bg-green-200 text-green-600 flex items-center justify-center mx-auto transition-colors"
+            className="w-7 h-7 rounded-full bg-green-100 hover:bg-green-200 text-green-600 flex items-center justify-center mx-auto transition-colors"
             title="Marcar como ganha">
             {marcarGanha.isPending ? <Spinner className="size-3.5" /> : <Trophy className="w-3.5 h-3.5" />}
           </button>
@@ -989,6 +989,7 @@ export default function CRM() {
   const [apenasPendentesAcompanhamento, setApenasPendentesAcompanhamento] = useState(false);
   const [apenasHoje, setApenasHoje] = useState(false);
   const [filtroProbabilidade, setFiltroProbabilidade] = useState<"todas" | "alta" | "media" | "baixa">("todas");
+  const [filtroRegiao, setFiltroRegiao] = useState<FiltroRegiao>("todas");
   const [apenasMS, setApenasMS] = useState(false);
   const [ordenarPorProbabilidade, setOrdenarPorProbabilidade] = useState(false);
   const [filtroResposta, setFiltroResposta] = useState<string>("todos");
@@ -1679,7 +1680,7 @@ export default function CRM() {
 
       {/* Tabela principal */}
       <div className="bg-white border rounded-xl shadow-sm overflow-hidden">
-        <div className="px-5 py-3 border-b flex items-center justify-between">
+        <div className="px-4 py-2.5 border-b flex items-center justify-between">
           <h2 className="font-bold text-sm flex items-center gap-2">
             Propostas em Aberto <Badge variant="secondary">{propostasAtivas.length}</Badge>
           </h2>
@@ -1712,18 +1713,18 @@ export default function CRM() {
             </EmptyHeader>
           </Empty>
         ) : (
-          <Table>
+          <Table className={`table-fixed ${showVendedor ? "min-w-[1298px]" : "min-w-[1183px]"} [&_th]:h-9 [&_th]:px-1.5 [&_th]:py-1 [&_th]:text-[11px] [&_th]:leading-tight [&_td]:px-1.5 [&_td]:py-1`}>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Nº OS</TableHead>
-                  <TableHead>Miniatura / Razão Social</TableHead>
-                  <TableHead>Nome do Cliente</TableHead>
-                  <TableHead>Último contato</TableHead>
-                  <TableHead>Próxima ação</TableHead>
-                  {showVendedor && <TableHead>Vendedor</TableHead>}
-                  <TableHead>Faixas de Acompanhamento</TableHead>
-                  <TableHead className="text-center">Perdida</TableHead>
-                  <TableHead className="text-center">Venci</TableHead>
+                  <TableHead className="w-[82px] whitespace-normal">Nº OS</TableHead>
+                  <TableHead className="w-[230px] whitespace-normal">Miniatura / Razão Social</TableHead>
+                  <TableHead className="w-[120px] whitespace-normal">Nome do Cliente</TableHead>
+                  <TableHead className="w-[105px] whitespace-normal">Último contato</TableHead>
+                  <TableHead className="w-[120px] whitespace-normal">Próxima ação</TableHead>
+                  {showVendedor && <TableHead className="w-[115px] whitespace-normal">Vendedor</TableHead>}
+                  <TableHead className="w-[414px] whitespace-normal">Faixas de Acompanhamento</TableHead>
+                  <TableHead className="w-[56px] whitespace-normal text-center">Perdida</TableHead>
+                  <TableHead className="w-[56px] whitespace-normal text-center">Venci</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
