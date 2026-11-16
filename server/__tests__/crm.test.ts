@@ -3,7 +3,11 @@ import {
   filtrarPorDiaDeCadastro, intervaloDaFatia, mesclarFatia, ordemDasFatias, numFatias,
 } from "../sync/crm-abertos-cache";
 import { classificarCandidatasExclusao } from "../sync/limpeza-crm-antigas";
-import { enriquecerPropostaComContatos } from "../routers/crm";
+import {
+  classificarClienteNovoCrm,
+  enriquecerPropostaComContatos,
+  indexarClientesComCompraCrm,
+} from "../routers/crm";
 import type { CrmContato } from "../../drizzle/schema";
 
 // Mock do módulo de banco de dados
@@ -30,6 +34,16 @@ vi.mock("../_core/llm", () => ({
 }));
 
 describe("CRM — Lógica de negócio", () => {
+  describe("classificação de cliente com histórico de compras", () => {
+    it("reconhece grafias com acentos e pontuação diferentes entre ERP e histórico", () => {
+      const clientesComCompra = indexarClientesComCompraCrm(["MÚBISYS, LTDA."]);
+
+      expect(classificarClienteNovoCrm("MubiSys Ltda", clientesComCompra)).toBe(false);
+      expect(classificarClienteNovoCrm("MubiSys Ltda", clientesComCompra, "novo")).toBe(true);
+      expect(classificarClienteNovoCrm("MubiSys Ltda", clientesComCompra, "recorrente")).toBe(false);
+    });
+  });
+
   describe("Cálculo de janela de tempo", () => {
     function calcularJanela(diasAberto: number): string {
       if (diasAberto <= 3) return "urgente";
