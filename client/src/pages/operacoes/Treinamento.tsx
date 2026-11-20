@@ -646,11 +646,15 @@ function FeedbackPanel({
     feedback.audioText ||
     [
       feedback.selectedText ? `Sua escolha: ${feedback.selectedText}` : "",
-      feedback.expectedAnswer
+      !hideExpectedAnswer && feedback.expectedAnswer
         ? `Resposta esperada: ${feedback.expectedAnswer}`
         : "",
       feedback.explanation,
       ...(feedback.details ?? []),
+      ...(feedback.corrections ?? []).map(
+        (item: any) =>
+          `Na opção ${item.text}, o correto era ${item.expectedAnswer.toLowerCase()}. ${item.feedback ?? ""}`
+      ),
     ]
       .filter(Boolean)
       .join(". ");
@@ -702,6 +706,49 @@ function FeedbackPanel({
       )}
     </div>
   );
+}
+
+function OptionCorrection({ correction }: { correction: any }) {
+  const action = correction.expectedAnswer.toLowerCase();
+  return (
+    <div
+      role="status"
+      className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm leading-6 text-amber-950"
+    >
+      <p className="font-semibold">
+        Correção: o correto era {action} esta opção.
+      </p>
+      {correction.feedback && <p className="mt-1">{correction.feedback}</p>}
+    </div>
+  );
+}
+
+function MultipleSelectCorrections({ corrections }: { corrections: any[] }) {
+  if (!corrections.length) return null;
+  return (
+    <div className="mt-3 space-y-2">
+      {corrections.map(correction => (
+        <div
+          key={correction.id}
+          className="rounded-xl border border-amber-200 bg-amber-50/50 p-3"
+        >
+          <p className="mb-2 text-sm font-medium text-slate-900">
+            {correction.text}
+          </p>
+          <OptionCorrection correction={correction} />
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function multipleSelectCorrectionAudio(corrections: any[]) {
+  return corrections
+    .map(
+      correction =>
+        `Na opção ${correction.text}, o correto era ${correction.expectedAnswer.toLowerCase()}. ${correction.feedback ?? ""}`
+    )
+    .join(" ");
 }
 
 function TrainingAdmin({ onChanged }: { onChanged: () => void }) {
@@ -4932,12 +4979,18 @@ export default function Treinamento() {
                         : item.selected}
                     </p>
                   )}
-                {item.type !== "yes_no_matrix" && (
-                  <p className="mt-2 text-sm text-slate-600">
-                    <strong>Resposta esperada / orientação:</strong>{" "}
-                    {item.expectedAnswer}
-                  </p>
+                {item.type === "multiple_select" && (
+                  <MultipleSelectCorrections
+                    corrections={item.optionCorrections ?? []}
+                  />
                 )}
+                {item.type !== "yes_no_matrix" &&
+                  item.type !== "multiple_select" && (
+                    <p className="mt-2 text-sm text-slate-600">
+                      <strong>Resposta esperada / orientação:</strong>{" "}
+                      {item.expectedAnswer}
+                    </p>
+                  )}
                 {item.explanation && (
                   <p className="mt-2 text-sm text-slate-600">
                     {item.explanation}
@@ -4955,7 +5008,11 @@ export default function Treinamento() {
                                 `Correção. ${response.text}. Resposta esperada: ${response.expectedAnswer}. ${response.feedback ?? ""}`
                             )
                             .join(" ")
-                        : item.expectedAnswer,
+                        : item.type === "multiple_select"
+                          ? multipleSelectCorrectionAudio(
+                              item.optionCorrections ?? []
+                            )
+                          : item.expectedAnswer,
                       ...(item.details ?? []),
                     ]
                       .filter(Boolean)
@@ -5413,32 +5470,42 @@ export default function Treinamento() {
                     const checked = isMulti
                       ? Array.isArray(selected) && selected.includes(option.id)
                       : selected === option.id;
+                    const correction =
+                      currentQuestion.type === "multiple_select"
+                        ? (answerResult?.feedback?.corrections ?? []).find(
+                            (item: any) => item.id === option.id
+                          )
+                        : null;
                     return (
-                      <label
-                        key={option.id}
-                        className={`flex cursor-pointer items-start gap-3 rounded-xl border p-4 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md ${checked ? "border-primary bg-primary/5" : "border-slate-200 bg-white hover:border-sky-200 hover:bg-sky-50/40"}`}
-                      >
-                        <input
-                          className="mt-1 accent-primary"
-                          type={isMulti ? "checkbox" : "radio"}
-                          name={`q-${currentQuestion.key}`}
-                          checked={checked}
-                          disabled={
-                            submitted || Boolean(answerResult && !isScenario)
-                          }
-                          onChange={() =>
-                            isMulti
-                              ? toggleMulti(option.id)
-                              : setSelected(option.id)
-                          }
-                        />
-                        <span className="text-sm leading-6">
-                          {currentQuestion.type === "sum" && (
-                            <strong className="mr-1">{option.value}.</strong>
-                          )}
-                          {option.text}
-                        </span>
-                      </label>
+                      <div key={option.id} className="space-y-2">
+                        <label
+                          className={`flex cursor-pointer items-start gap-3 rounded-xl border p-4 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md ${correction ? "border-amber-300 bg-amber-50/50" : checked ? "border-primary bg-primary/5" : "border-slate-200 bg-white hover:border-sky-200 hover:bg-sky-50/40"}`}
+                        >
+                          <input
+                            className="mt-1 accent-primary"
+                            type={isMulti ? "checkbox" : "radio"}
+                            name={`q-${currentQuestion.key}`}
+                            checked={checked}
+                            disabled={
+                              submitted || Boolean(answerResult && !isScenario)
+                            }
+                            onChange={() =>
+                              isMulti
+                                ? toggleMulti(option.id)
+                                : setSelected(option.id)
+                            }
+                          />
+                          <span className="text-sm leading-6">
+                            {currentQuestion.type === "sum" && (
+                              <strong className="mr-1">{option.value}.</strong>
+                            )}
+                            {option.text}
+                          </span>
+                        </label>
+                        {correction && (
+                          <OptionCorrection correction={correction} />
+                        )}
+                      </div>
                     );
                   })}
                 </div>
@@ -5461,8 +5528,12 @@ export default function Treinamento() {
             {answerResult?.feedback && (
               <FeedbackPanel
                 feedback={answerResult.feedback}
-                hideExpectedAnswer={isYesNoMatrix}
-                hideDetails={isYesNoMatrix}
+                hideExpectedAnswer={
+                  isYesNoMatrix || currentQuestion.type === "multiple_select"
+                }
+                hideDetails={
+                  isYesNoMatrix || currentQuestion.type === "multiple_select"
+                }
               />
             )}
             {attempt.mode === "formal" && !finalResult && answerResult && (
@@ -6058,11 +6129,17 @@ export default function Treinamento() {
                               </p>
                             )
                           )}
-                          {item.type !== "yes_no_matrix" && (
-                            <p className="mt-2 text-sm">
-                              <strong>Esperado:</strong> {item.expectedAnswer}
-                            </p>
+                          {item.type === "multiple_select" && (
+                            <MultipleSelectCorrections
+                              corrections={item.optionCorrections ?? []}
+                            />
                           )}
+                          {item.type !== "yes_no_matrix" &&
+                            item.type !== "multiple_select" && (
+                              <p className="mt-2 text-sm">
+                                <strong>Esperado:</strong> {item.expectedAnswer}
+                              </p>
+                            )}
                           {item.explanation && (
                             <p className="mt-2 text-sm text-muted-foreground">
                               {item.explanation}
@@ -6082,7 +6159,11 @@ export default function Treinamento() {
                                           `Correção. ${response.text}. Resposta esperada: ${response.expectedAnswer}. ${response.feedback ?? ""}`
                                       )
                                       .join(" ")
-                                  : item.expectedAnswer,
+                                  : item.type === "multiple_select"
+                                    ? multipleSelectCorrectionAudio(
+                                        item.optionCorrections ?? []
+                                      )
+                                    : item.expectedAnswer,
                                 ...(item.details ?? []),
                               ]
                                 .filter(Boolean)

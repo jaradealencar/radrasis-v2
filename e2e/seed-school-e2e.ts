@@ -108,12 +108,12 @@ async function main() {
     })
     .from(schema.trainingAssessments)
     .where(
-      eq(schema.trainingAssessments.title, "Closer · Atendimento consultivo")
+      eq(schema.trainingAssessments.title, "Atendimento Novo Cliente · Primeira compra")
     )
     .limit(1);
   if (!assessment) {
     throw new Error(
-      "The published Closer assessment was not found after migrations."
+      "The published Atendimento Novo Cliente · Primeira compra assessment was not found after migrations."
     );
   }
 

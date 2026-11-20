@@ -99,6 +99,9 @@ export interface MubiSysOrcamento {
   data_cadastro: string;
   data_aprovacao: string | null;
   valor_total: number;
+  /** Campos usados para recompor o valor comercial de orçamentos em aberto. */
+  valor_custo?: number | string | null;
+  valor_margem?: number | string | null;
   vendedor: string;
   itens: Array<{
     item: string;

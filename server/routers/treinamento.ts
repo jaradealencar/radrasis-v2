@@ -23,6 +23,7 @@ import {
 } from "../../drizzle/schema";
 import { canRoleAccessPage, getDb } from "../db/db";
 import { protectedProcedure, requireRole, router } from "../_core/trpc";
+import { buildMultipleSelectCorrections } from "../services/treinamentoFeedback";
 import { extrairTextoDoPop } from "../services/treinamentoPop";
 
 const MODE = ["practice", "formal"] as const;
@@ -916,10 +917,8 @@ function evaluateQuestion(question: SnapshotQuestion, response: unknown) {
         ? 1
         : 0;
     expectedAnswer = correct.map(option => option.text).join("; ");
-    details = options.map(
-      option =>
-        `${option.correct ? "Correta" : "Não é a escolha esperada"}: ${option.text}${option.feedback ? ` — ${option.feedback}` : ""}`
-    );
+    details = [];
+    corrections = buildMultipleSelectCorrections(options, selected);
   } else if (question.type === "yes_no_matrix") {
     const statements = config.statements ?? [];
     const correctCount = statements.reduce(
@@ -1264,7 +1263,13 @@ function questionFeedback(
     selected,
     expectedAnswer: result.expectedAnswer,
     explanation: result.explanation,
-    details: question.type === "yes_no_matrix" ? [] : result.details,
+    details:
+      question.type === "yes_no_matrix" || question.type === "multiple_select"
+        ? []
+        : result.details,
+    ...(question.type === "multiple_select"
+      ? { optionCorrections: result.corrections }
+      : {}),
     ...(question.type === "yes_no_matrix"
       ? {
           statementResponses: (question.config.statements ?? []).map(

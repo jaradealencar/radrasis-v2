@@ -111,6 +111,10 @@ export interface ConversaoCliente {
 
 export interface MapaConversaoClientes {
   porCliente: Map<string, ConversaoCliente>;
+  /** Última compra estimada a partir de orçamento ganho, indexada pelo ID
+   * estável do cliente no MubiSys. Complementa a chave por razão social, que
+   * pode variar entre o cadastro e o histórico de O.S. */
+  porClienteId: Map<number, Date>;
   /** Taxa de conversão agregada de toda a carteira (fallback para amostra pequena). */
   taxaGeral: number;
   /** Mês ("MM/AAAA") do orçamento mais antigo em historico_orcamentos — a taxa de conversão
@@ -209,6 +213,7 @@ type DbClient = { select: Function };
 export async function construirMapaConversaoClientes(db: any): Promise<MapaConversaoClientes> {
   const linhas = await db.select({
     empresa: historicoOrcamentos.empresa,
+    clienteId: historicoOrcamentos.clienteId,
     status: historicoOrcamentos.status,
     total: historicoOrcamentos.total,
     dataCadastro: historicoOrcamentos.dataCadastro,
@@ -219,15 +224,24 @@ export async function construirMapaConversaoClientes(db: any): Promise<MapaConve
 
   const porCliente = new Map<string, { total: number; fechados: number; somaValor: number; qtdComValor: number; ultimaCompra: Date | null; orcNumeros: Set<string> }>();
   const orcamentosGanhos: OrcGanhoParaContagem[] = [];
+  const ultimaCompraPorClienteId = new Map<number, Date>();
   let totalGeral = 0;
   let fechadosGeral = 0;
 
-  for (const r of linhas as Array<{ empresa: string | null; status: string | null; total: string | null; dataCadastro: string | null; orcNumero: string | null; mes: number; ano: number }>) {
+  for (const r of linhas as Array<{ empresa: string | null; clienteId: number | null; status: string | null; total: string | null; dataCadastro: string | null; orcNumero: string | null; mes: number; ano: number }>) {
     const empresaKey = normalizeEmpresaKey(r.empresa ?? "");
     if (!empresaKey) continue;
     const fechou = STATUS_GANHO.has((r.status ?? "").trim().toLowerCase());
     const valor = r.total != null ? parseFloat(r.total) : NaN;
-    if (fechou) orcamentosGanhos.push({ empresa: r.empresa, mes: r.mes, ano: r.ano });
+    if (fechou) {
+      orcamentosGanhos.push({ empresa: r.empresa, mes: r.mes, ano: r.ano });
+      const clienteId = Number(r.clienteId);
+      const dataCompra = parseDataFlexivel(r.dataCadastro);
+      if (Number.isInteger(clienteId) && clienteId > 0 && dataCompra) {
+        const atual = ultimaCompraPorClienteId.get(clienteId);
+        if (!atual || dataCompra > atual) ultimaCompraPorClienteId.set(clienteId, dataCompra);
+      }
+    }
 
     let acc = porCliente.get(empresaKey);
     if (!acc) {
@@ -302,7 +316,12 @@ export async function construirMapaConversaoClientes(db: any): Promise<MapaConve
   }
 
   const taxaGeral = totalGeral > 0 ? (fechadosGeral / totalGeral) * 100 : 0;
-  return { porCliente: resultado, taxaGeral, orcamentosDesde: primeiroMesDoHistorico(linhas as Array<{ mes: number; ano: number }>) };
+  return {
+    porCliente: resultado,
+    porClienteId: ultimaCompraPorClienteId,
+    taxaGeral,
+    orcamentosDesde: primeiroMesDoHistorico(linhas as Array<{ mes: number; ano: number }>),
+  };
 }
 
 /** Amostra mínima (ganhos+perdidos) para confiar na taxa de conversão de uma

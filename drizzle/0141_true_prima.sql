@@ -1,0 +1,1 @@
+ALTER TYPE "public"."crm_canal" ADD VALUE 'relacionamento';

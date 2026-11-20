@@ -3,7 +3,7 @@ import { TRPCError } from "@trpc/server";
 import { protectedProcedure, requireRole, router } from "../_core/trpc";
 import { invokeLLM } from "../_core/llm";
 import { getDb } from "../db/db";
-import { crmMetas, crmContatos, historicoOrcamentos, crmProbabilidadePrevisoes, clienteOverrides, crmScripts, crmFaixaEtiquetas, crmAtividadeLog, inteligenciaAcoesClientes } from "../../drizzle/schema";
+import { crmMetas, crmContatos, historicoOs, historicoOrcamentos, crmProbabilidadePrevisoes, clienteOverrides, crmScripts, crmFaixaEtiquetas, crmAtividadeLog, inteligenciaAcoesClientes } from "../../drizzle/schema";
 import type { CrmContato } from "../../drizzle/schema";
 import {
   CACHE_KEY_ABERTOS_PADRAO,
@@ -20,11 +20,11 @@ import {
 import {
   construirModeloProbabilidadeCrm,
   calcularProbabilidadeCrmAprendida,
-  limitarScoreCrmClienteNovo,
   CRM_PROBABILITY_MIN_TRAINING_EXAMPLES,
   CRM_PROBABILITY_NEW_CUSTOMER_MAX_PCT,
   CRM_PROBABILITY_MODEL_VERSION,
   classificarDesfechoExplicito,
+  limitarScoreCrmClienteNovo,
 } from "../services/crmProbabilidadeModel";
 import {
   construirPainelProbabilidade,
@@ -181,13 +181,39 @@ export function enriquecerPropostaComContatos(o: any, contatos: CrmContato[]) {
   const contatosOrc: any[] = Array.isArray(o.cliente_contato) ? o.cliente_contato : [];
   const primeiroContatoOrc = contatosOrc[0];
   const nomeContato = primeiroContatoOrc?.nome_contato ?? primeiroContatoOrc?.nome ?? "";
+  const numeroFinanceiro = (valor: unknown): number => {
+    if (typeof valor === "number") return Number.isFinite(valor) ? valor : 0;
+    const texto = String(valor ?? "").trim();
+    if (!texto) return 0;
+    const normalizado = texto.includes(",")
+      ? texto.lastIndexOf(",") > texto.lastIndexOf(".")
+        ? texto.replace(/\./g, "").replace(",", ".")
+        : texto.replace(/,/g, "")
+      : texto;
+    const numero = Number(normalizado);
+    return Number.isFinite(numero) ? numero : 0;
+  };
+  const custo = numeroFinanceiro(o.valor_custo);
+  const margem = numeroFinanceiro(o.valor_margem);
+  const valorPeloCustoEMargem = custo + margem;
+  const valorDosItens = Array.isArray(o.itens)
+    ? o.itens.reduce((total: number, item: any) => total + numeroFinanceiro(item?.valor_total), 0)
+    : 0;
+  // Orçamentos abertos podem trazer `valor_total` com um valor parcial. Use a
+  // composição comercial do ERP (a mesma regra do Performance Comercial); se
+  // ela não estiver disponível, some as linhas e só então use o total bruto.
+  const valorProposta = valorPeloCustoEMargem > 0
+    ? valorPeloCustoEMargem
+    : valorDosItens > 0
+      ? valorDosItens
+      : numeroFinanceiro(o.valor_total);
   return {
     id: orcId,
     sequencial: o.sequencial_orcamento,
     nomeContato,
     empresa: o.empresa,
     vendedor: o.vendedor,
-    valor: parseFloat(o.valor_total ?? "0"),
+    valor: valorProposta,
     dataCriacao: o.data_cadastro,
     diasAberto: diasCriado,
     janela: janelaSugerida(diasCriado),
@@ -392,18 +418,17 @@ export const crmRouter = router({
         );
       const perdidasSet = new Set(perdidasDb.map(p => p.orcamentoId));
       const propostasFiltradas = propostas.filter(p => !perdidasSet.has(p.id));
-      // Overrides e compras usam a mesma chave normalizada do modelo.
-      // Pontuação e acentos não podem fazer a tela e o score classificarem
-      // o mesmo cliente de formas diferentes.
-      const overrideMap = new Map<string, "recorrente" | "novo">();
+      // Overrides manuais são indexados pela mesma chave normalizada usada pelo
+      // mapa de compras e pelo modelo. A classificação padrão usa somente compras válidas.
+      const overrideMap = new Map<string, { id: number; status: "recorrente" | "novo" }>();
       try {
-        // Carregar overrides manuais (ex: cliente marcado como recorrente manualmente)
         const overrides = await db.select().from(clienteOverrides);
         for (const ov of overrides) {
-          overrideMap.set(normalizeEmpresaKey(ov.empresa), ov.status);
+          const chave = normalizeEmpresaKey(ov.empresa || ov.empresaOriginal || "");
+          if (chave) overrideMap.set(chave, { id: ov.id, status: ov.status });
         }
       } catch {
-        // Sem override disponível, a classificação usa as compras válidas do histórico.
+        // Se a tabela de overrides estiver indisponível, a classificação usa as compras válidas.
       }
       // O score é específico de cada proposta e é reajustado a partir dos
       // desfechos históricos: ticket, idade da empresa (quando vinculada ao
@@ -451,31 +476,42 @@ export const crmRouter = router({
         const nomeCliente = typeof clienteRaw === "object" && clienteRaw !== null
           ? (clienteRaw as any)?.nome ?? (clienteRaw as any)?.razao_social ?? String(clienteRaw)
           : String(clienteRaw ?? empresaRaw ?? "");
-        const chaveCliente = normalizeEmpresaKey(nomeCliente);
-        const conversaoCliente = mapaConversao?.porCliente.get(chaveCliente);
+        const clienteKey = normalizeEmpresaKey(nomeCliente || "");
+        const conversaoCliente = mapaConversao?.porCliente.get(clienteKey);
         const qtdComprasCliente = conversaoCliente?.qtdCompras ?? 0;
-        // O mapa compartilhado conta compras válidas e usa a mesma chave
-        // normalizada que o modelo de probabilidade.
+        // Verificar override manual: "recorrente" exclui estrela; "novo" força estrela
+        const override = overrideMap.get(clienteKey);
+        const overrideStatus = override?.status;
         const isNovoByHistory = mapaConversao !== null && qtdComprasCliente === 0;
-        const overrideStatus = overrideMap.get(chaveCliente);
         const clienteNovo = overrideStatus === "recorrente" ? false
           : overrideStatus === "novo" ? true
           : isNovoByHistory;
         // cliente_endereco vem no próprio orçamento (confirmado em produção, 12/09/2026) —
         // mesmo formato do endereço em MubiSysOS, apesar de não estar no tipo MubiSysOrcamento.
         // normalizarUf rejeita lixo (variações, texto vazio) — melhor null do que uma UF inválida.
-        const estadoCliente: string | null = Array.isArray((orc as any)?.cliente_endereco)
-          ? normalizarUf((orc as any).cliente_endereco[0]?.estado)
+        const enderecoCliente = Array.isArray((orc as any)?.cliente_endereco)
+          ? (orc as any).cliente_endereco[0]
+          : (orc as any)?.cliente_endereco ?? null;
+        const estadoCliente: string | null = normalizarUf(enderecoCliente?.estado);
+        const cidadeCliente = typeof enderecoCliente?.cidade === "string"
+          ? enderecoCliente.cidade.trim() || null
           : null;
         const regiaoCliente = estadoCliente ? (UF_PARA_REGIAO[estadoCliente] ?? null) : null;
+        const clienteIdRaw = Number(orc?.cliente_id ?? (p as any).clienteId);
+        const clienteId = Number.isInteger(clienteIdRaw) && clienteIdRaw > 0 ? clienteIdRaw : null;
+        const ultimaCompraPorId = clienteId ? mapaConversao?.porClienteId.get(clienteId) ?? null : null;
+        const ultimaCompraPorNome = conversaoCliente?.ultimaCompra ?? null;
+        const ultimaCompra = !ultimaCompraPorId ? ultimaCompraPorNome
+          : !ultimaCompraPorNome || ultimaCompraPorId > ultimaCompraPorNome ? ultimaCompraPorId
+          : ultimaCompraPorNome;
         // Só faz sentido "dias sem comprar" para quem já comprou alguma vez —
         // cliente novo não tem essa métrica (ver clienteNovo acima).
-        const diasSemComprar = conversaoCliente?.ultimaCompra
-          ? Math.floor((Date.now() - conversaoCliente.ultimaCompra.getTime()) / (1000 * 60 * 60 * 24))
+        const diasSemComprar = ultimaCompra
+          ? Math.floor((Date.now() - ultimaCompra.getTime()) / (1000 * 60 * 60 * 24))
           : null;
-        const ultimaCompraEm = conversaoCliente?.ultimaCompra?.toISOString() ?? null;
+        const ultimaCompraEm = ultimaCompra?.toISOString() ?? null;
         const orcsHist = conversaoCliente?.orcNumeros ?? new Set<string>();
-        const orcsAbertos = (chaveCliente ? orcsAbertosPorCliente.get(chaveCliente) : undefined) ?? new Set<string>();
+        const orcsAbertos = clienteKey ? orcsAbertosPorCliente.get(clienteKey) ?? new Set<string>() : new Set<string>();
         const todosOrcsDoCliente = new Set<string>([...orcsHist, ...orcsAbertos]);
         // Mesmo orçamento: o histórico (e os abertos) identificam pelo sequencial; o id interno
         // do MubiSys só vale quando não há sequencial — somar os dois contava a proposta em dobro.
@@ -498,16 +534,18 @@ export const crmRouter = router({
               taxaConversaoClientePct: taxaConversao,
             })
           : { probabilidade: null as number | null, explicacao: [] as string[], segmentos: null };
+        // Defesa final: evita score alto se a classificação atual do CRM sabe que
+        // não há compra válida anterior, mesmo quando o modelo usa outra coorte.
         const probabilidadeCompra = limitarScoreCrmClienteNovo(calculoProbabilidade.probabilidade, clienteNovo);
         const probabilidadeExplicacao = calculoProbabilidade.probabilidade !== null
           && probabilidadeCompra !== null
           && probabilidadeCompra < calculoProbabilidade.probabilidade
-          ? [...calculoProbabilidade.explicacao, `Teto final de segurança: o CRM classifica este cliente como novo; score limitado a ${CRM_PROBABILITY_NEW_CUSTOMER_MAX_PCT}%.`]
+          ? [...calculoProbabilidade.explicacao, `Teto final de segurança: cliente novo limitado a ${CRM_PROBABILITY_NEW_CUSTOMER_MAX_PCT}%.`]
           : calculoProbabilidade.explicacao;
         const segmentosProbabilidade = calculoProbabilidade.segmentos;
         if (segmentosProbabilidade) segmentosProbabilidadePorProposta.set(p.id, segmentosProbabilidade);
 
-        return { ...p, telefone, nomeCliente, nomeContato: p.nomeContato ?? "", clienteNovo, probabilidadeCompra, probabilidadeExplicacao, qtdComprasCliente, totalCompras: qtdComprasCliente, diasSemComprar, ultimaCompraEm, totalCotacoes, orcamentosFechados, taxaConversao, orcamentosDesde: mapaConversao?.orcamentosDesde ?? null, estadoCliente, regiaoCliente };
+        return { ...p, telefone, nomeCliente, nomeContato: p.nomeContato ?? "", clienteNovo, clienteOverrideStatus: overrideStatus ?? null, clienteOverrideId: override?.id ?? null, probabilidadeCompra, probabilidadeExplicacao, qtdComprasCliente, totalCompras: qtdComprasCliente, diasSemComprar, ultimaCompraEm, totalCotacoes, orcamentosFechados, taxaConversao, orcamentosDesde: mapaConversao?.orcamentosDesde ?? null, cidadeCliente, estadoCliente, regiaoCliente };
       });
 
       // Primeira probabilidade entregue ao CRM por proposta. Snapshot imutável:
@@ -522,7 +560,7 @@ export const crmRouter = router({
             const dataProposta = parseDate(proposta.dataCriacao);
             return [{
               orcNumero,
-              mubisysOrcamentoId: String(proposta.id).trim() || null,
+              mubisysOrcamentoId: String(proposta.id ?? "").trim() || null,
               dataProposta,
               probabilidadePct: proposta.probabilidadeCompra,
               modeloVersao: CRM_PROBABILITY_MODEL_VERSION,
@@ -815,7 +853,7 @@ export const crmRouter = router({
     .input(z.object({
       orcamentoId: z.string(),
       data: z.string(), // ISO string da data do contato a alterar (mesmo lookup de desfazarContato)
-      canal: z.enum(["nao_retornou", "esperando_cliente", "garantiu_fechamento", "aguardando_resposta"]),
+      canal: z.enum(["nao_retornou", "esperando_cliente", "relacionamento", "garantiu_fechamento", "aguardando_resposta"]),
       observacao: z.string().nullable().optional(),
     }))
     .mutation(async ({ ctx, input }) => {
@@ -919,7 +957,7 @@ export const crmRouter = router({
       orcamentoId: z.string(),
       empresa: z.string(),
       vendedor: z.string(),
-      canal: z.enum(["nao_retornou", "esperando_cliente", "garantiu_fechamento", "aguardando_resposta"]),
+      canal: z.enum(["nao_retornou", "esperando_cliente", "relacionamento", "garantiu_fechamento", "aguardando_resposta"]),
       observacao: z.string().nullable().optional(),
       dataContato: z.string().optional(), // ISO string da data clicada
     }))
@@ -1363,8 +1401,17 @@ export const crmRouter = router({
       const contatadasEsteMes = await db.select().from(inteligenciaAcoesClientes)
         .where(and(...filtrosContatadas));
 
+      // Uma correção explícita para cliente recorrente prevalece sobre os sinais
+      // automáticos da fila até que o usuário remova essa marcação no CRM.
+      const overridesRecorrentes = await db.select({ empresa: clienteOverrides.empresa, empresaOriginal: clienteOverrides.empresaOriginal })
+        .from(clienteOverrides)
+        .where(eq(clienteOverrides.status, "recorrente"));
+      const empresasRecorrentes = new Set(overridesRecorrentes.map(ov => normalizeEmpresaKey(ov.empresa || ov.empresaOriginal || "")));
+      const sugestoesPendentes = pendentesRows.filter(a => !empresasRecorrentes.has(normalizeEmpresaKey(a.empresa ?? "")));
+      const sugestoesContatadas = contatadasEsteMes.filter(a => !empresasRecorrentes.has(normalizeEmpresaKey(a.empresa ?? "")));
+
       return {
-        sugestoes: pendentesRows.map(a => ({
+        sugestoes: sugestoesPendentes.map(a => ({
           id: a.id,
           tipo: a.tipo,
           empresa: a.empresa,
@@ -1373,7 +1420,7 @@ export const crmRouter = router({
           score: a.prioridade,
           evidencia: JSON.parse(a.evidenciaJson) as Record<string, unknown>,
         })),
-        contatadasEsteMes: contatadasEsteMes.length,
+        contatadasEsteMes: sugestoesContatadas.length,
       };
     }),
 

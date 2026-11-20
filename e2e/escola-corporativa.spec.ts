@@ -3,7 +3,7 @@ import { expect, test } from "@playwright/test";
 const studentLogin = "e2e.aluno@local.internal";
 const adminLogin = "e2e.instrutor@local.internal";
 const password = "School-E2E-only-Password-2026!";
-const assessmentTitle = "Closer · Atendimento consultivo";
+const assessmentTitle = "Atendimento Novo Cliente · Primeira compra";
 
 async function login(page: import("@playwright/test").Page, username: string) {
   await page.goto("/login");
@@ -26,7 +26,7 @@ test("aluno se matricula, retoma prova e instrutor aplica uma avaliação", asyn
   await expect(
     page
       .locator('[data-slot="card-title"]')
-      .filter({ hasText: "Técnicas de Closer" })
+      .filter({ hasText: "Atendimento Novo Cliente" })
   ).toBeVisible();
   await expect(
     page.getByRole("button", { name: "Matricular-se" })
@@ -41,7 +41,7 @@ test("aluno se matricula, retoma prova e instrutor aplica uma avaliação", asyn
   await page.getByRole("button", { name: "Matricular-se" }).click();
   await expect(page.getByText(/Matriculado ·/)).toBeVisible();
   await page.getByRole("button", { name: "Praticar", exact: true }).click();
-  await expect(page.getByText(/Questão 1 de \d+/)).toBeVisible();
+  await expect(page.getByText(/Questão 1 de 29/)).toBeVisible();
   await page
     .getByRole("button", { name: "Sair e retomar depois", exact: true })
     .click();
@@ -51,7 +51,7 @@ test("aluno se matricula, retoma prova e instrutor aplica uma avaliação", asyn
 
   await page.reload();
   await page.getByRole("button", { name: "Retomar prática" }).click();
-  await expect(page.getByText(/Questão 1 de \d+/)).toBeVisible();
+  await expect(page.getByText(/Questão 1 de 29/)).toBeVisible();
 
   const adminContext = await browser.newContext();
   const adminPage = await adminContext.newPage();
@@ -79,13 +79,13 @@ test("aluno se matricula, retoma prova e instrutor aplica uma avaliação", asyn
     .getByRole("button", { name: "Aplicar prova", exact: true })
     .click();
   await expect(
-    adminPage.getByText("2 tentativa(s) permitida(s)")
+    adminPage.getByText("2 tentativa(s) permitida(s)").first()
   ).toBeVisible();
   await adminContext.close();
 
   await page.reload();
   await page.getByRole("button", { name: "Iniciar prova formal" }).click();
-  await expect(page.getByText(/Questão 1 de \d+/)).toBeVisible();
+  await expect(page.getByText(/Questão 1 de 29/)).toBeVisible();
   await page
     .getByRole("button", { name: "Sair e retomar depois", exact: true })
     .click();
@@ -94,7 +94,7 @@ test("aluno se matricula, retoma prova e instrutor aplica uma avaliação", asyn
   ).toBeVisible();
   await page.reload();
   await page.getByRole("button", { name: "Continuar prova" }).click();
-  await expect(page.getByText(/Questão 1 de \d+/)).toBeVisible();
+  await expect(page.getByText(/Questão 1 de 29/)).toBeVisible();
 });
 
 test("painel do instrutor apresenta notas e ranking das provas formais", async ({
@@ -136,7 +136,7 @@ test("instrutor edita alternativas e gabarito e revisa uma questão refeita com 
     .getByTestId("assessment-editor-selector")
     .selectOption({ label: assessmentTitle });
 
-  const question = page.getByTestId("assessment-question-prazo_confirmado");
+  const question = page.getByTestId("assessment-question-pop_tempo_resposta_calculo");
   await expect(question).toBeVisible();
   await expect(question.getByText("Gabarito: 1 certa(s)")).toBeVisible();
 
@@ -400,4 +400,155 @@ test("instrutor gera uma matéria a partir de um POP somente após pedir e salva
 
   await page.getByRole("button", { name: "Salvar como rascunho" }).click();
   await expect(page.getByText(/salvas como rascunho/)).toBeVisible();
+});
+
+test("pratica mostra correcoes apenas nas opcoes julgadas errado", async ({
+  page,
+}) => {
+  await login(page, studentLogin);
+  await page.goto("/treinamento");
+
+  const enrollButton = page.getByRole("button", {
+    name: "Matricular-se",
+    exact: true,
+  });
+  if (await enrollButton.isVisible().catch(() => false)) {
+    await enrollButton.click();
+  }
+
+  await page.route("**/api/trpc/treinamento.startAttempt**", route =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify([
+        {
+          result: {
+            data: {
+              json: {
+                assessmentId: 1,
+                attemptId: 900001,
+                assignmentStudentId: null,
+                initialQuestionIndex: 0,
+                currentQuestionAnswered: false,
+                mode: "practice",
+                title: "Teste de alternativas",
+                version: 1,
+                progresso: {
+                  perguntasRespondidas: 0,
+                  totalPerguntas: 1,
+                  questoesRestantes: 1,
+                  percentualConcluido: 0,
+                  percentualRestante: 100,
+                  pontosGanhos: 0,
+                  pontosPossiveisRespondidos: 0,
+                  percentualAcerto: null,
+                },
+                questions: [
+                  {
+                    key: "alternativas_teste",
+                    type: "multiple_select",
+                    prompt: "Quais opcoes estao corretas?",
+                    points: 1,
+                    config: {
+                      options: [
+                        { id: "certa_marcada", text: "Opcao certa marcada" },
+                        { id: "certa_omitida", text: "Opcao certa esquecida" },
+                        { id: "errada_marcada", text: "Opcao errada marcada" },
+                        {
+                          id: "errada_omitida",
+                          text: "Opcao errada esquecida",
+                        },
+                      ],
+                      allowPartialCredit: true,
+                    },
+                  },
+                ],
+              },
+            },
+          },
+        },
+      ]),
+    })
+  );
+  await page.route("**/api/trpc/treinamento.submitAnswer**", route =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify([
+        {
+          result: {
+            data: {
+              json: {
+                questionComplete: true,
+                nextQuestion: null,
+                progresso: {
+                  perguntasRespondidas: 1,
+                  totalPerguntas: 1,
+                  questoesRestantes: 0,
+                  percentualConcluido: 100,
+                  percentualRestante: 0,
+                  pontosGanhos: 0,
+                  pontosPossiveisRespondidos: 1,
+                  percentualAcerto: 0,
+                },
+                feedback: {
+                  isCorrect: false,
+                  expectedAnswer: "Opcao certa marcada; Opcao certa esquecida",
+                  explanation: "Marque apenas as opcoes corretas.",
+                  details: [],
+                  corrections: [
+                    {
+                      id: "certa_omitida",
+                      text: "Opcao certa esquecida",
+                      selectedAnswer: "Nao marcada",
+                      expectedAnswer: "Marcar",
+                      feedback: "Essa opcao tambem deveria ser marcada.",
+                    },
+                    {
+                      id: "errada_marcada",
+                      text: "Opcao errada marcada",
+                      selectedAnswer: "Marcada",
+                      expectedAnswer: "N\u00e3o marcar",
+                      feedback: "Essa opcao nao segue o material.",
+                    },
+                  ],
+                  scorePercent: 0,
+                },
+              },
+            },
+          },
+        },
+      ]),
+    })
+  );
+
+  await page
+    .getByRole("button", { name: /^(Praticar|Retomar pr\u00e1tica)$/ })
+    .click();
+  await expect(page.getByText("Quais opcoes estao corretas?")).toBeVisible();
+  await page.getByRole("checkbox", { name: "Opcao certa marcada" }).check();
+  await page.getByRole("checkbox", { name: "Opcao errada marcada" }).check();
+  await page.getByRole("button", { name: "Responder", exact: true }).click();
+
+  const missedCorrectOption = page
+    .getByText("Opcao certa esquecida", { exact: true })
+    .locator("xpath=../..");
+  const wronglySelectedOption = page
+    .getByText("Opcao errada marcada", { exact: true })
+    .locator("xpath=../..");
+  await expect(missedCorrectOption.getByRole("status")).toContainText(
+    /marcar esta op\u00e7\u00e3o/
+  );
+  await expect(wronglySelectedOption.getByRole("status")).toContainText(
+    /n\u00e3o marcar esta op\u00e7\u00e3o/
+  );
+  const correctlyHandled = page
+    .getByRole("checkbox", { name: "Opcao certa marcada" })
+    .locator("xpath=../..");
+  const correctlyLeftUnmarked = page
+    .getByRole("checkbox", { name: "Opcao errada esquecida" })
+    .locator("xpath=../..");
+  await expect(correctlyHandled.getByRole("status")).toHaveCount(0);
+  await expect(correctlyLeftUnmarked.getByRole("status")).toHaveCount(0);
+  await expect(page.getByText("Resposta esperada:")).toHaveCount(0);
 });

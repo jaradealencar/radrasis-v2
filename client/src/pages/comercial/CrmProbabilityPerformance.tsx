@@ -410,7 +410,7 @@ export function CrmProbabilityPerformance({ active }: { active: boolean }) {
               <p className="text-[11px] font-semibold uppercase tracking-wide text-emerald-700">4 · Percentual exibido</p>
               <p className="mt-1 text-sm font-semibold text-slate-900">Uma estimativa para este orçamento</p>
               <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
-                O CRM só mostra o score se houver ao menos 300 amostras rotuladas e calibração temporal válida. Clientes sem O.S. válida anterior também precisam de calibração própria com no mínimo 100 previsões, incluindo ganhos e perdas; o score deles fica limitado à conversão observada do grupo +15 p.p. e a 50%. Sem calibração, aparece “S/D”.
+                O CRM só mostra o score se houver ao menos 300 amostras rotuladas e calibração temporal válida. Clientes sem O.S. válida anterior também precisam de calibração própria com no mínimo 100 previsões, incluindo ganhos e perdas; o score deles fica limitado à conversão observada do grupo +15 p.p., até 30%. Para clientes com cotações e 0% de conversão registrada, o teto é 15%. Sem calibração, aparece “S/D”.
               </p>
             </div>
           </div>
@@ -451,7 +451,7 @@ export function CrmProbabilityPerformance({ active }: { active: boolean }) {
                 {data.modelo?.calibracaoNovosClientesDisponivel ? "Disponível" : "Indisponível"}
               </p>
               <p className="mt-1 text-[11px] text-muted-foreground">
-                {fmtNum(data.modelo?.previsoesUsadasNaCalibracaoNovosClientes)} previsões fora da amostra; mínimo 100 com ganhos e perdas. Limite: conversão do grupo +15 p.p., até 50%.
+                {fmtNum(data.modelo?.previsoesUsadasNaCalibracaoNovosClientes)} previsões fora da amostra; mínimo 100 com ganhos e perdas. Limite: conversão do grupo +15 p.p., até 30%; clientes com 0% registrado ficam limitados a 15%.
               </p>
             </div>
           </div>
