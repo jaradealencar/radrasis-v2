@@ -960,6 +960,13 @@
       "when": 1794862571779,
       "tag": "0141_true_prima",
       "breakpoints": true
+    },
+    {
+      "idx": 137,
+      "version": "7",
+      "when": 1795182980999,
+      "tag": "0137_ensure_crm_canal_relacionamento",
+      "breakpoints": true
     }
   ]
 }
