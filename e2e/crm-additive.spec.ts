@@ -247,6 +247,9 @@ test("mantém propostas abertas e não inventa score para cliente novo sem calib
 
   await tabs.nth(1).click();
   await expect(page.getByText("#30001")).toBeVisible();
+  const clienteNovoRow = page.getByRole("row").filter({ hasText: "#30001" });
+  const alturaLinhaNova = await clienteNovoRow.evaluate((row) => row.getBoundingClientRect().height);
+  expect(alturaLinhaNova).toBeLessThan(160);
   await expect(page.getByText("Cliente novo sem compras")).toBeVisible();
   await expect(page.getByText("2 cotações", { exact: true })).toBeVisible();
   await expect(page.getByText("0% conv.", { exact: true }).first()).toBeVisible();
@@ -294,6 +297,13 @@ test("mantém os indicadores gerais e remove a tabela vendedor na previsão", as
   await expect(painel.getByText(/1 ganhos x 0,8 esperados/)).toBeVisible();
   await expect(painel.getByText("R$ 10.000,00").first()).toBeVisible();
   await expect(painel.getByText("R$ 27.000,00").first()).toBeVisible();
+  await expect(painel.getByText("Desfechos confirmados", { exact: true })).toBeVisible();
+  await expect(painel.getByText(/Vencidas presumidas: 0/)).toBeVisible();
+  await expect(painel.getByText(/Versões do modelo: logit-platt-segmented-v3 \(2\)/)).toBeVisible();
+  const resultadoPorVendedor = painel.locator("details").filter({ hasText: "Resultado por vendedor e perfil de cliente" });
+  await resultadoPorVendedor.locator("summary").click();
+  await expect(resultadoPorVendedor.getByRole("row").filter({ hasText: "Clientes novos" })).toBeVisible();
+  await expect(resultadoPorVendedor.getByRole("row").filter({ hasText: "Clientes antigos" })).toBeVisible();
   await expect(page.getByText(/Real menos esperado:\s*-R\$\s*17\.000,00/)).toBeVisible();
   await expect(painel.getByText("Gargalos operacionais da carteira aberta")).toBeVisible();
   await expect(painel.getByText(/Versões do modelo: logit-platt-segmented-v3 \(2\)/)).toBeVisible();

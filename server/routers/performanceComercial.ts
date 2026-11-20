@@ -2082,7 +2082,13 @@ export const performanceComercialRouter = router({
           desfechoConsiderandoVencidas: desfecho.desfechoConsiderandoVencidas,
           situacaoDesfecho: historicos.length > 1 && desfecho.origem !== "crm" ? "status_ambiguo" : desfecho.situacao,
           origemDesfecho: historicos.length > 1 && desfecho.origem !== "crm" ? null : desfecho.origem,
-          aberta: statusAberto && desfecho.desfecho === null,
+          // Só a situação aberta sem conflito entra no pipeline ponderado.
+          // Vencidas presumidas continuam abertas no ERP, mas aparecem separadas.
+          aberta: statusAberto && [
+            "aberta_na_validade",
+            "aberta_sem_data",
+            "perda_presumida_validade",
+          ].includes(desfecho.situacao),
           contatoRegistrado: contatosRegulares.length > 0,
           semContatoRegistrado7Dias: statusAberto && atualizacaoAntiga,
           grupoCliente,

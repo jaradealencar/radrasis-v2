@@ -21,8 +21,10 @@ import {
   construirModeloProbabilidadeCrm,
   calcularProbabilidadeCrmAprendida,
   CRM_PROBABILITY_MIN_TRAINING_EXAMPLES,
+  CRM_PROBABILITY_NEW_CUSTOMER_MAX_PCT,
   CRM_PROBABILITY_MODEL_VERSION,
   classificarDesfechoExplicito,
+  limitarScoreCrmClienteNovo,
 } from "../services/crmProbabilidadeModel";
 import {
   construirPainelProbabilidade,
@@ -416,25 +418,17 @@ export const crmRouter = router({
         );
       const perdidasSet = new Set(perdidasDb.map(p => p.orcamentoId));
       const propostasFiltradas = propostas.filter(p => !perdidasSet.has(p.id));
-      // Identificar clientes com compra usando chaves normalizadas para tolerar
-      // acentos e pontuação diferentes entre ERP, O.S. e cadastro do cliente.
-      const clientesComCompra = new Set<string>();
+      // Overrides manuais são indexados pela mesma chave normalizada usada pelo
+      // mapa de compras e pelo modelo. A classificação padrão usa somente compras válidas.
       const overrideMap = new Map<string, { id: number; status: "recorrente" | "novo" }>();
       try {
-        const osEntregues = await db.select({ empresa: historicoOs.empresa }).from(historicoOs);
-        for (const row of osEntregues) {
-          const nome = (row.empresa ?? "").trim();
-          const chave = normalizeEmpresaKey(nome);
-          if (chave) clientesComCompra.add(chave);
-        }
-        // Carregar overrides manuais (ex: cliente marcado como recorrente manualmente)
         const overrides = await db.select().from(clienteOverrides);
         for (const ov of overrides) {
           const chave = normalizeEmpresaKey(ov.empresa || ov.empresaOriginal || "");
           if (chave) overrideMap.set(chave, { id: ov.id, status: ov.status });
         }
       } catch {
-        // Se falhar, clientesComCompra fica vazio — nenhuma estrela será exibida (evita falso positivo)
+        // Se a tabela de overrides estiver indisponível, a classificação usa as compras válidas.
       }
       // O score é específico de cada proposta e é reajustado a partir dos
       // desfechos históricos: ticket, idade da empresa (quando vinculada ao
@@ -483,10 +477,12 @@ export const crmRouter = router({
           ? (clienteRaw as any)?.nome ?? (clienteRaw as any)?.razao_social ?? String(clienteRaw)
           : String(clienteRaw ?? empresaRaw ?? "");
         const clienteKey = normalizeEmpresaKey(nomeCliente || "");
+        const conversaoCliente = mapaConversao?.porCliente.get(clienteKey);
+        const qtdComprasCliente = conversaoCliente?.qtdCompras ?? 0;
         // Verificar override manual: "recorrente" exclui estrela; "novo" força estrela
         const override = overrideMap.get(clienteKey);
         const overrideStatus = override?.status;
-        const isNovoByHistory = clientesComCompra.size > 0 && !clientesComCompra.has(clienteKey);
+        const isNovoByHistory = mapaConversao !== null && qtdComprasCliente === 0;
         const clienteNovo = overrideStatus === "recorrente" ? false
           : overrideStatus === "novo" ? true
           : isNovoByHistory;
@@ -501,19 +497,6 @@ export const crmRouter = router({
           ? enderecoCliente.cidade.trim() || null
           : null;
         const regiaoCliente = estadoCliente ? (UF_PARA_REGIAO[estadoCliente] ?? null) : null;
-        const { probabilidade: probabilidadeCompra, explicacao: probabilidadeExplicacao, segmentos: segmentosProbabilidade } = modeloProbabilidade
-          ? calcularProbabilidadeCrmAprendida({
-              modelo: modeloProbabilidade,
-              nomeCliente,
-              valorProposta: p.valor,
-              dataProposta: p.dataCriacao,
-              numeroProposta: p.sequencial,
-              regiaoCliente: estadoCliente,
-            })
-          : { probabilidade: null as number | null, explicacao: [] as string[], segmentos: null };
-        if (segmentosProbabilidade) segmentosProbabilidadePorProposta.set(p.id, segmentosProbabilidade);
-        const chaveCliente = normalizeEmpresaKey(nomeCliente);
-        const conversaoCliente = mapaConversao?.porCliente.get(chaveCliente);
         const clienteIdRaw = Number(orc?.cliente_id ?? (p as any).clienteId);
         const clienteId = Number.isInteger(clienteIdRaw) && clienteIdRaw > 0 ? clienteIdRaw : null;
         const ultimaCompraPorId = clienteId ? mapaConversao?.porClienteId.get(clienteId) ?? null : null;
@@ -521,7 +504,6 @@ export const crmRouter = router({
         const ultimaCompra = !ultimaCompraPorId ? ultimaCompraPorNome
           : !ultimaCompraPorNome || ultimaCompraPorId > ultimaCompraPorNome ? ultimaCompraPorId
           : ultimaCompraPorNome;
-        const qtdComprasCliente = conversaoCliente?.qtdCompras ?? 0;
         // Só faz sentido "dias sem comprar" para quem já comprou alguma vez —
         // cliente novo não tem essa métrica (ver clienteNovo acima).
         const diasSemComprar = ultimaCompra
@@ -529,7 +511,7 @@ export const crmRouter = router({
           : null;
         const ultimaCompraEm = ultimaCompra?.toISOString() ?? null;
         const orcsHist = conversaoCliente?.orcNumeros ?? new Set<string>();
-        const orcsAbertos = (chaveCliente ? orcsAbertosPorCliente.get(chaveCliente) : undefined) ?? new Set<string>();
+        const orcsAbertos = clienteKey ? orcsAbertosPorCliente.get(clienteKey) ?? new Set<string>() : new Set<string>();
         const todosOrcsDoCliente = new Set<string>([...orcsHist, ...orcsAbertos]);
         // Mesmo orçamento: o histórico (e os abertos) identificam pelo sequencial; o id interno
         // do MubiSys só vale quando não há sequencial — somar os dois contava a proposta em dobro.
@@ -540,6 +522,28 @@ export const crmRouter = router({
         // Conversão = orçamentos fechados ÷ orçamentos, os dois do histórico de orçamentos.
         const orcamentosFechados = Math.min(conversaoCliente?.orcamentosFechados ?? 0, totalCotacoes);
         const taxaConversao = calcularTaxaConversaoCliente(totalCotacoes, orcamentosFechados, conversaoCliente?.totalOrcamentos ?? 0);
+
+        const calculoProbabilidade = modeloProbabilidade
+          ? calcularProbabilidadeCrmAprendida({
+              modelo: modeloProbabilidade,
+              nomeCliente,
+              valorProposta: p.valor,
+              dataProposta: p.dataCriacao,
+              numeroProposta: p.sequencial,
+              regiaoCliente: estadoCliente,
+              taxaConversaoClientePct: taxaConversao,
+            })
+          : { probabilidade: null as number | null, explicacao: [] as string[], segmentos: null };
+        // Defesa final: evita score alto se a classificação atual do CRM sabe que
+        // não há compra válida anterior, mesmo quando o modelo usa outra coorte.
+        const probabilidadeCompra = limitarScoreCrmClienteNovo(calculoProbabilidade.probabilidade, clienteNovo);
+        const probabilidadeExplicacao = calculoProbabilidade.probabilidade !== null
+          && probabilidadeCompra !== null
+          && probabilidadeCompra < calculoProbabilidade.probabilidade
+          ? [...calculoProbabilidade.explicacao, `Teto final de segurança: cliente novo limitado a ${CRM_PROBABILITY_NEW_CUSTOMER_MAX_PCT}%.`]
+          : calculoProbabilidade.explicacao;
+        const segmentosProbabilidade = calculoProbabilidade.segmentos;
+        if (segmentosProbabilidade) segmentosProbabilidadePorProposta.set(p.id, segmentosProbabilidade);
 
         return { ...p, telefone, nomeCliente, nomeContato: p.nomeContato ?? "", clienteNovo, clienteOverrideStatus: overrideStatus ?? null, clienteOverrideId: override?.id ?? null, probabilidadeCompra, probabilidadeExplicacao, qtdComprasCliente, totalCompras: qtdComprasCliente, diasSemComprar, ultimaCompraEm, totalCotacoes, orcamentosFechados, taxaConversao, orcamentosDesde: mapaConversao?.orcamentosDesde ?? null, cidadeCliente, estadoCliente, regiaoCliente };
       });
@@ -601,6 +605,8 @@ export const crmRouter = router({
           clientesHistoricos: modeloProbabilidade.coberturaIdadeEmpresarial.clientesHistoricos,
           propostasComIdadeCnpj: modeloProbabilidade.coberturaIdadeEmpresarial.propostasComIdade,
           previsoesUsadasNaCalibracao: modeloProbabilidade.modelo.calibrador?.n ?? 0,
+          calibracaoNovosClientesDisponivel: modeloProbabilidade.modelo.calibradorSemCompras !== null,
+          previsoesUsadasNaCalibracaoNovosClientes: modeloProbabilidade.modelo.calibradorSemCompras?.n ?? 0,
         } : { status: "indisponivel", propostasTreino: 0 },
         stats: {
           totalAberto: propostasComTelefone.length,
@@ -759,6 +765,8 @@ export const crmRouter = router({
         propostasTreino: modelo.nTreino,
         calibracaoTemporalDisponivel: modelo.modelo.calibrador !== null,
         previsoesUsadasNaCalibracao: modelo.modelo.calibrador?.n ?? 0,
+        calibracaoNovosClientesDisponivel: modelo.modelo.calibradorSemCompras !== null,
+        previsoesUsadasNaCalibracaoNovosClientes: modelo.modelo.calibradorSemCompras?.n ?? 0,
         ultimaPropostaTreino: modelo.ultimaPropostaTreino?.toISOString() ?? null,
         ultimaPropostaHistorico: modelo.ultimaPropostaHistorico?.toISOString() ?? null,
         propostasHistoricoSemDesfecho: modelo.propostasHistoricoSemDesfecho,

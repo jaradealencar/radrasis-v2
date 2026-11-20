@@ -1885,7 +1885,7 @@ export default function PerformanceComercial() {
               </h2>
             </div>
             <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
-              <p className="text-xs text-slate-500">Resultado confirmado, expectativa do modelo e carteira aberta por vendedor e perfil de cliente.</p>
+              <p className="text-xs text-slate-500">Compara previsões salvas a desfechos confirmados no ERP ou CRM, por ID interno exato; mostra cobertura, pendências, perdas presumidas e carteira aberta.</p>
               <div className="inline-flex rounded-lg border border-slate-200 bg-slate-50 p-1" aria-label={"Per\u00edodo da an\u00e1lise de probabilidade"}>
                 <button type="button" onClick={() => setJanelaProbabilidade(1)} aria-pressed={janelaProbabilidade === 1} className={janelaProbabilidade === 1 ? "rounded-md bg-white px-3 py-1.5 text-xs font-medium text-indigo-700 shadow-sm" : "rounded-md px-3 py-1.5 text-xs font-medium text-slate-600 hover:bg-white/70"}>M&ecirc;s selecionado</button>
                 <button type="button" onClick={() => setJanelaProbabilidade(3)} aria-pressed={janelaProbabilidade === 3} className={janelaProbabilidade === 3 ? "rounded-md bg-white px-3 py-1.5 text-xs font-medium text-indigo-700 shadow-sm" : "rounded-md px-3 py-1.5 text-xs font-medium text-slate-600 hover:bg-white/70"}>&Uacute;ltimos 3 meses</button>
@@ -1960,7 +1960,7 @@ export default function PerformanceComercial() {
               )}
 
               <div className="rounded-lg border border-indigo-100 bg-indigo-50/50 p-3 text-xs leading-relaxed text-slate-700">
-                <strong>Como ler:</strong> o esperado &eacute; uma refer&ecirc;ncia estat&iacute;stica, n&atilde;o meta nem garantia. Para propostas decididas, somamos probabilidade registrada na primeira exibi&ccedil;&atilde;o x valor de cada proposta; comparamos essa expectativa ao valor das propostas ganhas. A diferen&ccedil;a &eacute; um sinal para investigar, n&atilde;o prova de venda perdida. A carteira aberta atual &eacute; mostrada separadamente. Propostas abertas com validade vencida continuam abertas no MubiSys. Contato significa registro no CRM, n&atilde;o confirma&ccedil;&atilde;o de entrega da mensagem. Faturamento de O.S. fica separado porque n&atilde;o h&aacute; chave confi&aacute;vel que ligue cada O.S. a um or&ccedil;amento. O comparativo entre colegas exige amostra e pareia faixa de probabilidade e tipo de cliente. Cliente novo significa sem compra anterior; antigos s&atilde;o coortes identificadas. Clientes sem coorte conhecida aparecem no geral, sem serem atribu&iacute;dos artificialmente a um grupo.
+                <strong>Como ler:</strong> o esperado &eacute; uma refer&ecirc;ncia estat&iacute;stica, n&atilde;o meta nem garantia. S&oacute; entram na convers&atilde;o confirmada ganhos e perdas com status reconhecido no ERP ou decis&atilde;o manual ligada ao ID interno exato do MubiSys; conflito entre as fontes fica fora. Or&ccedil;amentos abertos vencidos aparecem como perda presumida, mas continuam abertos no ERP; sem hist&oacute;rico, sem status, status desconhecido e identificador amb&iacute;guo ficam separados. Convers&atilde;o real e esperada usam as mesmas propostas decididas. Para propostas decididas, somamos probabilidade inicial x valor e comparamos ao valor das propostas ganhas; a diferen&ccedil;a &eacute; um sinal para investigar, n&atilde;o prova de venda perdida. A carteira aberta &eacute; mostrada separadamente. Contato significa registro no CRM, n&atilde;o confirma&ccedil;&atilde;o de entrega da mensagem. Faturamento de O.S. do m&ecirc;s selecionado aparece separado e n&atilde;o &eacute; atribuido a or&ccedil;amentos sem chave confi&aacute;vel. O comparativo entre colegas exige amostra e pareia faixa de probabilidade e perfil de cliente. Clientes sem coorte conhecida aparecem no geral, sem serem atribu&iacute;dos artificialmente a um grupo.
                 <div className="mt-2 grid gap-1 border-t border-indigo-200 pt-2 sm:grid-cols-3">
                   <span><strong>Esperado nas decididas:</strong> soma de (probabilidade inicial x valor) das propostas com desfecho confirmado.</span>
                   <span><strong>Realizado:</strong> soma do valor das propostas confirmadas como ganhas. O desvio &eacute; real menos esperado.</span>
@@ -1975,13 +1975,14 @@ export default function PerformanceComercial() {
                 </summary>
                 <div className="space-y-3 border-t border-indigo-100 p-3">
                   <p className="text-xs leading-relaxed text-slate-600">
-                    O valor do modelo &eacute; quanto a probabilidade estimava nas propostas decididas. A diferen&ccedil;a mostra realizado menos estimado. O comparativo com pares usa propostas da mesma faixa de probabilidade e perfil; s&oacute; aparece quando h&aacute; amostra suficiente. Valores de O.S. n&atilde;o entram porque o ERP n&atilde;o liga cada venda a um or&ccedil;amento espec&iacute;fico.
+                    O valor do modelo &eacute; quanto a probabilidade estimava nas propostas decididas. A diferen&ccedil;a mostra realizado menos estimado. O comparativo com pares usa propostas da mesma faixa de probabilidade e perfil; s&oacute; aparece quando h&aacute; amostra suficiente. O faturamento de O.S. refere-se ao m&ecirc;s selecionado e aparece separado, sem vincula&ccedil;&atilde;o artificial a cada or&ccedil;amento.
                   </p>
                   <div className="overflow-x-auto rounded-md border border-slate-200">
                     <Table>
                       <TableHeader><TableRow className="bg-slate-50">
                         <TableHead>Vendedor / perfil</TableHead>
                         <TableHead className="text-right">Decididas (ganhos / perdas)</TableHead>
+                        <TableHead className="text-right">Faturamento ERP (O.S.) - m&ecirc;s selecionado</TableHead>
                         <TableHead className="text-right">Ganho real / modelo (R$)</TableHead>
                         <TableHead className="text-right">Convers&atilde;o real / modelo</TableHead>
                         <TableHead className="text-right">Real − modelo</TableHead>
@@ -2005,6 +2006,15 @@ export default function PerformanceComercial() {
                               <TableCell className="text-right tabular-nums">
                                 {fmtNum(bucket.decididas)} <span className="text-xs text-slate-500">({fmtNum(bucket.ganhos)} / {fmtNum(bucket.perdas)})</span>
                               </TableCell>
+                              <TableCell className="text-right tabular-nums" title={principal ? "Faturamento de O.S. do mês selecionado; não vinculado a orçamentos individuais." : "O faturamento ERP não está classificado por coorte de proposta."}>
+                                {principal
+                                  ? faturamentoOsProbabilidade.disponivel
+                                    ? faturamentoOsProbabilidade.porVendedor.has(normalizarNomeVendedorProbabilidade(vendedor.vendedor))
+                                      ? fmtBrl(faturamentoOsProbabilidade.porVendedor.get(normalizarNomeVendedorProbabilidade(vendedor.vendedor)))
+                                      : <span className="text-slate-400">Sem correspond&ecirc;ncia</span>
+                                    : <span className="text-slate-400">Indispon&iacute;vel no snapshot</span>
+                                  : <span className="text-slate-400">&mdash;</span>}
+                              </TableCell>
                               <TableCell className="text-right tabular-nums">
                                 {bucket.decididas > 0 ? <><div>{fmtBrl(bucket.valorGanhoReal)}</div><div className="text-xs text-slate-500">modelo: {fmtBrl(bucket.valorGanhoEsperado)}</div></> : <span className="text-slate-400">Sem decis&otilde;es</span>}
                               </TableCell>
@@ -2023,7 +2033,7 @@ export default function PerformanceComercial() {
                             </TableRow>
                           );
                         }))}
-                        {probabilidadeVendedores.vendedores.length === 0 && <TableRow><TableCell colSpan={7} className="py-5 text-center text-sm text-slate-500">Sem vendedor associado a previs&otilde;es desta janela.</TableCell></TableRow>}
+                        {probabilidadeVendedores.vendedores.length === 0 && <TableRow><TableCell colSpan={8} className="py-5 text-center text-sm text-slate-500">Sem vendedor associado a previs&otilde;es desta janela.</TableCell></TableRow>}
                       </TableBody>
                     </Table>
                   </div>
