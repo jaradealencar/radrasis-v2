@@ -303,7 +303,7 @@ server/
   routers.ts          appRouter raiz do tRPC — registra todos os sub-routers
                        `price.listModelCatalog`/`price.saveModelMapping` mantêm produtividade de solda e IDs de faixa por modelo nas tabelas antiga/nova (`price_table_model_mappings`).
   routers/             sub-routers por domínio (logistica.ts, admin.ts, ...)
-                       treinamento.ts controla catálogo, matérias, matrículas, aplicação de provas, materiais de apoio, os 10 perfis de questão, tentativas, resultados e ranking da Escola Corporativa; notas finais são normalizadas de 0 a 10, independentemente da quantidade de questões; avaliações são divididas em módulos sequenciais de até 10 questões, com retomada da tentativa aberta; a avaliação Closer cobre as 14 seções e os anexos A–F do POP, com matriz em `docs/escola-corporativa.md` e questões adicionais na migration `0127_closer_full_coverage`;
+                       treinamento.ts controla catálogo, matérias, matrículas, aplicação de provas, materiais de apoio, geração de rascunhos a partir de POPs, os 11 perfis de questão, tentativas, resultados e ranking da Escola Corporativa; notas finais são normalizadas de 0 a 10, independentemente da quantidade de questões; avaliações são divididas em módulos sequenciais de até 10 questões, com retomada da tentativa aberta; a avaliação Closer cobre as 14 seções e os anexos A–F do POP, com matriz em `docs/escola-corporativa.md` e questões adicionais na migration `0127_closer_full_coverage`;
                        o simulacro do painel de alunos é somente client-side e nunca grava tentativas fictícias
   db/                  acesso a dados (Drizzle + pg puro via getPool()): db.ts, db-connection.ts,
                        db-helpers*.ts, storage.ts
@@ -316,7 +316,10 @@ server/
                        inteligenciaClientes.ts (RFM/classificação/funil/previsão
                        comercial), qualificacaoLeadCnpj.ts (score de lead por CNPJ),
                        campanhasWhatsappIa.ts (qualificação e resumo de leads) e
-                       campanhasWhatsappInboundBuffer.ts (filtro de bot e debounce de respostas)
+                       campanhasWhatsappInboundBuffer.ts (filtro de bot e debounce de respostas),
+                       marketingFinanceiroCampanhas.ts (atribuição de receita e ranking por UF das campanhas) e
+                       marketingFinanceiroEstados.ts (distribuição estadual de primeira compra e propostas de clientes novos)
+                       treinamentoPop.ts (leitura de PDFs, DOCX e TXT e OCR de PDFs escaneados sob demanda para criar rascunhos de treinamento)
                        (telefones das campanhas: `server/sync/clientes-mubisys.ts` espelha o cadastro
                        de clientes do MubiSys em `mubisys_clientes_cache`, atualizado sozinho ao abrir
                        o painel de Campanhas; 429 da API tem retentativa e o lote tem orçamento de 40s),
@@ -360,7 +363,8 @@ server/
   utils/               helpers puros: date-utils.ts, transportadoras-completude.ts, os-valida.ts
                        (`isOsNormalDb`: regra única de "compra válida"; o número de compras do CRM e
                        das Propostas de Alto Valor conta só essas OS, e orçamento ganho só entra nos meses
-                       sem OS sincronizada — `contarComprasPorCliente` em services/probabilidadeCompra.ts)
+                       sem OS sincronizada — `contarComprasPorCliente` em services/probabilidadeCompra.ts;
+                       a contagem exibida nunca pode superar as cotações conhecidas do cliente)
   scripts/             scripts de seed do server (seed.mjs, seed-operacoes.mjs)
   __tests__/           testes do server (*.test.ts)
   _core/               infra do server: auth.ts (Better Auth), context.ts/trpc.ts
@@ -401,6 +405,14 @@ em vez de reescrever o padrão:
   `@/components/BotaoCopiarImagem`: desenha um PNG em canvas (`@/lib/imagemCopia`) e o coloca na área de transferência (sem
   permissão do navegador, baixa o arquivo). Não use `html2canvas` para isso — ele não lê as cores `oklch()` do Tailwind 4.
 
+## Autoria de provas da Escola Corporativa
+
+Ao criar ou revisar provas, use a skill global `$escola-corporativa-provas`. As alternativas devem ser próprias de cada questão, claras e plausíveis; não deixe o gabarito óbvio por repetição de palavras, opções absurdas ou eliminação simples. Em `multiple_select`, misture corretas e erradas e inclua distratores plausíveis para exigir atenção a cada afirmação. Em questões `matching`, o servidor exige pelo menos duas opções extras além de uma resposta para cada item da esquerda, e rejeita textos genéricos ou repetidos na mesma questão ou entre questões de associação da prova. Crie distratores específicos do conteúdo e mantenha uma única associação correta por item.
+
+O editor de avaliações permite alterar perguntas e seus gabaritos visualmente, além da edição avançada em JSON. Cada pergunta pode ser refeita com IA mantendo seu tipo; a resposta da IA é uma prévia não persistida e precisa ser revisada antes de salvar uma nova versão da avaliação. Ao mudar o tipo ou a estrutura de uma questão, valide o gabarito pelo formato correspondente antes de salvar.
+
+Quando a questão trouxer várias afirmações para o aluno julgar uma a uma, use `yes_no_matrix`: cada frase recebe uma resposta Sim/Não e cada acerto soma uma parte igual dos pontos. Reserve `multiple_select` para tarefas em que o aluno escolhe várias opções como um conjunto, sem julgar cada frase com Sim/Não.
+
 ## Testes
 
 Cada PR, sprint ou funcionalidade entregue deve criar testes E2E ou ampliar
@@ -426,6 +438,7 @@ descartável isolado, como o serviço Postgres do workflow de qualidade.
 
 ## docs/ — quais valem como fonte de verdade
 
+- **Fila programada de campanhas WhatsApp (migrations `0141`/`0142`):** `campanhasWhatsappFilas` guarda o calendário opt-in e `campanhasWhatsappEnviosProgramados`/`campanhasWhatsappFilaItens` persistem execução e progresso por contato; `campanhaFilaWorker.ts` reaproveita `enviarTemplateWtsSeguro` e usa o QStash já configurado para continuar em segundo plano. Pausa em minutos é por lote; intervalo em dias é só calendário. A migration `0142` adiciona janela opcional de envio, contagem estimada, alertas, espera progressiva para `429`, reprocessamento apenas de falhas confirmadas e cancelamento por opt-out. Campanhas sem fila continuam no fluxo atual. Detalhes em `docs/campanhas-whatsapp.md`.
 - **Motor de cadencias WhatsApp:** `server/services/campanhaCadenciaRules.ts` contem regras puras de segmentos e horario comercial; `campanhaCadenciaErp.ts` consolida fatos do ERP por telefone e interrompe envios quando o polling esta desatualizado; `campanhaCadenciaEngine.ts` administra inscricoes versionadas, exclusividade, prioridade, leases e conciliacao WTS. O endpoint e os callbacks ficam em `server/routes/campanhas-whatsapp-cadencia.ts` e `campanhas-whatsapp-webhook-auth.ts`; o polling fica em `server/sync/scheduled-sync-campanhas-whatsapp-erp.ts`. Migrations `0119`/`0120` sao aplicadas somente pelo pipeline protegido. Campanhas legadas permanecem com o motor desligado; validar com Ceci.Chat o payload e a chave antes de habilitar callbacks em producao. Detalhes: `docs/campanhas-whatsapp-cadencias.md`.
 
 - **Vendas/ABC do MubiSys na Tabela de Preços (07/10/2026):** `server/services/mubisysVendas.ts` sincroniza OS faturadas por mês ao abrir a calculadora, com TTL de 6 h, grava as linhas em `mubisys_vendas_itens`, status em `mubisys_vendas_sync_status` e ABC em `abc_cache`; `server/services/priceTableImpact.ts` cruza snapshots do histórico com vendas pelos IDs de produtos e modelos afiliados. Migrações `0099_precos_vendas_mubisys` e `0100_afiliacao_blocos_tabela_preco` criam tabelas de vendas, pareamento, afiliações e histórico; `0101_afiliacao_modelos_faixa_preco` permite afiliar o produto inteiro ou modelos específicos (`null` significa todos). A edição pode começar em qualquer uma das tabelas e é espelhada no bloco pareado. Sincronização externa de setembro e outubro/2026 foi validada; token MubiSys ainda é renovação manual. Detalhes em `docs/integracao-mubisys.md`.

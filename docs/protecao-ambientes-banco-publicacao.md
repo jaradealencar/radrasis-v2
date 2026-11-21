@@ -10,9 +10,10 @@ passam a ter comandos e registros separados.
 Os logs das camadas de banco registram somente a categoria segura do erro; SQL,
 parâmetros e dados completos da cotação não são enviados ao log.
 
-**ISOLAMENTO DOS BANCOS NÃO COMPROVADO.** Neste checkout não há projeto `.vercel`
-vinculado, Vercel CLI disponível nem acesso à configuração privada dos projetos
-`radrasis-v2` e `radrasis-v2-wts-deploy`. Portanto, não foi possível confirmar
+**ISOLAMENTO DOS BANCOS NÃO COMPROVADO.** Este checkout tem `.vercel/project.json`
+vinculado ao projeto `radrasis-v2`, mas não tem Vercel CLI disponível nem acesso
+à configuração privada dos projetos `radrasis-v2` e `radrasis-v2-wts-deploy`.
+Portanto, não foi possível confirmar
 domínios, branches de produção, commits publicados, variáveis de ambiente,
 destinos de banco ou overrides de build configurados no painel. Nenhuma consulta
 ou escrita foi feita em bancos, e nenhuma migration foi aplicada.
