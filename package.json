@@ -117,6 +117,7 @@
     "pg": "^8.13.1",
     "polygon-clipping": "0.15.7",
     "postprocessing": "^6.39.5",
+    "puppeteer": "^25.18.1",
     "react": "^19.2.1",
     "react-day-picker": "^9.11.1",
     "react-dom": "^19.2.1",

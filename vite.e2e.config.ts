@@ -15,6 +15,15 @@ export default defineConfig({
     },
   },
   root: path.resolve(projectRoot, "client"),
-  server: { host: "127.0.0.1", port: 43173, strictPort: true },
-  optimizeDeps: { entries: ["e2e-roi-marketing.html"] },
+  server: {
+    host: "127.0.0.1",
+    port: 43473,
+    strictPort: true,
+  },
+  optimizeDeps: {
+    entries: [
+      "e2e-performance-comercial.html",
+      "e2e-treinamento.html",
+    ],
+  },
 });
