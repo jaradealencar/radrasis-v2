@@ -19,6 +19,8 @@ import ImportarCustoMarketing from "./ImportarCustoMarketing";
 import ResultadoGeral from "./ResultadoGeral";
 import InsightsCarteira from "./InsightsCarteira";
 import MarketingLancamentoCAC from "./MarketingLancamentoCAC";
+import MarketingEstadosCampanhas from "./MarketingEstadosCampanhas";
+import MarketingEstadosNovos from "./MarketingEstadosNovos";
 
 interface Props {
   anoSel: number;
@@ -147,6 +149,8 @@ export default function MarketingFinanceiro({ anoSel, abrirCACRequest = 0 }: Pro
             <TabsContent value="mensal">
               {dados ? (
                 <div className="space-y-5">
+                  <MarketingEstadosCampanhas ano={anoSel} />
+                  <MarketingEstadosNovos ano={anoSel} />
                   <MarketingLancamentoCAC ano={anoSel} relatorio={dados.relatorio} refetch={refetch} />
                   <MarketingAnaliseMensal ano={anoSel} relatorio={dados.relatorio} refetch={refetch} />
                 </div>
