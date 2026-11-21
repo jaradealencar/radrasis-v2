@@ -6,7 +6,10 @@ test("visualiza a fila fictícia e percorre acompanhar, pausar, retomar e inicia
   await expect(page.getByRole("heading", { name: "Prévia · campanhas de WhatsApp" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Ativar alertas do navegador" })).toBeVisible();
   await expect(page.getByText("3 de 17 lotes concluídos")).toBeVisible();
-  await expect(page.getByText(/300 aceitos · 1\.400 pendentes · 0 incertos · 0 falhas/)).toBeVisible();
+  const linhaCampanhaEmAndamento = page.getByRole("row", { name: /São Paulo 01/ });
+  await expect(linhaCampanhaEmAndamento).toContainText(
+    "300 aceitos · 1.400 pendentes · 0 incertos · 0 falhas"
+  );
 
   await page.getByRole("checkbox", { name: "Restringir envios a dias e horários" }).check();
   await expect(page.getByLabel("Início")).toHaveValue("09:00");
