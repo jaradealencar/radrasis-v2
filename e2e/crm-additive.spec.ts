@@ -96,7 +96,7 @@ const crmData = {
   },
 };
 
-function respostaProcedimento(path: string) {
+function respostaProcedimento(path: string, input: any = {}) {
   if (path === "crm.getPropostas") return crmData;
   if (path === "crm.getVendedores") return [{ nome: "Vendedora de teste" }];
   if (path === "crm.getSugestoesContato") return { sugestoes: [] };
@@ -127,6 +127,79 @@ function respostaProcedimento(path: string) {
       clientesComRecompra: 0,
       porVendedor: [{ vendedor: "Álvaro Teste", cotacoes: 2, valorOrcado: 30000, osGeradas: 1, faturamento: 10000, custo: 5000, resultado: 5000, taxaConversao: 50, taxaFaturamento: 33.3, ticketMedio: 10000, margemPct: 50 }],
     };
+  }
+  if (path === "performanceComercial.getAno") {
+    const ano = Number(input?.ano ?? 2026);
+    const base = ano === new Date().getFullYear() - 1
+      ? { cotacoes: 111, osGeradas: 11, taxaConversao: 10, valorOrcado: 111000, faturamento: 22000, taxaFaturamento: 20, ticketMedio: 2000 }
+      : { cotacoes: 222, osGeradas: 22, taxaConversao: 20, valorOrcado: 222000, faturamento: 44000, taxaFaturamento: 40, ticketMedio: 4000 };
+    const meses = ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez"];
+    return meses.map((nome, index) => ({
+      label: `${nome}/${String(ano).slice(-2)}`,
+      mes: index + 1,
+      ano,
+      ...base,
+      custo: 0,
+      resultado: 0,
+      margemPct: 0,
+      clientesUnicos: 0,
+      clientesComRecompra: 0,
+      porVendedor: [],
+    }));
+  }
+  if (path === "performanceComercial.getVisaoGeralClientes") {
+    return {
+      visaoGeral: {
+        clientesCompradoresPeriodo: 1,
+        primeiraCompraObservada: 1,
+        recompraNoPeriodo: 0,
+        ticketMedioPedido: 1000,
+        qtdPedidosValidos: 1,
+        concentracaoTop20PctReceitaPct: 100,
+        concentracaoTop20PctClientes: 1,
+        margemContribuicaoPct: 50,
+        margemContribuicaoCobertura: "completa",
+        classificacoes: { intervalo_acima_habitual: 0, reducao_volume: 0 },
+        amostraPequena: true,
+        topClientesPorValor: [],
+      },
+      dicionarioMetricas: [],
+    };
+  }
+  if (path === "performanceComercial.getTempoOrcamentoPedido" || path === "performanceComercial.getRecompraNovosReativados") return null;
+  if (path === "performanceComercial.getConversaoPorFaixaTicket") {
+    return [
+      { faixa: "Até R$330", ganhos: 1, perdidos: 1, taxaConversaoPct: 50 },
+      { faixa: "R$335~750", ganhos: 1, perdidos: 2, taxaConversaoPct: 33.3 },
+      { faixa: "R$760~1.300", ganhos: 1, perdidos: 3, taxaConversaoPct: 25 },
+      { faixa: "R$1.301~5.490", ganhos: 1, perdidos: 4, taxaConversaoPct: 20 },
+      { faixa: "R$5.500~8.000", ganhos: 1, perdidos: 5, taxaConversaoPct: 16.7 },
+      { faixa: "R$8.010~12.000", ganhos: 1, perdidos: 6, taxaConversaoPct: 14.3 },
+      { faixa: "R$12k+", ganhos: 1, perdidos: 9, taxaConversaoPct: 10 },
+    ];
+  }
+  if (path === "performanceComercial.getEvolucaoConversaoPorFaixaTicket") {
+    const atual = new Date();
+    const chaveAtual = atual.getFullYear() * 12 + atual.getMonth();
+    const meses = ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez"];
+    const faixas = ["Até R$330", "R$335~750", "R$760~1.300", "R$1.301~5.490", "R$5.500~8.000", "R$8.010~12.000", "R$12k+"];
+    return Array.from({ length: 12 }, (_, i) => {
+      const chave = chaveAtual - 11 + i;
+      const mesIndex = (chave % 12 + 12) % 12;
+      const ano = Math.floor(chave / 12);
+      const deslocamento = chave - chaveAtual;
+      const taxaBaixaFaixa = deslocamento >= -3 && deslocamento <= -1 ? 20 : deslocamento >= -6 && deslocamento <= -4 ? 10 : 15;
+      return {
+        chave,
+        mes: `${meses[mesIndex]}/${String(ano).slice(-2)}`,
+        faixas: faixas.map((faixa, indice) => {
+          const taxa = indice === faixas.length - 1 ? taxaBaixaFaixa : 50 - indice * 5;
+          const ganhos = taxa;
+          const perdidos = 100 - taxa;
+          return { faixa, ganhos, perdidos, emAberto: 3, decididos: ganhos + perdidos, taxaConversaoPct: taxa };
+        }),
+      };
+    });
   }
   if (path === "performanceComercial.getProbabilidadeVendedores") {
     const bucket = {
@@ -193,11 +266,13 @@ async function instalarMocks(route: Route) {
   const request = route.request();
   const url = new URL(request.url());
   const paths = decodeURIComponent(url.pathname.split("/").pop() ?? "").split(",");
+  const rawInput = url.searchParams.get("input");
+  const inputs = rawInput ? JSON.parse(rawInput) : {};
   await route.fulfill({
     status: 200,
     contentType: "application/json",
-    body: JSON.stringify(paths.map((path) => ({
-      result: { data: { json: respostaProcedimento(path) } },
+    body: JSON.stringify(paths.map((path, index) => ({
+      result: { data: { json: respostaProcedimento(path, inputs[index]?.json ?? inputs[index] ?? {}) } },
     }))),
   });
 }
@@ -307,4 +382,44 @@ test("mantém os indicadores gerais e remove a tabela vendedor na previsão", as
   await expect(page.getByText(/Real menos esperado:\s*-R\$\s*17\.000,00/)).toBeVisible();
   await expect(painel.getByText("Gargalos operacionais da carteira aberta")).toBeVisible();
   await expect(painel.getByText(/Versões do modelo: logit-platt-segmented-v3 \(2\)/)).toBeVisible();
+});
+
+test("compara os indicadores ao ano anterior e acompanha a evolução por faixa de tíquete", async ({ page }) => {
+  await page.route("**/api/auth/get-session**", async (route) => {
+    const agora = new Date().toISOString();
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        session: { id: "e2e-admin-session", userId: "e2e-admin", token: "e2e-session-token", expiresAt: new Date(Date.now() + 60 * 60 * 1000).toISOString(), createdAt: agora, updatedAt: agora },
+        user: { id: "e2e-admin", name: "Admin E2E", email: "admin-e2e@example.test", role: "admin", emailVerified: true, createdAt: agora, updatedAt: agora },
+      }),
+    });
+  });
+  await page.route("**/api/trpc/**", instalarMocks);
+  await page.goto("/comercial/performance");
+
+  const anoAtual = new Date().getFullYear();
+  await expect(page.getByRole("button", { name: "Mês Vigente" })).toHaveCount(0);
+  const linhaJan = page.getByRole("row", { name: new RegExp(`Jan/${String(anoAtual).slice(-2)}`) });
+  await expect(linhaJan).toBeVisible();
+  for (const valorAnterior of [
+    `${anoAtual - 1}: 111`,
+    `${anoAtual - 1}: 11`,
+    `${anoAtual - 1}: 10%`,
+    `${anoAtual - 1}: R$ 111.000`,
+    `${anoAtual - 1}: R$ 22.000`,
+    `${anoAtual - 1}: 20%`,
+    `${anoAtual - 1}: R$ 2.000`,
+  ]) {
+    await expect(linhaJan).toContainText(valorAnterior);
+  }
+
+  await page.getByRole("button", { name: "Inteligência de Clientes" }).click();
+  await expect(page.getByRole("heading", { name: "Evolução da conversão por faixa de tíquete" })).toBeVisible();
+  await page.getByLabel("Faixa do gráfico").selectOption("R$12k+");
+  const linhaFaixa = page.getByRole("row").filter({ hasText: "+10,0 p.p." });
+  await expect(linhaFaixa).toContainText("20,0%");
+  await expect(linhaFaixa).toContainText("10,0%");
+  await expect(linhaFaixa).toContainText("+10,0 p.p.");
 });
