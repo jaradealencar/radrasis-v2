@@ -5,7 +5,7 @@ import {
   type EntradaRecomendacoes,
 } from "../services/consultoriaMeta";
 import { calcularBandas, calcularPainelMeta } from "../services/painelMeta";
-import { calcularConversaoPorFaixaTicket, type ClienteBase, type OrcamentoRow } from "../services/inteligenciaClientes";
+import { calcularConversaoPorFaixaTicket, calcularEvolucaoConversaoPorFaixaTicket, type ClienteBase, type OrcamentoRow } from "../services/inteligenciaClientes";
 import {
   rankearAlavancas, dividirFunil, compararCaminhos, type Cenario,
 } from "../../shared/meta-faturamento";
@@ -130,6 +130,26 @@ describe("calcularPipeline", () => {
     expect(p.valorEsperado).toBeCloseTo(1000, 6);
     expect(p.vencendoEm3Dias.quantidade).toBe(1);
     expect(p.top[0].empresa).toBeDefined();
+  });
+});
+
+describe("calcularEvolucaoConversaoPorFaixaTicket", () => {
+  it("agrupa por mês de emissão, separa em aberto e reclassifica orçamento vencido como perda", () => {
+    const evolucao = calcularEvolucaoConversaoPorFaixaTicket([
+      { status: "Aprovado", total: "1000", dataCadastro: "01/08/2026", validade: "10" },
+      { status: "Reprovado", total: "1000", dataCadastro: "02/08/2026", validade: "10" },
+      { status: "Em aberto", total: "1000", dataCadastro: "03/08/2026", validade: "10" },
+      { status: "Em aberto", total: "1000", dataCadastro: "14/09/2026", validade: "10" },
+      { status: "Aprovado", total: "13000", dataCadastro: "15/07/2026", validade: "10" },
+    ], HOJE, 3);
+
+    expect(evolucao.map(mes => mes.mes)).toEqual(["Jul/26", "Ago/26", "Set/26"]);
+    const agosto = evolucao[1].faixas.find(faixa => faixa.faixa === "R$760~1.300")!;
+    expect(agosto).toMatchObject({ ganhos: 1, perdidos: 2, emAberto: 0, decididos: 3 });
+    expect(agosto.taxaConversaoPct).toBeCloseTo(100 / 3, 6);
+    const setembro = evolucao[2].faixas.find(faixa => faixa.faixa === "R$760~1.300")!;
+    expect(setembro).toMatchObject({ ganhos: 0, perdidos: 0, emAberto: 1, decididos: 0, taxaConversaoPct: null });
+    expect(evolucao[0].faixas.find(faixa => faixa.faixa === "R$12k+")?.ganhos).toBe(1);
   });
 });
 

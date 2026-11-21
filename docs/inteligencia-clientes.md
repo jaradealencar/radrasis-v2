@@ -43,6 +43,24 @@ congelamento nem indicador de "tempo real vs. cache".
 depois da de OS) — isso limita a comparação histórica do funil a um único
 ano; a tela avisa isso explicitamente.
 
+## Conversão por faixa de tíquete ao longo do tempo
+
+Na Visão Geral, o painel mantém a conversão histórica total por faixa e mostra
+também uma série mensal agrupada pelo mês de emissão do orçamento. O usuário
+pode alternar entre 6 e 12 meses e destacar uma faixa no gráfico. A tabela
+compara os últimos três meses fechados com os três anteriores, usando ganhos /
+(ganhos + perdas) ponderados pelo total de decisões; também mostra o volume de
+decisões e orçamentos que ainda estão em aberto. O mês atual aparece no gráfico
+como parcial.
+
+`calcularEvolucaoConversaoPorFaixaTicket` aplica as mesmas regras de status do
+painel histórico: ganho e perda formal são decisões, e orçamento em aberto
+passa a perdido quando vence a validade. Em aberto dentro do prazo fica fora da
+taxa e visível em separado. O endpoint é
+`performanceComercial.getEvolucaoConversaoPorFaixaTicket`; os dados vêm de
+`historico_orcamentos` e não alteram o cálculo do Score de Probabilidade de
+Compra.
+
 ## Bug de parsing de data corrigido nesta reescrita
 
 Os campos de data de `historico_os`/`historico_orcamentos`

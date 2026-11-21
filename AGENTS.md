@@ -120,6 +120,7 @@ yarn run check   # tsc --noEmit (app) + tsc -p tsconfig.cpq3d.json (client/src/c
                  # não o script do package.json, e retorna resultado errado
 yarn test        # wrapper seguro; exige TEST_DATABASE_URL local de teste
 yarn test:safety # testes unitários de guardas; não acessa banco
+yarn test:e2e    # Playwright em tests/e2e; usa o Vite isolado definido em playwright.config.ts
 yarn format      # prettier --write .
 yarn db:generate # drizzle-kit generate, sem alterar banco
 yarn db:migrate  # migration protegida por alvo, identidade e confirmação

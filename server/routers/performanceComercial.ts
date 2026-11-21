@@ -9,7 +9,7 @@ import { eq, and, desc, gte, lte, sql } from "drizzle-orm";
 import {
   construirBaseClientes, calcularVisaoGeral, analisarCliente, calcularCandidatosAcao,
   calcularFunilOrcamentos, calcularPrevisaoComercial, calcularRecompraNovosReativados, calcularTempoOrcamentoPedido,
-  calcularConversaoPorFaixaTicket, calcularFunilMensal,
+  calcularConversaoPorFaixaTicket, calcularEvolucaoConversaoPorFaixaTicket, calcularFunilMensal,
   montarContextoAssistenteClientes, PROMPT_ASSISTENTE_CLIENTES_V1, VERSAO_PROMPT_ASSISTENTE_CLIENTES,
   DICIONARIO_METRICAS, DIAS_COOLDOWN_ACAO_RESOLVIDA, VERSAO_REGRA_ATUAL,
   type AnaliseCliente,
@@ -3043,6 +3043,21 @@ export const performanceComercialRouter = router({
         validade: historicoOrcamentos.validade,
       }).from(historicoOrcamentos);
       return calcularConversaoPorFaixaTicket(rows as any, new Date());
+    }),
+
+  /** Conversao mensal por faixa, agrupada pela data de emissao do orcamento. */
+  getEvolucaoConversaoPorFaixaTicket: publicProcedure
+    .input(z.object({ meses: z.number().int().min(6).max(36).default(12) }))
+    .query(async ({ input }) => {
+      const db = await getDb();
+      if (!db) throw new Error("DB indisponivel");
+      const rows = await db.select({
+        status: historicoOrcamentos.status,
+        total: historicoOrcamentos.total,
+        dataCadastro: historicoOrcamentos.dataCadastro,
+        validade: historicoOrcamentos.validade,
+      }).from(historicoOrcamentos);
+      return calcularEvolucaoConversaoPorFaixaTicket(rows as any, new Date(), input.meses);
     }),
 
   /** Tempo entre orçamento aprovado e pedido fechado — aproximação por
