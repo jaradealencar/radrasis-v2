@@ -904,6 +904,104 @@
       "when": 1794570824038,
       "tag": "0128_score_scale_0_10",
       "breakpoints": true
+    },
+    {
+      "idx": 129,
+      "version": "7",
+      "when": 1794695167942,
+      "tag": "0129_closer_client_groups_question",
+      "breakpoints": true
+    },
+    {
+      "idx": 130,
+      "version": "7",
+      "when": 1794695345964,
+      "tag": "0130_closer_crm_qualification_plain_language",
+      "breakpoints": true
+    },
+    {
+      "idx": 131,
+      "version": "7",
+      "when": 1794695860529,
+      "tag": "0131_closer_discount_director_review",
+      "breakpoints": true
+    },
+    {
+      "idx": 132,
+      "version": "7",
+      "when": 1794696193520,
+      "tag": "0132_closer_intermediary_approval_diagnosis",
+      "breakpoints": true
+    },
+    {
+      "idx": 133,
+      "version": "7",
+      "when": 1794696314905,
+      "tag": "0133_closer_grupo1_simple_language",
+      "breakpoints": true
+    },
+    {
+      "idx": 134,
+      "version": "7",
+      "when": 1794697120568,
+      "tag": "0134_fantastic_may_parker",
+      "breakpoints": true
+    },
+    {
+      "idx": 135,
+      "version": "7",
+      "when": 1794710086638,
+      "tag": "0135_loud_shooting_star",
+      "breakpoints": true
+    },
+    {
+      "idx": 136,
+      "version": "7",
+      "when": 1794710244025,
+      "tag": "0136_lying_cardiac",
+      "breakpoints": true
+    },
+    {
+      "idx": 137,
+      "version": "7",
+      "when": 1794710675410,
+      "tag": "0137_clear_rictor",
+      "breakpoints": true
+    },
+    {
+      "idx": 138,
+      "version": "7",
+      "when": 1794711114525,
+      "tag": "0138_pink_jamie_braddock",
+      "breakpoints": true
+    },
+    {
+      "idx": 139,
+      "version": "7",
+      "when": 1794711550143,
+      "tag": "0139_slim_karen_page",
+      "breakpoints": true
+    },
+    {
+      "idx": 140,
+      "version": "7",
+      "when": 1795231099130,
+      "tag": "0140_add_crm_relacionamento_channel",
+      "breakpoints": true
+    },
+    {
+      "idx": 141,
+      "version": "7",
+      "when": 1795248850327,
+      "tag": "0141_campanhas_whatsapp_fila_programada",
+      "breakpoints": true
+    },
+    {
+      "idx": 142,
+      "version": "7",
+      "when": 1795284249778,
+      "tag": "0142_cute_deathstrike",
+      "breakpoints": true
     }
   ]
 }
