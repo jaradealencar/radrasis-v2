@@ -48,6 +48,7 @@ import {
   Activity,
   Store,
   GraduationCap,
+  MessageSquareText,
 } from "lucide-react";
 import { ReactNode, useState, useEffect, useMemo } from "react";
 import { Link, useLocation } from "wouter";
@@ -67,6 +68,27 @@ interface NavSection {
 }
 
 const navSections: NavSection[] = [
+  {
+    label: "Comercial",
+    items: [
+      { label: "Produtos", href: "/comercial/produtos", icon: <Package size={15} />, pageKey: "comercial-produtos" },
+      { label: "Propostas", href: "/comercial/propostas", icon: <FileText size={15} />, pageKey: "comercial-propostas" },
+      { label: "Tabela de Preços", href: "/tabela-precos", icon: <Tag size={15} />, pageKey: "tabela-preco" },
+      { label: "Performance Comercial", href: "/comercial/performance", icon: <TrendingUp size={15} />, pageKey: "comercial-performance" },
+      { label: "Análise Geográfica", href: "/comercial/geografia", icon: <MapPin size={15} />, pageKey: "comercial-geografia" },
+      { label: "Metas Comerciais", href: "/comercial/metas", icon: <Target size={15} />, pageKey: "comercial-metas" },
+      { label: "CRM de Propostas", href: "/comercial/crm", icon: <Handshake size={15} />, pageKey: "comercial-crm" },
+      { label: "Scripts de Vendas", href: "/comercial/crm/scripts", icon: <MessageSquareText size={15} />, pageKey: "comercial-crm" },
+      { label: "Guia de Fornecedores", href: "/comercial/guia-fornecedores", icon: <Store size={15} />, pageKey: "comercial-guia-fornecedores" },
+      { label: "Qualificação de Leads (CNPJ)", href: "/comercial/leads-cnpj", icon: <Building2 size={15} />, pageKey: "comercial-leads-cnpj" },
+      { label: "Radar de Mercado", href: "/comercial/radar-mercado", icon: <Radar size={15} />, pageKey: "comercial-radar-mercado" },
+      { label: "Planos de Ação Comercial", href: "/comercial/planos-acao", icon: <Lightbulb size={15} />, pageKey: "comercial-planos-acao" },
+      { label: "Diagnóstico de Dados", href: "/comercial/diagnostico-api", icon: <FlaskConical size={15} />, pageKey: "comercial-performance" },
+      { label: "Auditoria do CRM", href: "/comercial/crm-auditoria", icon: <Activity size={15} />, pageKey: "crm-auditoria" },
+      { label: "Monitoramento de Uso do CRM", href: "/comercial/crm-monitoramento", icon: <Activity size={15} />, pageKey: "crm-monitoramento" },
+      { label: "Insights de IA", href: "/comercial/insights-ia", icon: <Brain size={15} />, pageKey: "comercial-insights-ia" },
+    ],
+  },
   {
     label: "Métricas",
     items: [
@@ -116,26 +138,6 @@ const navSections: NavSection[] = [
     label: "Financeiro",
     items: [
       { label: "Painel Financeiro", href: "/financeiro", icon: <Wallet size={15} />, pageKey: "financeiro" },
-    ],
-  },
-  {
-    label: "Comercial",
-    items: [
-      { label: "Produtos", href: "/comercial/produtos", icon: <Package size={15} />, pageKey: "comercial-produtos" },
-      { label: "Propostas", href: "/comercial/propostas", icon: <FileText size={15} />, pageKey: "comercial-propostas" },
-      { label: "Tabela de Preços", href: "/tabela-precos", icon: <Tag size={15} />, pageKey: "tabela-preco" },
-      { label: "Performance Comercial", href: "/comercial/performance", icon: <TrendingUp size={15} />, pageKey: "comercial-performance" },
-      { label: "Análise Geográfica", href: "/comercial/geografia", icon: <MapPin size={15} />, pageKey: "comercial-geografia" },
-      { label: "Metas Comerciais", href: "/comercial/metas", icon: <Target size={15} />, pageKey: "comercial-metas" },
-      { label: "CRM de Propostas", href: "/comercial/crm", icon: <Handshake size={15} />, pageKey: "comercial-crm" },
-      { label: "Guia de Fornecedores", href: "/comercial/guia-fornecedores", icon: <Store size={15} />, pageKey: "comercial-guia-fornecedores" },
-      { label: "Qualificação de Leads (CNPJ)", href: "/comercial/leads-cnpj", icon: <Building2 size={15} />, pageKey: "comercial-leads-cnpj" },
-      { label: "Radar de Mercado", href: "/comercial/radar-mercado", icon: <Radar size={15} />, pageKey: "comercial-radar-mercado" },
-      { label: "Planos de Ação Comercial", href: "/comercial/planos-acao", icon: <Lightbulb size={15} />, pageKey: "comercial-planos-acao" },
-      { label: "Diagnóstico de Dados", href: "/comercial/diagnostico-api", icon: <FlaskConical size={15} />, pageKey: "comercial-performance" },
-      { label: "Auditoria do CRM", href: "/comercial/crm-auditoria", icon: <Activity size={15} />, pageKey: "crm-auditoria" },
-      { label: "Monitoramento de Uso do CRM", href: "/comercial/crm-monitoramento", icon: <Activity size={15} />, pageKey: "crm-monitoramento" },
-      { label: "Insights de IA", href: "/comercial/insights-ia", icon: <Brain size={15} />, pageKey: "comercial-insights-ia" },
     ],
   },
   {

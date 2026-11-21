@@ -31,6 +31,7 @@ import {
 import type { TrpcContext } from "../_core/context";
 import {
   construirMapaConversaoClientes,
+  limitarComprasAOrcamentos,
   normalizeEmpresaKey,
   construirModeloBayesiano,
   calcularProbabilidadeBayesiana,
@@ -574,7 +575,6 @@ export const crmRouter = router({
           : { probabilidade: null as number | null, explicacao: [] as string[] };
         const chaveCliente = normalizeEmpresaKey(nomeCliente);
         const conversaoCliente = mapaConversao?.porCliente.get(chaveCliente);
-        const qtdComprasCliente = conversaoCliente?.qtdCompras ?? 0;
         // Só faz sentido "dias sem comprar" para quem já comprou alguma vez —
         // cliente novo não tem essa métrica (ver clienteNovo acima).
         const diasSemComprar = conversaoCliente?.ultimaCompra
@@ -591,6 +591,10 @@ export const crmRouter = router({
         const numeroDestaProposta = p.sequencial ? String(p.sequencial) : (p.id ? String(p.id) : "");
         if (numeroDestaProposta) todosOrcsDoCliente.add(numeroDestaProposta);
         const totalCotacoes = Math.max(1, todosOrcsDoCliente.size);
+        const qtdComprasCliente = limitarComprasAOrcamentos(
+          conversaoCliente?.qtdCompras ?? 0,
+          totalCotacoes,
+        );
 
         // Conversão = orçamentos fechados ÷ orçamentos, os dois do histórico de orçamentos.
         const orcamentosFechados = Math.min(conversaoCliente?.orcamentosFechados ?? 0, totalCotacoes);
@@ -676,6 +680,7 @@ export const crmRouter = router({
         canal: z.enum([
           "nao_retornou",
           "esperando_cliente",
+          "relacionamento",
           "garantiu_fechamento",
           "aguardando_resposta",
         ]),
@@ -851,6 +856,7 @@ export const crmRouter = router({
         canal: z.enum([
           "nao_retornou",
           "esperando_cliente",
+          "relacionamento",
           "garantiu_fechamento",
           "aguardando_resposta",
         ]),

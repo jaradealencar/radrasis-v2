@@ -1,4 +1,5 @@
 import { useState, useMemo, useEffect } from "react";
+import { Link } from "wouter";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { trpc } from "@/lib/trpc";
 import { fmtDate } from "@/lib/format";
@@ -9,7 +10,7 @@ import {
   CheckSquare, Square, Clock, ThumbsUp, AlertCircle, AlertTriangle,
   ChevronDown, ChevronUp, Star,
   Activity, CheckCircle2, Target, Trash2, TrendingUp, Zap, Info,
-  ChevronLeft, ChevronRight
+  ChevronLeft, ChevronRight, MessageSquareText
 } from "lucide-react";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue
@@ -52,6 +53,7 @@ const FAIXA_DEFAULTS_CLIENTE: Record<1 | 2 | 3, FaixaConfig> = {
 const OPCOES_RESPOSTA = [
   { value: "nao_retornou" as const, label: "Não retornou", icon: AlertCircle, color: "text-red-600", bg: "bg-red-50 border-red-200 hover:bg-red-100", badgeBg: "bg-red-100 text-red-700 border-red-200", emoji: "🔴" },
   { value: "esperando_cliente" as const, label: "Esperando cliente", icon: Clock, color: "text-amber-600", bg: "bg-amber-50 border-amber-200 hover:bg-amber-100", badgeBg: "bg-amber-100 text-amber-700 border-amber-200", emoji: "🟡" },
+  { value: "relacionamento" as const, label: "Relacionamento", icon: Users, color: "text-violet-600", bg: "bg-violet-50 border-violet-200 hover:bg-violet-100", badgeBg: "bg-violet-100 text-violet-700 border-violet-200", emoji: "🤝" },
   { value: "garantiu_fechamento" as const, label: "Garantiu fechamento", icon: ThumbsUp, color: "text-green-600", bg: "bg-green-50 border-green-200 hover:bg-green-100", badgeBg: "bg-green-100 text-green-700 border-green-200", emoji: "🟢" },
   // O vendedor já fez o contato, mas o cliente ainda não deu devolutiva.
   { value: "aguardando_resposta" as const, label: "Vendedor aguardando resposta", icon: MessageCircle, color: "text-blue-600", bg: "bg-blue-50 border-blue-200 hover:bg-blue-100", badgeBg: "bg-blue-100 text-blue-700 border-blue-200", emoji: "🔵" },
@@ -537,7 +539,7 @@ function PropostaRow({ p, vendedor, onRefresh, showVendedor, faixasConfig }: {
                           ? `Elegível a parcelamento (mais de ${LIMIAR_PARCELAMENTO} compras no histórico)`
                           : `${p.qtdComprasCliente} compra${p.qtdComprasCliente === 1 ? "" : "s"} no histórico`}
                         <br />
-                        <span className="text-gray-400">Conta as O.S. válidas do histórico local (a partir de 2023), sem retrabalho, amostra, cortesia nem cancelada.</span>
+                        <span className="text-gray-400">Conta O.S. válidas do histórico local, sem retrabalho, amostra, cortesia nem cancelada; o total fica limitado às cotações conhecidas.</span>
                       </TooltipContent>
                     </Tooltip>
                   </TooltipProvider>
@@ -552,7 +554,7 @@ function PropostaRow({ p, vendedor, onRefresh, showVendedor, faixasConfig }: {
                       </TooltipTrigger>
                       <TooltipContent side="top" className="text-xs max-w-[220px]">
                         Taxa de conversão: {p.orcamentosFechados ?? 0} orçamento{(p.orcamentosFechados ?? 0) === 1 ? "" : "s"} fechado{(p.orcamentosFechados ?? 0) === 1 ? "" : "s"} em {p.totalCotacoes || 1} cotações registradas
-                        {p.orcamentosDesde ? ` desde ${p.orcamentosDesde}` : ""}. O número de compras pode ser maior porque as O.S. começam antes do histórico de orçamentos.
+                        {p.orcamentosDesde ? ` desde ${p.orcamentosDesde}` : ""}. O número de compras exibido é limitado às cotações conhecidas para este cliente.
                       </TooltipContent>
                     </Tooltip>
                   </TooltipProvider>
@@ -810,6 +812,10 @@ export default function CRM() {
   const mesAtual = now.getMonth() + 1;
   const anoAtual = now.getFullYear();
   const lastDay = new Date(anoAtual, mesAtual, 0).getDate();
+  const dataHoje = `${anoAtual}-${pad(mesAtual)}-${pad(now.getDate())}`;
+  const inicioUltimos10Dias = new Date(now);
+  inicioUltimos10Dias.setDate(now.getDate() - 9);
+  const dataInicioUltimos10Dias = `${inicioUltimos10Dias.getFullYear()}-${pad(inicioUltimos10Dias.getMonth() + 1)}-${pad(inicioUltimos10Dias.getDate())}`;
 
   // Vendedor: admin/gestor/master vê todos; vendedor comum vê apenas as suas
   const [vendedor, setVendedor] = useState("");
@@ -818,8 +824,8 @@ export default function CRM() {
       setVendedor(user.name ?? "");
     }
   }, [user, isAdmin]);
-  const [dataInicio, setDataInicio] = useState(`${anoAtual}-${pad(mesAtual)}-01`);
-  const [dataFim, setDataFim] = useState(`${anoAtual}-${pad(mesAtual)}-${pad(lastDay)}`);
+  const [dataInicio, setDataInicio] = useState(() => dataInicioUltimos10Dias);
+  const [dataFim, setDataFim] = useState(() => dataHoje);
   const [verHistorico, setVerHistorico] = useState(false);
   const [apenasNovos, setApenasNovos] = useState(false);
   const [apenasSemCompra6Meses, setApenasSemCompra6Meses] = useState(false);
@@ -830,7 +836,7 @@ export default function CRM() {
   const [filtroResposta, setFiltroResposta] = useState<string>("todos");
   const [filtroFaixa, setFiltroFaixa] = useState<string>("todas");
   const [abaAtiva, setAbaAtiva] = useState<string>("propostas");
-  // Busca padrão cobre 15 dias; ativar para incluir propostas abertas há mais tempo (raro)
+  // A consulta pode ampliar a janela de cache das propostas abertas para períodos antigos.
   const [buscarAntigas, setBuscarAntigas] = useState(false);
 
   // ─── Estados da aba Auditoria ────────────────────────────────────────────────
@@ -850,7 +856,6 @@ export default function CRM() {
     },
     { refetchOnWindowFocus: false, enabled: abaAtiva === "auditoria" }
   );
-
   const { data, isLoading, isError, error, refetch } = trpc.crm.getPropostas.useQuery(
     { vendedor: vendedor || undefined, preset: "personalizado", dataInicio, dataFim, buscarAntigas },
     // retry: 1 (em vez do padrão 3 do React Query) — consulta ao MubiSys pode ser lenta;
@@ -999,23 +1004,30 @@ export default function CRM() {
             )}
           </p>
         </div>
-        {isAdmin ? (
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => sincronizarPropostasRecentes.mutate()}
-            disabled={sincronizarPropostasRecentes.isPending}
-            className="gap-2 self-start sm:self-auto"
-          >
-            {sincronizarPropostasRecentes.isPending
-              ? <><Spinner /> Sincronizando...</>
-              : <><RefreshCw className="w-4 h-4" /> Sincronizar recentes</>}
+        <div className="flex flex-wrap items-center gap-2 self-start sm:self-auto">
+          <Button asChild variant="outline" size="sm" className="gap-2">
+            <Link href="/comercial/crm/scripts">
+              <MessageSquareText className="w-4 h-4" /> Scripts de vendas
+            </Link>
           </Button>
-        ) : (
-          <Button variant="outline" size="sm" onClick={() => refetch()} className="gap-2 self-start sm:self-auto">
-            <RefreshCw className="w-4 h-4" /> Atualizar
-          </Button>
-        )}
+          {isAdmin ? (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => sincronizarPropostasRecentes.mutate()}
+              disabled={sincronizarPropostasRecentes.isPending}
+              className="gap-2"
+            >
+              {sincronizarPropostasRecentes.isPending
+                ? <><Spinner /> Sincronizando...</>
+                : <><RefreshCw className="w-4 h-4" /> Sincronizar recentes</>}
+            </Button>
+          ) : (
+            <Button variant="outline" size="sm" onClick={() => refetch()} className="gap-2">
+              <RefreshCw className="w-4 h-4" /> Atualizar
+            </Button>
+          )}
+        </div>
       </div>
 
       {/* Biblioteca de mídias: arsenal de imagens para copiar e colar nas conversas */}
@@ -1125,8 +1137,9 @@ export default function CRM() {
         </div>
         <div className="flex flex-wrap gap-2">
           {[
-            { label: "Hoje", di: `${anoAtual}-${pad(mesAtual)}-${pad(now.getDate())}`, df: `${anoAtual}-${pad(mesAtual)}-${pad(now.getDate())}` },
+            { label: "Hoje", di: dataHoje, df: dataHoje },
             { label: "7 dias", di: (() => { const d = new Date(now); d.setDate(now.getDate()-6); return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`; })(), df: `${anoAtual}-${pad(mesAtual)}-${pad(now.getDate())}` },
+            { label: "10 dias", di: dataInicioUltimos10Dias, df: dataHoje },
             { label: "15 dias", di: (() => { const d = new Date(now); d.setDate(now.getDate()-14); return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`; })(), df: `${anoAtual}-${pad(mesAtual)}-${pad(now.getDate())}` },
             { label: "Este mês", di: `${anoAtual}-${pad(mesAtual)}-01`, df: `${anoAtual}-${pad(mesAtual)}-${pad(lastDay)}` },
           ].map(p => (
@@ -1189,7 +1202,7 @@ export default function CRM() {
             </SelectContent>
           </Select>
         </div>
-        {/* Buscar propostas mais antigas (raro: proposta aberta há mais de 15 dias) */}
+        {/* Buscar propostas abertas em uma janela maior para períodos antigos */}
         <div className="flex flex-col gap-1">
           <label className="text-xs font-semibold text-transparent select-none">.</label>
           <TooltipProvider>
@@ -1205,7 +1218,7 @@ export default function CRM() {
                 </button>
               </TooltipTrigger>
               <TooltipContent side="top" className="text-xs max-w-[220px]">
-                Por padrão, o CRM busca propostas abertas nos últimos 15 dias. Ative para incluir até 30 dias — a busca pode demorar mais.
+                O período inicial mostra os últimos 10 dias. Para consultar propostas abertas mais antigas, selecione um período anterior e ative esta opção (até 30 dias; a busca pode demorar mais).
               </TooltipContent>
             </Tooltip>
           </TooltipProvider>

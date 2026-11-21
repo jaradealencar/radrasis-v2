@@ -43,6 +43,7 @@ import RadarMercado from "./pages/comercial/RadarMercado";
 import AnaliseGeografica from "./pages/comercial/AnaliseGeografica";
 import MetasComerciais from "./pages/comercial/MetasComerciais";
 import CRM from "./pages/comercial/CRM";
+import CrmScripts from "./pages/comercial/CrmScripts";
 import GuiaFornecedores from "./pages/comercial/GuiaFornecedores";
 import PlanosAcaoComercial from "./pages/comercial/PlanosAcaoComercial";
 import DiagnosticoApi from "./pages/comercial/DiagnosticoApi";
@@ -143,6 +144,11 @@ function Router() {
       <Route path="/comercial/geografia"><L><AnaliseGeografica /></L></Route>
       <Route path="/comercial/metas"><L><MetasComerciais /></L></Route>
       <Route path="/comercial/crm"><L><CRM /></L></Route>
+      <Route path="/comercial/crm/scripts">
+        <ProtectedRoute pageKey="comercial-crm">
+          <L><CrmScripts /></L>
+        </ProtectedRoute>
+      </Route>
       <Route path="/comercial/guia-fornecedores"><L><GuiaFornecedores /></L></Route>
       <Route path="/comercial/leads-cnpj"><L><QualificacaoLeadsCnpj /></L></Route>
       <Route path="/comercial/radar-mercado"><L><RadarMercado /></L></Route>

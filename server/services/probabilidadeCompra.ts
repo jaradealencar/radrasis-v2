@@ -161,6 +161,13 @@ export interface OrcGanhoParaContagem {
   ano: number;
 }
 
+/** O CRM nunca exibe mais compras do que cotações conhecidas para o cliente. */
+export function limitarComprasAOrcamentos(compras: number, totalOrcamentos: number): number {
+  const qtdCompras = Number.isFinite(compras) ? Math.max(0, Math.floor(compras)) : 0;
+  const qtdOrcamentos = Number.isFinite(totalOrcamentos) ? Math.max(0, Math.floor(totalOrcamentos)) : 0;
+  return Math.min(qtdCompras, qtdOrcamentos);
+}
+
 /**
  * Número de compras por cliente (chave normalizeEmpresaKey) no histórico local.
  *
