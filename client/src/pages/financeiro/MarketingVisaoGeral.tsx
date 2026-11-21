@@ -41,6 +41,13 @@ function SeloSemaforo({ nivel }: { nivel: NivelSemaforo }) {
   return <span className={`inline-block text-[10px] font-semibold px-1.5 py-0.5 rounded border ${SEMAFORO_COR[nivel]}`}>{label}</span>;
 }
 
+function descricaoOrigemMargem(origem: "real" | "estimada" | "mista" | "sem-dado", percentualFallback: number) {
+  if (origem === "real") return "Margem real";
+  if (origem === "mista") return "Real + estimada";
+  if (origem === "estimada") return `Margem estimada — ${percentualFallback}%`;
+  return "Sem dados de margem";
+}
+
 interface Props {
   ano: number;
   relatorio: RelatorioAno;
@@ -188,13 +195,15 @@ export default function MarketingVisaoGeral({ ano, relatorio, config, mesFiltro,
     return lista;
   }, [mesesFiltrados, mesesCompletos, mesesAquisicaoCobertos, mesesReativacaoCobertos, totais, config, temMesParcialExcluido]);
 
-  const origensMargemCoberta = [
-    ...mesesAquisicaoCobertos.map(m => m.novo.margem.origem),
-    ...mesesReativacaoCobertos.map(m => m.reativado.margem.origem),
-  ];
-  const origemMargemNovos = origensMargemCoberta.length === 0 ? "sem-dado"
-    : origensMargemCoberta.every(origem => origem === "real") ? "real"
-    : origensMargemCoberta.every(origem => origem === "estimada" || origem === "sem-dado") ? "estimada"
+  const origensMargemNovos = mesesAquisicaoCobertos.map(m => m.novo.margem.origem);
+  const origemMargemNovos = origensMargemNovos.length === 0 ? "sem-dado"
+    : origensMargemNovos.every(origem => origem === "real") ? "real"
+    : origensMargemNovos.every(origem => origem === "estimada" || origem === "sem-dado") ? "estimada"
+    : "mista";
+  const origensMargemReativados = mesesReativacaoCobertos.map(m => m.reativado.margem.origem);
+  const origemMargemReativados = origensMargemReativados.length === 0 ? "sem-dado"
+    : origensMargemReativados.every(origem => origem === "real") ? "real"
+    : origensMargemReativados.every(origem => origem === "estimada" || origem === "sem-dado") ? "estimada"
     : "mista";
 
   return (
@@ -243,15 +252,27 @@ export default function MarketingVisaoGeral({ ano, relatorio, config, mesFiltro,
           />
           <KpiCard
             variant="border" color={COR_POSITIVO} icon={<TrendingUp size={18} />}
-            label="Margem de Contribuição (Novos+Reativados)" value={fmtBrlCompact(totais.margemNovos + totais.margemReativados)}
-            sub={`${origemMargemNovos === "real" ? "Margem real" : origemMargemNovos === "mista" ? "Real + estimada" : `Margem estimada — ${config.percentualMargemFallback}%`} · ${totais.coberturaAquisicao}/${totais.mesesElegiveis} meses de aquisição · ${totais.coberturaReativacao}/${totais.mesesElegiveis} de reativação`}
-            tooltip="Soma de historico_os.contribuicaoReais dos pedidos de clientes novos/reativados; usa o percentual de fallback configurável só nos pedidos sem custo real detalhado."
+            label="Margem de Contribuição — Novos" value={fmtBrlCompact(totais.margemNovos)}
+            sub={`${descricaoOrigemMargem(origemMargemNovos, config.percentualMargemFallback)} · ${totais.coberturaAquisicao}/${totais.mesesElegiveis} meses com aquisição`}
+            tooltip="Margem dos pedidos de clientes novos. Usa historico_os.contribuicaoReais quando disponível e o percentual de fallback configurado nos pedidos sem custo real detalhado."
           />
           <KpiCard
-            variant="border" color={totais.consolidado.resultado != null && totais.consolidado.resultado >= 0 ? COR_POSITIVO : COR_ALERTA} icon={totais.consolidado.resultado != null && totais.consolidado.resultado >= 0 ? <CheckCircle2 size={18} /> : <ShieldAlert size={18} />}
-            label="Resultado após Marketing" value={totais.consolidado.resultado != null ? fmtBrl(totais.consolidado.resultado) : "—"}
-            sub={totais.consolidado.roiPct != null ? `ROI: ${fmtPct(totais.consolidado.roiPct)} · ${totais.coberturaConsolidado}/${totais.mesesElegiveis} meses` : `${totais.coberturaConsolidado}/${totais.mesesElegiveis} meses com ambas as frentes`}
-            tooltip="Margem de novos e reativados menos o investimento nas duas frentes, somente nos meses completos com ambos os investimentos preenchidos. Campo vazio não é tratado como zero."
+            variant="border" color="#0d9488" icon={<TrendingUp size={18} />}
+            label="Margem de Contribuição — Reativados" value={fmtBrlCompact(totais.margemReativados)}
+            sub={`${descricaoOrigemMargem(origemMargemReativados, config.percentualMargemFallback)} · ${totais.coberturaReativacao}/${totais.mesesElegiveis} meses com reativação`}
+            tooltip="Margem dos pedidos de clientes reativados. Usa historico_os.contribuicaoReais quando disponível e o percentual de fallback configurado nos pedidos sem custo real detalhado."
+          />
+          <KpiCard
+            variant="border" color={totais.resultadoNovo.resultado != null && totais.resultadoNovo.resultado >= 0 ? COR_POSITIVO : COR_ALERTA} icon={totais.resultadoNovo.resultado != null && totais.resultadoNovo.resultado >= 0 ? <CheckCircle2 size={18} /> : <ShieldAlert size={18} />}
+            label="Resultado após Marketing — Novos" value={totais.resultadoNovo.resultado != null ? fmtBrl(totais.resultadoNovo.resultado) : "—"}
+            sub={`${totais.resultadoNovo.roiPct != null ? `ROI: ${fmtPct(totais.resultadoNovo.roiPct)} · ` : ""}${totais.coberturaAquisicao}/${totais.mesesElegiveis} meses com aquisição`}
+            tooltip="Margem de contribuição dos clientes novos menos o investimento em aquisição. Considera apenas meses completos com investimento de aquisição informado; a cobertura pode diferir da reativação."
+          />
+          <KpiCard
+            variant="border" color={totais.resultadoReativado.resultado != null && totais.resultadoReativado.resultado >= 0 ? COR_POSITIVO : COR_ALERTA} icon={totais.resultadoReativado.resultado != null && totais.resultadoReativado.resultado >= 0 ? <CheckCircle2 size={18} /> : <ShieldAlert size={18} />}
+            label="Resultado após Marketing — Reativados" value={totais.resultadoReativado.resultado != null ? fmtBrl(totais.resultadoReativado.resultado) : "—"}
+            sub={`${totais.resultadoReativado.roiPct != null ? `ROI: ${fmtPct(totais.resultadoReativado.roiPct)} · ` : ""}${totais.coberturaReativacao}/${totais.mesesElegiveis} meses com reativação`}
+            tooltip="Margem de contribuição dos clientes reativados menos o investimento em reativação. Considera apenas meses completos com investimento de reativação informado; a cobertura pode diferir da aquisição."
           />
           <KpiCard
             variant="border" color="#2563eb" icon={<Percent size={18} />}
@@ -284,6 +305,7 @@ export default function MarketingVisaoGeral({ ano, relatorio, config, mesFiltro,
           <strong>Metodologia:</strong> Novo, Recorrente Ativo e Reativado são categorias mutuamente exclusivas — nunca somadas uma dentro da outra.
           A margem de contribuição usa o custo real por pedido (<code>historico_os.contribuicaoReais</code>) sempre que disponível; só cai para a estimativa de {config.percentualMargemFallback}% nos pedidos sem custo detalhado.
           CAC/Custo de Reativação são <strong>ponderados</strong> (soma dos totais do período, não média dos meses). Valores vazios são pendentes e ficam fora do cálculo; use zero quando não houve gasto. O ROI consolidado requer investimento lançado em Aquisição e Reativação no mês.
+          Os resultados separados de Novos e Reativados usam a cobertura própria de cada frente, que pode incluir meses diferentes.
         </span>
       </div>
 
