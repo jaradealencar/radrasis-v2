@@ -1,6 +1,7 @@
 import { expect, test } from "@playwright/test";
 
 type Script = { id: number; faixa: number; titulo: string; conteudo: string; conteudo_voz: string };
+const nomeEmpresaCompleto = "MIRANDA COMERCIO DE LETREIROS EXPRESS LTDA";
 
 async function configurarApiCrm(page: import("@playwright/test").Page) {
   let script: Script | null = null;
@@ -21,7 +22,37 @@ async function configurarApiCrm(page: import("@playwright/test").Page) {
           dataInicio: dadosEntrada.dataInicio as string | undefined,
           dataFim: dadosEntrada.dataFim as string | undefined,
         });
-        dados = { propostas: [], stats: {} };
+        dados = {
+          propostas: [{
+            id: "29603",
+            sequencial: 29603,
+            nomeCliente: nomeEmpresaCompleto,
+            nomeContato: "Anderson Miranda",
+            telefone: "65999999999",
+            vendedor: "Vendedor E2E",
+            valor: 5400,
+            dataCriacao: "2026-11-19T12:00:00.000Z",
+            diasAberto: 2,
+            janela: "",
+            clienteNovo: true,
+            contato1: null,
+            contato2: null,
+            qtdContatos: 0,
+            contato1NoPrazo: null,
+            meta2Contatos: false,
+            probabilidadeCompra: 6,
+            probabilidadeExplicacao: [],
+            qtdComprasCliente: 0,
+            diasSemComprar: null,
+            totalCotacoes: 1,
+            totalCompras: 0,
+            orcamentosFechados: 0,
+            taxaConversao: 0,
+            orcamentosDesde: null,
+            estadoCliente: "SP",
+          }],
+          stats: { totalAberto: 1, semContato: 1, com1Contato: 0, contatosHoje: 0 },
+        };
       } else if (
         procedimento.endsWith("getVendedores") ||
         procedimento.endsWith("midiasBiblioteca.list")
@@ -80,6 +111,10 @@ test("abre o CRM com as cotações dos últimos 10 dias", async ({ page }) => {
 
   await expect(page.getByRole("heading", { name: "CRM de Propostas" })).toBeVisible();
   expect(errosPagina).toEqual([]);
+  const nomeEmpresa = page.getByText(nomeEmpresaCompleto, { exact: true });
+  await expect(nomeEmpresa).toBeVisible();
+  await expect(nomeEmpresa).toHaveCSS("white-space", "normal");
+  await expect(nomeEmpresa).toHaveCSS("text-overflow", "clip");
   await expect.poll(() => chamadas.find(chamada => chamada.dataInicio && chamada.dataFim)).toEqual({
     dataInicio: esperado[0],
     dataFim: esperado[1],

@@ -470,7 +470,7 @@ function PropostaRow({ p, vendedor, onRefresh, showVendedor, faixasConfig }: {
             </div>
             <div className="min-w-0">
               <div className="flex items-center gap-1">
-                <span className="font-semibold text-sm leading-tight truncate max-w-[120px]" title={p.nomeCliente}>{p.nomeCliente}</span>
+                <span className="min-w-0 flex-1 font-semibold text-sm leading-tight whitespace-normal break-words" title={p.nomeCliente}>{p.nomeCliente}</span>
                 {p.clienteNovo && (
                   <TooltipProvider>
                     <Tooltip>
