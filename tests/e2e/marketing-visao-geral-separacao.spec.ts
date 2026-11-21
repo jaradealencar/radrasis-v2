@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test";
 
 test("exibe margem e resultado de Novos e Reativados em cards separados", async ({ page }) => {
-  await page.goto("/e2e-roi-marketing.html?visao-geral");
+  await page.goto("/e2e-roi-marketing.html");
 
   const cards = [
     ["Margem de Contribuição — Novos", /R\$\s*1,0 mil/],

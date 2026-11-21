@@ -3,8 +3,6 @@ import { httpBatchLink } from "@trpc/client";
 import { createRoot } from "react-dom/client";
 import superjson from "superjson";
 import MarketingVisaoGeral from "@/pages/financeiro/MarketingVisaoGeral";
-import MarketingEstadosCampanhas from "@/pages/financeiro/MarketingEstadosCampanhas";
-import MarketingEstadosNovos from "@/pages/financeiro/MarketingEstadosNovos";
 import { trpc } from "@/lib/trpc";
 import type { RouterOutputs } from "@/lib/trpc";
 import "@/index.css";
@@ -103,18 +101,9 @@ function MarketingVisaoGeralE2E() {
 }
 
 function RoiMarketingFixture() {
-  if (new URLSearchParams(window.location.search).has("visao-geral")) {
-    return (
-      <main className="mx-auto max-w-7xl space-y-6 p-6">
-        <MarketingVisaoGeralE2E />
-      </main>
-    );
-  }
-
   return (
-    <main className="mx-auto max-w-6xl space-y-6 p-6">
-      <MarketingEstadosCampanhas ano={2026} />
-      <MarketingEstadosNovos ano={2026} />
+    <main className="mx-auto max-w-7xl space-y-6 p-6">
+      <MarketingVisaoGeralE2E />
     </main>
   );
 }

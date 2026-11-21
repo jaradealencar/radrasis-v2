@@ -96,6 +96,8 @@ jobs:
           BETTER_AUTH_SECRET: school-e2e-only-secret-not-for-production
           BETTER_AUTH_URL: http://127.0.0.1:4173
         run: yarn test:e2e:school
+      - name: Run marketing overview browser flow
+        run: yarn test:e2e:marketing
       - name: Upload Escola E2E report on failure
         if: failure()
         uses: actions/upload-artifact@v4
