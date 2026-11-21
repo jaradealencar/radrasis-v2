@@ -68,6 +68,7 @@ import RegistrarDisparoDialog from "./campanhasWhatsapp/RegistrarDisparoDialog";
 import QualificacaoIaDialog from "./campanhasWhatsapp/QualificacaoIaDialog";
 import RelatorioPeriodo from "./campanhasWhatsapp/RelatorioPeriodo";
 import VendasPosVendaDialog from "./campanhasWhatsapp/VendasPosVendaDialog";
+import FilaProgramadaDashboard from "./campanhasWhatsapp/FilaProgramadaDashboard";
 import {
   StatusCampanhaBadge,
   type CampanhaLinha,
@@ -183,6 +184,9 @@ export default function MarketingCampanhasWhatsapp() {
           <TabsTrigger value="painel" className="gap-1.5">
             <LayoutList size={14} /> Painel
           </TabsTrigger>
+          <TabsTrigger value="fila" className="gap-1.5">
+            <Send size={14} /> Fila de envios
+          </TabsTrigger>
           <TabsTrigger value="calendario" className="gap-1.5">
             <CalendarDays size={14} /> Calendário
           </TabsTrigger>
@@ -193,6 +197,10 @@ export default function MarketingCampanhasWhatsapp() {
             <BanIcon size={14} /> Não quer receber
           </TabsTrigger>
         </TabsList>
+
+        <TabsContent value="fila" className="pt-3">
+          <FilaProgramadaDashboard />
+        </TabsContent>
 
         <TabsContent value="painel" className="space-y-4 pt-3">
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">

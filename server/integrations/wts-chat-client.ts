@@ -15,6 +15,8 @@ export interface WtsChatResultadoEnvio {
   erro?: string;
   /** true quando houve timeout/5xx ou aceite sem ID conciliável; nunca repetir automaticamente. */
   incerto?: boolean;
+  /** Espera solicitada pelo provedor (Retry-After), se ele retornar uma pausa explícita. */
+  retryAfterSeconds?: number;
   /** Corpo devolvido pela WTS.Chat (cortado em 500 caracteres): é onde aparece o motivo de uma rejeição. */
   resposta?: string;
 }
@@ -57,10 +59,26 @@ export async function enviarTemplateWtsSeguro(
       if (response.status === 404 && i === 0) continue;
       if (!response.ok) {
         const incerto = response.status === 408 || response.status >= 500;
+        const retryHeader = response.headers.get("retry-after");
+        const retryDate = retryHeader ? Date.parse(retryHeader) : Number.NaN;
+        const retryFromHeader = retryHeader && /^\d+$/.test(retryHeader.trim())
+          ? Number(retryHeader.trim())
+          : Number.isFinite(retryDate)
+            ? Math.max(0, Math.ceil((retryDate - Date.now()) / 1000))
+            : undefined;
+        let retryFromBody: number | undefined;
+        try {
+          const json = JSON.parse(body) as Record<string, unknown>;
+          const raw = json.retryAfterSeconds ?? json.retry_after_seconds ?? json.retryAfter ?? json.retry_after;
+          const seconds = typeof raw === "number" ? raw : typeof raw === "string" && /^\d+$/.test(raw.trim()) ? Number(raw.trim()) : null;
+          if (seconds !== null && Number.isFinite(seconds) && seconds >= 0) retryFromBody = Math.ceil(seconds);
+        } catch { /* o provedor pode retornar um corpo não JSON */ }
+        const retryAfterSeconds = retryFromHeader ?? retryFromBody;
         return {
           ok: false,
           status: response.status,
           incerto,
+          retryAfterSeconds,
           erro: `WTS.Chat respondeu HTTP ${response.status}${body ? `: ${body}` : "."}`,
           resposta: body,
         };

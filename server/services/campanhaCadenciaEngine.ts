@@ -48,6 +48,7 @@ import {
   obterContatosErpAtivos,
   obterSaudeSyncErp,
 } from "./campanhaCadenciaErp";
+import { cancelarFilaProgramadaPorOptout } from "./campanhaFilaOptout";
 
 const ESTADOS_ATIVOS = ["aguardando", "enviando", "pendente_conciliacao", "pausado_por_resposta"] as const;
 
@@ -865,5 +866,6 @@ export async function registrarOptOutInbound(telefone: string, nome: string | nu
   }).onConflictDoNothing().returning({ id: campanhasWhatsappOptout.id });
   await db.update(campanhasWhatsappInscricoes).set({ status: "opt_out", proximoEnvioEm: null, ultimaRespostaEm: quando, motivoFim: "opt_out_inbound", leaseToken: null, leaseAte: null, updatedAt: quando })
     .where(and(eq(campanhasWhatsappInscricoes.telefoneE164, e164), inArray(campanhasWhatsappInscricoes.status, [...ESTADOS_ATIVOS])));
+  await cancelarFilaProgramadaPorOptout([digits], quando);
   return !!inserted;
 }
