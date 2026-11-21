@@ -197,12 +197,12 @@ export default function ImportarCustoMarketing({ open, onOpenChange, anoSel, onI
   const validas = linhas.filter(l => l.valido);
   const invalidas = linhas.filter(l => !l.valido);
 
-  const totaisPorMes = new Map<string, { mes: number; ano: number; aquisicao: number; reativacao: number }>();
+  const totaisPorMes = new Map<string, { mes: number; ano: number; aquisicao: number | null; reativacao: number | null }>();
   for (const l of validas) {
     const chave = `${l.ano}-${l.mes}`;
-    const atual = totaisPorMes.get(chave) ?? { mes: l.mes!, ano: l.ano!, aquisicao: 0, reativacao: 0 };
-    if (l.categoria === "aquisicao") atual.aquisicao += l.valor!;
-    else atual.reativacao += l.valor!;
+    const atual = totaisPorMes.get(chave) ?? { mes: l.mes!, ano: l.ano!, aquisicao: null, reativacao: null };
+    if (l.categoria === "aquisicao") atual.aquisicao = (atual.aquisicao ?? 0) + l.valor!;
+    else atual.reativacao = (atual.reativacao ?? 0) + l.valor!;
     totaisPorMes.set(chave, atual);
   }
   const resumoMeses = Array.from(totaisPorMes.values()).sort((a, b) => a.ano !== b.ano ? a.ano - b.ano : a.mes - b.mes);
@@ -275,7 +275,7 @@ export default function ImportarCustoMarketing({ open, onOpenChange, anoSel, onI
 
               <div>
                 <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">
-                  Resumo por mês (o que será salvo)
+                  Valores informados na planilha
                 </div>
                 <Table>
                   <TableHeader>
@@ -283,16 +283,16 @@ export default function ImportarCustoMarketing({ open, onOpenChange, anoSel, onI
                       <TableHead>Mês</TableHead>
                       <TableHead className="text-right">Aquisição</TableHead>
                       <TableHead className="text-right">Reativação</TableHead>
-                      <TableHead className="text-right">Total</TableHead>
+                      <TableHead className="text-right">Subtotal informado</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {resumoMeses.map(r => (
                       <TableRow key={`${r.ano}-${r.mes}`}>
                         <TableCell className="font-medium">{MESES[r.mes - 1]}/{r.ano}</TableCell>
-                        <TableCell className="text-right text-purple-700">{fmtBRL(r.aquisicao)}</TableCell>
-                        <TableCell className="text-right text-cyan-700">{fmtBRL(r.reativacao)}</TableCell>
-                        <TableCell className="text-right font-semibold">{fmtBRL(r.aquisicao + r.reativacao)}</TableCell>
+                        <TableCell className="text-right text-purple-700">{r.aquisicao == null ? "—" : fmtBRL(r.aquisicao)}</TableCell>
+                        <TableCell className="text-right text-cyan-700">{r.reativacao == null ? "—" : fmtBRL(r.reativacao)}</TableCell>
+                        <TableCell className="text-right font-semibold">{fmtBRL((r.aquisicao ?? 0) + (r.reativacao ?? 0))}</TableCell>
                       </TableRow>
                     ))}
                   </TableBody>
@@ -300,7 +300,7 @@ export default function ImportarCustoMarketing({ open, onOpenChange, anoSel, onI
               </div>
 
               <div className="text-xs text-muted-foreground bg-amber-50 border border-amber-200 rounded-lg p-3">
-                Se já existir um valor lançado para algum desses meses, a importação <strong>soma</strong> ao que já está salvo (não substitui).
+                Categorias sem linha ficam <strong>sem alteração</strong> e continuam pendentes; não são convertidas em R$ 0. Se já existir um valor lançado para algum desses meses e categorias, a importação <strong>soma</strong> ao que já está salvo (não substitui). Informe 0 explicitamente quando não houve gasto.
               </div>
             </>
           )}

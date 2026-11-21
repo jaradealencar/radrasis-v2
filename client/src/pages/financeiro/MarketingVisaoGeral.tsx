@@ -67,29 +67,38 @@ export default function MarketingVisaoGeral({ ano, relatorio, config, mesFiltro,
   // consolidados por padrão — ver seção 4 do pedido do usuário.
   const mesesCompletos = useMemo(() => mesesFiltrados.filter(m => !m.mesParcial), [mesesFiltrados]);
   const temMesParcialExcluido = mesesFiltrados.length > mesesCompletos.length;
+  const mesesAquisicaoCobertos = useMemo(() => mesesCompletos.filter(m => m.investimentoAquisicao != null), [mesesCompletos]);
+  const mesesReativacaoCobertos = useMemo(() => mesesCompletos.filter(m => m.investimentoReativacao != null), [mesesCompletos]);
+  const mesesConsolidadosCobertos = useMemo(() => mesesCompletos.filter(m => m.investimentoAquisicao != null && m.investimentoReativacao != null), [mesesCompletos]);
 
   const totais = useMemo(() => {
-    const investAquis = somarOuNull(mesesCompletos.map(m => m.investimentoAquisicao));
-    const investReativ = somarOuNull(mesesCompletos.map(m => m.investimentoReativacao));
+    const investAquis = somarOuNull(mesesAquisicaoCobertos.map(m => m.investimentoAquisicao));
+    const investReativ = somarOuNull(mesesReativacaoCobertos.map(m => m.investimentoReativacao));
     const clientesNovos = mesesCompletos.reduce((s, m) => s + m.novo.qtdClientesUnicos, 0);
+    const clientesNovosCobertos = mesesAquisicaoCobertos.reduce((s, m) => s + m.novo.qtdClientesUnicos, 0);
     const eventosReativados = mesesCompletos.reduce((s, m) => s + m.reativado.qtdClientesUnicos, 0);
+    const eventosReativadosCobertos = mesesReativacaoCobertos.reduce((s, m) => s + m.reativado.qtdClientesUnicos, 0);
     const clientesRecorrentes = mesesCompletos.reduce((s, m) => s + m.recorrenteAtivo.qtdClientesUnicos, 0);
     const fatNovos = mesesCompletos.reduce((s, m) => s + m.novo.faturamento, 0);
     const fatReativados = mesesCompletos.reduce((s, m) => s + m.reativado.faturamento, 0);
     const fatRecorrente = mesesCompletos.reduce((s, m) => s + m.recorrenteAtivo.faturamento, 0);
-    const margemNovos = mesesCompletos.reduce((s, m) => s + m.novo.margem.margemTotal, 0);
-    const margemReativados = mesesCompletos.reduce((s, m) => s + m.reativado.margem.margemTotal, 0);
+    const fatNovosCobertos = mesesAquisicaoCobertos.reduce((s, m) => s + m.novo.faturamento, 0);
+    const fatReativadosCobertos = mesesReativacaoCobertos.reduce((s, m) => s + m.reativado.faturamento, 0);
+    const margemNovos = mesesAquisicaoCobertos.reduce((s, m) => s + m.novo.margem.margemTotal, 0);
+    const margemReativados = mesesReativacaoCobertos.reduce((s, m) => s + m.reativado.margem.margemTotal, 0);
     const margemRecorrente = mesesCompletos.reduce((s, m) => s + m.recorrenteAtivo.margem.margemTotal, 0);
     const pedidosTotal = mesesCompletos.reduce((s, m) => s + m.novo.qtdOs + m.recorrenteAtivo.qtdOs + m.reativado.qtdOs, 0);
     const clientesTotal = clientesNovos + clientesRecorrentes + eventosReativados;
 
-    const cac = cacPonderado(investAquis, clientesNovos);
-    const custoReativ = custoReativacaoPonderado(investReativ, eventosReativados);
-    const resultadoNovo = calcularResultadoGrupo(investAquis, margemNovos, fatNovos);
-    const resultadoReativado = calcularResultadoGrupo(investReativ, margemReativados, fatReativados);
+    const cac = cacPonderado(investAquis, clientesNovosCobertos);
+    const custoReativ = custoReativacaoPonderado(investReativ, eventosReativadosCobertos);
+    const resultadoNovo = calcularResultadoGrupo(investAquis, margemNovos, fatNovosCobertos);
+    const resultadoReativado = calcularResultadoGrupo(investReativ, margemReativados, fatReativadosCobertos);
+    const investAquisConsolidado = somarOuNull(mesesConsolidadosCobertos.map(m => m.investimentoAquisicao));
+    const investReativConsolidado = somarOuNull(mesesConsolidadosCobertos.map(m => m.investimentoReativacao));
     const consolidado = calcularResultadoConsolidado([
-      { investimento: investAquis, margemContribuicao: margemNovos },
-      { investimento: investReativ, margemContribuicao: margemReativados },
+      { investimento: investAquisConsolidado, margemContribuicao: mesesConsolidadosCobertos.reduce((s, m) => s + m.novo.margem.margemTotal, 0) },
+      { investimento: investReativConsolidado, margemContribuicao: mesesConsolidadosCobertos.reduce((s, m) => s + m.reativado.margem.margemTotal, 0) },
     ]);
     const fatTotal = fatNovos + fatReativados + fatRecorrente;
     const pctFaturamentoNovos = fatTotal > 0 ? (fatNovos / fatTotal) * 100 : null;
@@ -99,26 +108,30 @@ export default function MarketingVisaoGeral({ ano, relatorio, config, mesFiltro,
     return {
       investAquis, investReativ, clientesNovos, eventosReativados, clientesRecorrentes,
       fatNovos, fatReativados, fatRecorrente, margemNovos, margemReativados, margemRecorrente,
+      coberturaAquisicao: mesesAquisicaoCobertos.length,
+      coberturaReativacao: mesesReativacaoCobertos.length,
+      coberturaConsolidado: mesesConsolidadosCobertos.length,
+      mesesElegiveis: mesesCompletos.length,
       cac, custoReativ, resultadoNovo, resultadoReativado, consolidado,
       pctFaturamentoNovos, pctFaturamentoReativados, pedidosPorCliente,
     };
-  }, [mesesCompletos]);
+  }, [mesesCompletos, mesesAquisicaoCobertos, mesesReativacaoCobertos, mesesConsolidadosCobertos]);
 
   const dadosGrafico = useMemo(() => mesesCompletos.map(m => ({
     mes: MESES_ABREV[m.mes - 1],
-    "Aquisição": m.investimentoAquisicao ?? 0,
-    "Reativação": m.investimentoReativacao ?? 0,
-    "Margem Novos": m.novo.margem.margemTotal,
-    "Margem Reativados": m.reativado.margem.margemTotal,
+    "Aquisição": m.investimentoAquisicao,
+    "Reativação": m.investimentoReativacao,
+    "Margem Novos": m.investimentoAquisicao != null ? m.novo.margem.margemTotal : null,
+    "Margem Reativados": m.investimentoReativacao != null ? m.reativado.margem.margemTotal : null,
   })), [mesesCompletos]);
 
   const dadosRoi = useMemo(() => mesesCompletos
-    .filter(m => m.consolidado.roiPct != null)
+    .filter(m => m.novo.roiPct != null || m.reativado.roiPct != null || m.consolidado.roiPct != null)
     .map(m => ({
       mes: MESES_ABREV[m.mes - 1],
       "ROI Aquisição (%)": m.novo.roiPct != null ? Math.round(m.novo.roiPct) : null,
       "ROI Reativação (%)": m.reativado.roiPct != null ? Math.round(m.reativado.roiPct) : null,
-      "ROI Consolidado (%)": Math.round(m.consolidado.roiPct!),
+      "ROI Consolidado (%)": m.consolidado.roiPct != null ? Math.round(m.consolidado.roiPct) : null,
     })), [mesesCompletos]);
 
   const dadosEvolucao = useMemo(() => mesesCompletos.map(m => ({
@@ -133,9 +146,13 @@ export default function MarketingVisaoGeral({ ano, relatorio, config, mesFiltro,
     type Insight = { tipo: "positivo" | "atencao" | "alerta" | "dica"; texto: string };
     const lista: Insight[] = [];
 
-    const mesesFaltando = relatorio.meses.filter(m => !m.mesParcial && m.investimentoAquisicao == null && m.investimentoReativacao == null);
-    if (mesesFaltando.length > 0) {
-      lista.push({ tipo: "dica", texto: `Investimento pendente em ${mesesFaltando.map(m => MESES_ABREV[m.mes - 1]).join(", ")} — esses meses não entram nos indicadores de CAC/ROI enquanto não forem preenchidos.` });
+    const mesesAquisicaoPendentes = mesesCompletos.filter(m => m.investimentoAquisicao == null);
+    const mesesReativacaoPendentes = mesesCompletos.filter(m => m.investimentoReativacao == null);
+    if (mesesAquisicaoPendentes.length > 0 || mesesReativacaoPendentes.length > 0) {
+      const partes: string[] = [];
+      if (mesesAquisicaoPendentes.length > 0) partes.push(`Aquisição: ${mesesAquisicaoPendentes.map(m => MESES_ABREV[m.mes - 1]).join(", ")}`);
+      if (mesesReativacaoPendentes.length > 0) partes.push(`Reativação: ${mesesReativacaoPendentes.map(m => MESES_ABREV[m.mes - 1]).join(", ")}`);
+      lista.push({ tipo: "dica", texto: `Lançamentos pendentes (${partes.join(" · ")}). Os meses sem valor ficam fora do CAC/ROI daquela frente; registre 0 quando não houve gasto.` });
     }
     if (temMesParcialExcluido) {
       const parcial = mesesFiltrados.find(m => m.mesParcial);
@@ -169,18 +186,21 @@ export default function MarketingVisaoGeral({ ano, relatorio, config, mesFiltro,
       });
     }
 
-    const origemMista = mesesCompletos.some(m => m.novo.margem.origem === "mista" || m.novo.margem.origem === "estimada" || m.reativado.margem.origem === "mista" || m.reativado.margem.origem === "estimada");
+    const origemMista = [
+      ...mesesAquisicaoCobertos.map(m => m.novo.margem.origem),
+      ...mesesReativacaoCobertos.map(m => m.reativado.margem.origem),
+    ].some(origem => origem === "mista" || origem === "estimada");
     if (origemMista) lista.push({ tipo: "dica", texto: "Parte do resultado deste período usa margem estimada (percentual de fallback), não a margem real por pedido — ver selo em cada card." });
 
     return lista;
-  }, [relatorio.meses, mesesFiltrados, mesesCompletos, totais, config, temMesParcialExcluido]);
+  }, [mesesFiltrados, mesesCompletos, mesesAquisicaoCobertos, mesesReativacaoCobertos, totais, config, temMesParcialExcluido]);
 
-  const origensMargemNovos = mesesCompletos.map(m => m.novo.margem.origem);
+  const origensMargemNovos = mesesAquisicaoCobertos.map(m => m.novo.margem.origem);
   const origemMargemNovos = origensMargemNovos.length === 0 ? "sem-dado"
     : origensMargemNovos.every(origem => origem === "real") ? "real"
     : origensMargemNovos.every(origem => origem === "estimada" || origem === "sem-dado") ? "estimada"
     : "mista";
-  const origensMargemReativados = mesesCompletos.map(m => m.reativado.margem.origem);
+  const origensMargemReativados = mesesReativacaoCobertos.map(m => m.reativado.margem.origem);
   const origemMargemReativados = origensMargemReativados.length === 0 ? "sem-dado"
     : origensMargemReativados.every(origem => origem === "real") ? "real"
     : origensMargemReativados.every(origem => origem === "estimada" || origem === "sem-dado") ? "estimada"
@@ -197,13 +217,14 @@ export default function MarketingVisaoGeral({ ano, relatorio, config, mesFiltro,
           <KpiCard
             variant="border" color={COR_AQUISICAO} icon={<DollarSign size={18} />}
             label="Investimento em Aquisição" value={totais.investAquis != null ? fmtBrl(totais.investAquis) : "Pendente"}
-            sub={totais.investAquis == null ? "Nenhum mês do período preenchido" : undefined}
-            tooltip="Soma de custo_marketing.investimentoAquisicao dos meses completos do período (meses parciais e não preenchidos ficam fora, por padrão)."
+            sub={`${totais.coberturaAquisicao}/${totais.mesesElegiveis} meses fechados com valor`}
+            tooltip="Soma dos meses completos com investimento de aquisição preenchido. Registre zero quando não houve gasto; campo vazio fica fora do CAC e ROI da aquisição."
           />
           <KpiCard
             variant="border" color={COR_REATIVACAO} icon={<RefreshCw size={18} />}
             label="Investimento em Reativação" value={totais.investReativ != null ? fmtBrl(totais.investReativ) : "Pendente"}
-            tooltip="Soma de custo_marketing.investimentoReativacao dos meses completos do período."
+            sub={`${totais.coberturaReativacao}/${totais.mesesElegiveis} meses fechados com valor`}
+            tooltip="Soma dos meses completos com investimento de reativação preenchido. Registre zero quando não houve gasto; campo vazio fica fora do custo de reativação e ROI."
           />
           <KpiCard
             variant="border" color="#2563eb" icon={<Users size={18} />}
@@ -220,38 +241,38 @@ export default function MarketingVisaoGeral({ ano, relatorio, config, mesFiltro,
           <KpiCard
             variant="border" color="#ea580c" icon={<Target size={18} />}
             label="CAC de Aquisição (ponderado)" value={totais.cac != null ? fmtBrl(totais.cac) : "—"}
-            sub={<>Invest. aquisição ÷ clientes novos {config.cacMaximo != null && <div className="mt-1"><SeloSemaforo nivel={avaliarSemaforoTeto(totais.cac, config.cacMaximo)} /></div>}</>}
-            tooltip="Ponderado: soma do investimento ÷ soma de clientes novos do período — nunca a média dos CAC mensais (que distorceria a favor de meses com pouco volume)."
+            sub={<>Ponderado · {totais.coberturaAquisicao}/{totais.mesesElegiveis} meses {config.cacMaximo != null && <div className="mt-1"><SeloSemaforo nivel={avaliarSemaforoTeto(totais.cac, config.cacMaximo)} /></div>}</>}
+            tooltip="Soma do investimento dividida pelos clientes novos nos mesmos meses completos com lançamento de aquisição. Não é a média dos CAC mensais."
           />
           <KpiCard
             variant="border" color="#b45309" icon={<RefreshCw size={18} />}
             label="Custo por Reativado (ponderado)" value={totais.custoReativ != null ? fmtBrl(totais.custoReativ) : "—"}
-            sub={config.custoReativacaoMaximo != null ? <SeloSemaforo nivel={avaliarSemaforoTeto(totais.custoReativ, config.custoReativacaoMaximo)} /> : undefined}
-            tooltip="Investimento em reativação ÷ eventos de reativação do período (não clientes únicos — o investimento se destina a tentativas, que podem reativar o mesmo cliente mais de uma vez)."
+            sub={<>Ponderado · {totais.coberturaReativacao}/{totais.mesesElegiveis} meses {config.custoReativacaoMaximo != null && <div className="mt-1"><SeloSemaforo nivel={avaliarSemaforoTeto(totais.custoReativ, config.custoReativacaoMaximo)} /></div>}</>}
+            tooltip="Investimento dividido pelos eventos de reativação nos mesmos meses completos com lançamento. Eventos contam o cliente mais de uma vez se ele reativar em meses diferentes."
           />
           <KpiCard
             variant="border" color={COR_POSITIVO} icon={<TrendingUp size={18} />}
             label="Margem de Contribuição — Novos" value={fmtBrlCompact(totais.margemNovos)}
-            sub={descricaoOrigemMargem(origemMargemNovos, config.percentualMargemFallback)}
+            sub={`${descricaoOrigemMargem(origemMargemNovos, config.percentualMargemFallback)} · ${totais.coberturaAquisicao}/${totais.mesesElegiveis} meses de aquisição`}
             tooltip="Margem dos pedidos de clientes novos. Usa historico_os.contribuicaoReais quando disponível e o percentual de fallback configurado nos pedidos sem custo real detalhado."
           />
           <KpiCard
             variant="border" color="#0d9488" icon={<TrendingUp size={18} />}
             label="Margem de Contribuição — Reativados" value={fmtBrlCompact(totais.margemReativados)}
-            sub={descricaoOrigemMargem(origemMargemReativados, config.percentualMargemFallback)}
+            sub={`${descricaoOrigemMargem(origemMargemReativados, config.percentualMargemFallback)} · ${totais.coberturaReativacao}/${totais.mesesElegiveis} meses de reativação`}
             tooltip="Margem dos pedidos de clientes reativados. Usa historico_os.contribuicaoReais quando disponível e o percentual de fallback configurado nos pedidos sem custo real detalhado."
           />
           <KpiCard
             variant="border" color={totais.resultadoNovo.resultado != null && totais.resultadoNovo.resultado >= 0 ? COR_POSITIVO : COR_ALERTA} icon={totais.resultadoNovo.resultado != null && totais.resultadoNovo.resultado >= 0 ? <CheckCircle2 size={18} /> : <ShieldAlert size={18} />}
             label="Resultado após Marketing — Novos" value={totais.resultadoNovo.resultado != null ? fmtBrl(totais.resultadoNovo.resultado) : "—"}
-            sub={totais.resultadoNovo.roiPct != null ? `ROI: ${fmtPct(totais.resultadoNovo.roiPct)}` : undefined}
-            tooltip="Margem de contribuição dos clientes novos menos o investimento em aquisição do período."
+            sub={`${totais.coberturaAquisicao}/${totais.mesesElegiveis} meses com aquisição · ${totais.resultadoNovo.roiPct != null ? `ROI: ${fmtPct(totais.resultadoNovo.roiPct)}` : "ROI pendente"}`}
+            tooltip="Margem de contribuição de novos e investimento de aquisição dos mesmos meses completos com lançamento. O ROI separado é exibido quando existe investimento."
           />
           <KpiCard
             variant="border" color={totais.resultadoReativado.resultado != null && totais.resultadoReativado.resultado >= 0 ? COR_POSITIVO : COR_ALERTA} icon={totais.resultadoReativado.resultado != null && totais.resultadoReativado.resultado >= 0 ? <CheckCircle2 size={18} /> : <ShieldAlert size={18} />}
             label="Resultado após Marketing — Reativados" value={totais.resultadoReativado.resultado != null ? fmtBrl(totais.resultadoReativado.resultado) : "—"}
-            sub={totais.resultadoReativado.roiPct != null ? `ROI: ${fmtPct(totais.resultadoReativado.roiPct)}` : undefined}
-            tooltip="Margem de contribuição dos clientes reativados menos o investimento em reativação do período."
+            sub={`${totais.coberturaReativacao}/${totais.mesesElegiveis} meses com reativação · ${totais.resultadoReativado.roiPct != null ? `ROI: ${fmtPct(totais.resultadoReativado.roiPct)}` : "ROI pendente"}`}
+            tooltip="Margem de contribuição de reativados e investimento de reativação dos mesmos meses completos com lançamento. O ROI separado é exibido quando existe investimento."
           />
           <KpiCard
             variant="border" color="#2563eb" icon={<Percent size={18} />}
@@ -284,6 +305,7 @@ export default function MarketingVisaoGeral({ ano, relatorio, config, mesFiltro,
           <strong>Metodologia:</strong> Novo, Recorrente Ativo e Reativado são categorias mutuamente exclusivas — nunca somadas uma dentro da outra.
           A margem de contribuição usa o custo real por pedido (<code>historico_os.contribuicaoReais</code>) sempre que disponível; só cai para a estimativa de {config.percentualMargemFallback}% nos pedidos sem custo detalhado.
           CAC/Custo de Reativação são <strong>ponderados</strong> (soma dos totais do período, não média dos meses). Valores vazios são pendentes e ficam fora do cálculo; use zero quando não houve gasto. O ROI consolidado requer investimento lançado em Aquisição e Reativação no mês.
+          O consolidado inclui somente os meses em que as duas frentes têm investimento registrado; a cobertura aparece nos cards.
           Os resultados de Novos e Reativados são apresentados separadamente; o consolidado permanece disponível na análise mensal.
         </span>
       </div>

@@ -4,8 +4,9 @@ import { Calculator, CheckCircle2 } from "lucide-react";
 import { trpc } from "@/lib/trpc";
 import type { RouterOutputs } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { fmtBrl, fmtNum, MESES } from "@/lib/format";
+import { parseInvestimentoMarketing } from "@shared/marketing-financeiro";
+import MarketingInvestimentoInput from "./MarketingInvestimentoInput";
 
 type RelatorioAno = RouterOutputs["marketingFinanceiro"]["getRelatorioAno"];
 
@@ -33,16 +34,6 @@ function sugerirMes(relatorio: RelatorioAno, ano: number): number {
 function valorInicial(relatorio: RelatorioAno, mes: number): string {
   const valor = relatorio.meses.find(m => m.mes === mes)?.investimentoAquisicao;
   return valor != null ? valor.toFixed(2).replace(".", ",") : "";
-}
-
-function parseValor(texto: string): number | null | undefined {
-  const limpo = texto.trim().replace(/^R\$\s*/i, "");
-  if (!limpo) return null;
-  const normalizado = limpo.includes(",")
-    ? limpo.replace(/\./g, "").replace(",", ".")
-    : limpo;
-  const valor = Number(normalizado);
-  return Number.isFinite(valor) ? valor : undefined;
 }
 
 export default function MarketingLancamentoCAC({ ano, relatorio, refetch }: Props) {
@@ -83,7 +74,7 @@ export default function MarketingLancamentoCAC({ ano, relatorio, refetch }: Prop
   }
 
   function salvarInvestimento() {
-    const investimentoAquisicao = parseValor(valor);
+    const investimentoAquisicao = parseInvestimentoMarketing(valor);
     if (investimentoAquisicao === undefined || (investimentoAquisicao != null && investimentoAquisicao < 0)) {
       toast.error("Informe um valor válido, como 1250,50.");
       return;
@@ -105,7 +96,7 @@ export default function MarketingLancamentoCAC({ ano, relatorio, refetch }: Prop
         <div>
           <h2 id="lancamento-cac-titulo" className="font-semibold text-slate-900">Lançar investimento e calcular CAC</h2>
           <p className="mt-1 text-sm text-slate-600">
-            Escolha o mês e informe o total gasto para adquirir clientes. O CAC aparece atualizado depois de salvar.
+            Escolha o mês e informe o total gasto para adquirir clientes. O CAC aparece atualizado depois de salvar. O campo aceita vírgula ou ponto decimal.
           </p>
         </div>
       </div>
@@ -127,18 +118,14 @@ export default function MarketingLancamentoCAC({ ano, relatorio, refetch }: Prop
 
         <label className="space-y-1.5 text-sm font-medium text-slate-700">
           Investimento em aquisição
-          <div className="relative">
-            <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-slate-500">R$</span>
-            <Input
-              className="h-10 bg-white pl-10"
-              inputMode="decimal"
-              value={valor}
-              onChange={e => setValor(e.target.value)}
-              onKeyDown={e => { if (e.key === "Enter") salvarInvestimento(); }}
-              placeholder="Ex.: 1250,50"
-              aria-label="Valor investido em aquisição"
-            />
-          </div>
+          <MarketingInvestimentoInput
+            wrapperClassName="w-full"
+            inputClassName="h-10 bg-white"
+            value={valor}
+            onChange={setValor}
+            onKeyDown={e => { if (e.key === "Enter") salvarInvestimento(); }}
+            ariaLabel="Valor investido em aquisição"
+          />
           <span className="block text-xs font-normal text-slate-500">Use 0 se não houve gasto no mês.</span>
         </label>
 
