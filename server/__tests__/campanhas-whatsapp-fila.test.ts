@@ -57,12 +57,12 @@ describe("calendário e lotes da fila de campanhas", () => {
     expect(contarLotes(0)).toBe(0);
   });
 
-  it("gera alertas sÃ³ na transiÃ§Ã£o para conclusÃ£o ou pausa de autorizaÃ§Ã£o", () => {
+  it("gera alertas só na transição para conclusão ou pausa de autorização", () => {
     const anteriores = new Map([[401, "em_andamento"], [402, "em_andamento"], [403, "pausado"]]);
     const alertas = detectarAlertasFila(anteriores, [
       { envioProgramadoId: 401, campanhaNome: "SP 01", status: "concluido" },
       { envioProgramadoId: 402, campanhaNome: "SP 02", status: "pausado", motivoPausa: "Acesso negado pela WTS.Chat (HTTP 403)." },
-      { envioProgramadoId: 403, campanhaNome: "SP 03", status: "pausado", motivoPausa: "Pausado pelo usuÃ¡rio." },
+      { envioProgramadoId: 403, campanhaNome: "SP 03", status: "pausado", motivoPausa: "Pausado pelo usuário." },
     ]);
     expect(alertas.map(a => a.tipo)).toEqual(["concluido", "autorizacao"]);
     expect(detectarAlertasFila(new Map(), [{ envioProgramadoId: 401, campanhaNome: "SP 01", status: "concluido" }])).toEqual([]);
@@ -77,7 +77,7 @@ describe("calendário e lotes da fila de campanhas", () => {
     expect(() => estimarDuracaoFilaSegundos(10, 0)).toThrow();
   });
 
-  it("respeita os dias e horÃ¡rios escolhidos no fuso de CuiabÃ¡", () => {
+  it("respeita os dias e horários escolhidos no fuso de Cuiabá", () => {
     const janela = { ativa: true, horaInicio: "09:00", horaFim: "18:00", diasSemana: [1, 2, 3, 4, 5] };
     expect(estaDentroJanelaEnvio(new Date("2026-11-20T19:00:00.000Z"), janela)).toBe(true);
     expect(estaDentroJanelaEnvio(new Date("2026-11-21T20:00:00.000Z"), janela)).toBe(false);
@@ -85,7 +85,7 @@ describe("calendário e lotes da fila de campanhas", () => {
     expect(() => proximoInstantePermitido(new Date(), { ...janela, horaInicio: "18:00", horaFim: "09:00" })).toThrow();
   });
 
-  it("aplica backoff para 429 e limita as tentativas automÃ¡ticas", () => {
+  it("aplica backoff para 429 e limita as tentativas automáticas", () => {
     expect([1, 2, 3, 4, 5].map(tentativa => calcularAtrasoRateLimitSegundos(tentativa))).toEqual([30, 60, 120, 240, 480]);
     expect(calcularAtrasoRateLimitSegundos(1, 3600)).toBe(3600);
     expect(MAX_TENTATIVAS_AUTOMATICAS_429).toBe(5);

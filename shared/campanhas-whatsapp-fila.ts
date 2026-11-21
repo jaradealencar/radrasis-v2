@@ -37,10 +37,10 @@ function partesLocais(instante: Date, timeZone = FUSO_HORARIO_FILA): PartesLocai
 
 function minutosDoDia(hora: string): number {
   const match = /^(\d{2}):(\d{2})$/.exec(hora);
-  if (!match) throw new Error("Informe os horÃ¡rios no formato HH:mm.");
+  if (!match) throw new Error("Informe os horários no formato HH:mm.");
   const h = Number(match[1]);
   const m = Number(match[2]);
-  if (h > 23 || m > 59) throw new Error("O horÃ¡rio informado nÃ£o Ã© vÃ¡lido.");
+  if (h > 23 || m > 59) throw new Error("O horário informado não é válido.");
   return h * 60 + m;
 }
 
@@ -59,9 +59,9 @@ function validarJanela(janela: JanelaEnvioFila): void {
   if (!janela.ativa) return;
   const inicio = minutosDoDia(janela.horaInicio);
   const fim = minutosDoDia(janela.horaFim);
-  if (inicio >= fim) throw new Error("O fim da janela precisa ser posterior ao inÃ­cio no mesmo dia.");
+  if (inicio >= fim) throw new Error("O fim da janela precisa ser posterior ao início no mesmo dia.");
   if (!janela.diasSemana.length || janela.diasSemana.some(dia => !Number.isInteger(dia) || dia < 0 || dia > 6)) {
-    throw new Error("Escolha ao menos um dia vÃ¡lido para a janela de envio.");
+    throw new Error("Escolha ao menos um dia válido para a janela de envio.");
   }
 }
 
@@ -75,7 +75,7 @@ export function estaDentroJanelaEnvio(instante: Date, janela: JanelaEnvioFila, t
     && minutoAtual < minutosDoDia(janela.horaFim);
 }
 
-/** Retorna o instante original se estiver dentro da janela; caso contrÃ¡rio, o inÃ­cio vÃ¡lido seguinte. */
+/** Retorna o instante original se estiver dentro da janela; caso contrário, o início válido seguinte. */
 export function proximoInstantePermitido(instante: Date, janela: JanelaEnvioFila, timeZone = FUSO_HORARIO_FILA): Date {
   validarJanela(janela);
   if (!janela.ativa || estaDentroJanelaEnvio(instante, janela, timeZone)) return new Date(instante);
@@ -88,7 +88,7 @@ export function proximoInstantePermitido(instante: Date, janela: JanelaEnvioFila
     const candidato = converterHoraLocalParaUtc(data.getUTCFullYear(), data.getUTCMonth() + 1, data.getUTCDate(), janela.horaInicio, timeZone);
     if (candidato.getTime() >= instante.getTime()) return candidato;
   }
-  throw new Error("NÃ£o foi possÃ­vel calcular o prÃ³ximo horÃ¡rio permitido.");
+  throw new Error("Não foi possível calcular o próximo horário permitido.");
 }
 
 export function gerarDatasProgramadas(dataInicial: string, quantidade: number, intervaloDias: number): string[] {
@@ -120,16 +120,16 @@ export function estimarDuracaoFilaSegundos(
   pausaLotesMinutos: number,
   intervaloEntreContatosSegundos = 3,
 ): number {
-  if (!Number.isInteger(totalContatos) || totalContatos < 0) throw new Error("A quantidade de contatos precisa ser um inteiro nÃ£o negativo.");
+  if (!Number.isInteger(totalContatos) || totalContatos < 0) throw new Error("A quantidade de contatos precisa ser um inteiro não negativo.");
   if (!Number.isInteger(pausaLotesMinutos) || pausaLotesMinutos < 1) throw new Error("A pausa entre lotes precisa ser de ao menos um minuto.");
-  if (!Number.isInteger(intervaloEntreContatosSegundos) || intervaloEntreContatosSegundos < 0) throw new Error("O intervalo entre contatos precisa ser nÃ£o negativo.");
+  if (!Number.isInteger(intervaloEntreContatosSegundos) || intervaloEntreContatosSegundos < 0) throw new Error("O intervalo entre contatos precisa ser não negativo.");
   const lotes = contarLotes(totalContatos);
   return Math.max(0, totalContatos - 1) * intervaloEntreContatosSegundos
     + Math.max(0, lotes - 1) * pausaLotesMinutos * 60;
 }
 
 export function formatarDuracaoEstimada(segundos: number): string {
-  if (!Number.isFinite(segundos) || segundos < 0) throw new Error("A duraÃ§Ã£o precisa ser um valor nÃ£o negativo.");
+  if (!Number.isFinite(segundos) || segundos < 0) throw new Error("A duração precisa ser um valor não negativo.");
   if (segundos === 0) return "0 min";
   const minutos = Math.ceil(segundos / 60);
   const horasInteiras = Math.floor(minutos / 60);
@@ -138,11 +138,11 @@ export function formatarDuracaoEstimada(segundos: number): string {
   return minutosRestantes ? `${horasInteiras} h ${minutosRestantes} min` : `${horasInteiras} h`;
 }
 
-/** 429 Ã© uma recusa explÃ­cita; usa espera exponencial e nunca fica abaixo do Retry-After do provedor. */
+/** 429 é uma recusa explícita; usa espera exponencial e nunca fica abaixo do Retry-After do provedor. */
 export function calcularAtrasoRateLimitSegundos(tentativa: number, retryAfterSeconds?: number): number {
   if (!Number.isInteger(tentativa) || tentativa < 1) throw new Error("A tentativa precisa ser um inteiro positivo.");
   if (retryAfterSeconds !== undefined && (!Number.isFinite(retryAfterSeconds) || retryAfterSeconds < 0)) {
-    throw new Error("O Retry-After precisa ser nÃ£o negativo.");
+    throw new Error("O Retry-After precisa ser não negativo.");
   }
   const exponencial = Math.min(30 * 2 ** Math.min(tentativa - 1, 10), 1800);
   return Math.max(exponencial, Math.ceil(retryAfterSeconds ?? 0));
@@ -171,7 +171,7 @@ export type AlertaFilaNotificavel = EstadoFilaNotificavel & {
   tipo: "concluido" | "autorizacao";
 };
 
-/** Identifica apenas transiÃ§Ãµes ocorridas apÃ³s o painel carregar, evitando alertas antigos na abertura. */
+/** Identifica apenas transições ocorridas após o painel carregar, evitando alertas antigos na abertura. */
 export function detectarAlertasFila(
   anteriores: Map<number, string>,
   atuais: EstadoFilaNotificavel[],
