@@ -18,6 +18,7 @@
     "test": "tsx server/scripts/run-safe-tests.ts",
     "e2e:seed": "tsx e2e/seed-school-e2e.ts",
     "test:e2e:school": "playwright test --config=playwright.config.ts",
+    "test:e2e:marketing": "playwright test --config=playwright.marketing.config.ts",
     "test:e2e:crm": "yarn build:client && playwright test --config=playwright.crm.config.ts",
     "test:safety": "vitest run server/scripts/migration-safety.test.ts server/scripts/deployment-safety.test.ts server/scripts/build-metadata.test.ts server/db/db-connection-safety.test.ts server/db/db-helpers-safety.test.ts server/services/crmProbabilidadeModel.test.ts server/services/crmProbabilidadePerformance.test.ts",
     "db:push": "drizzle-kit generate && drizzle-kit migrate",

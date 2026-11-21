@@ -108,6 +108,7 @@ yarn run check   # tsc --noEmit (app) + tsconfig.cpq3d.json + tsconfig.e2e.json
                  # não o script do package.json, e retorna resultado errado
 yarn test        # wrapper seguro; exige TEST_DATABASE_URL local de teste
 yarn test:e2e:school # Playwright no Chromium; exige banco de teste migrado e seed E2E
+yarn test:e2e:marketing # Playwright da Visão Geral de Marketing; fixture local, sem banco
 yarn e2e:seed     # cria fixtures da Escola somente no TEST_DATABASE_URL local
 yarn test:e2e:crm # build client + fluxos de restauração do CRM com APIs simuladas
 yarn test:safety # guardas e regressões puras do CRM; não acessa banco
@@ -427,6 +428,8 @@ o início e retomada de provas, a aplicação formal e o painel/ranking da Escol
 O comando inicia a aplicação via Vite/Express e só aceita `TEST_DATABASE_URL`
 local; `yarn e2e:seed` também exige que `DATABASE_URL` seja o mesmo banco
 descartável. O workflow `Quality` executa essa suíte em um serviço Postgres CI.
+`yarn test:e2e:marketing` valida os indicadores separados de Novos e Reativados
+com dados sintéticos servidos por uma fixture Vite local, sem conexão ao banco.
 
 ## docs/ — quais valem como fonte de verdade
 
