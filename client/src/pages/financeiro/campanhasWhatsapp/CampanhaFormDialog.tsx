@@ -38,6 +38,7 @@ import FontesDadosPopover from "./FontesDadosPopover";
 import GerenciarCategoriasPopover from "./GerenciarCategoriasPopover";
 import ScriptsCampanhaDialog from "./ScriptsCampanhaDialog";
 import CadenciaCampanhaPanel from "./CadenciaCampanhaPanel";
+import ProgramacaoCadenciaPanel from "./ProgramacaoCadenciaPanel";
 import { LabelComAjuda, type CampanhaLinha } from "./comuns";
 
 // Conteúdo das "janelinhas de ajuda" (ícone (i) ao lado do label) — pedido do usuário para orientar o
@@ -347,6 +348,7 @@ export default function CampanhaFormDialog({
           )}
 
           {editando && <CadenciaCampanhaPanel campanhaId={campanha.id} aberto={open} />}
+          {editando && <ProgramacaoCadenciaPanel campanhaId={campanha.id} aberto={open} />}
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="space-y-1.5">

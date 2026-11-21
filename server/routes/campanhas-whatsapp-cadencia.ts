@@ -1,6 +1,6 @@
 import type { Express, Request, Response } from "express";
 import { z } from "zod";
-import { and, eq, gte, isNotNull, sql } from "drizzle-orm";
+import { and, eq, gte, isNotNull, isNull, sql } from "drizzle-orm";
 import { exigirChaveApi } from "./campanhas-whatsapp-api";
 import { exigirChaveWebhookWtsDedicada } from "./campanhas-whatsapp-webhook-auth";
 import { sincronizarCampanhasWhatsappErp } from "../sync/scheduled-sync-campanhas-whatsapp-erp";
@@ -10,6 +10,7 @@ import { invalidarCacheContextoErp } from "../services/fontesErpCampanhas";
 import {
   campanhasWhatsapp,
   campanhasWhatsappInscricoes,
+  campanhasWhatsappStatusWebhookEventos,
 } from "../../drizzle/schema";
 import { getDb } from "../db/db";
 import {
@@ -17,6 +18,8 @@ import {
   registrarStatusWebhookWts,
   sincronizarAudienciasCadencia,
 } from "../services/campanhaCadenciaEngine";
+import { processarUmaEtapaFilaProgramada } from "../services/campanhaFilaWorker";
+import { registrarStatusFilaProgramada } from "../services/campanhaFilaWorker";
 
 function erro(res: Response, e: unknown) {
   const mensagem = e instanceof Error ? e.message : "Falha ao processar a engine de cadências.";
@@ -24,7 +27,7 @@ function erro(res: Response, e: unknown) {
   res.status(503).json({ ok: false, erro: mensagem });
 }
 
-async function enfileirarProximoWorker(delaySegundos: number): Promise<boolean> {
+async function enfileirarProximoWorker(delaySegundos: number, origem = "continuidade-cadencia"): Promise<boolean> {
   const token = process.env.QSTASH_TOKEN?.trim();
   const destino = process.env.CAMPANHAS_CADENCIA_WORKER_URL?.trim();
   const chave = process.env.CAMPANHAS_API_KEY?.trim();
@@ -40,7 +43,7 @@ async function enfileirarProximoWorker(delaySegundos: number): Promise<boolean> 
       "Upstash-Retries": "0",
       "Upstash-Forward-x-api-key": chave,
     },
-    body: JSON.stringify({ origem: "continuidade-cadencia" }),
+    body: JSON.stringify({ origem }),
     signal: AbortSignal.timeout(8_000),
   });
   if (!response.ok) throw new Error(`QStash recusou a continuação (HTTP ${response.status}).`);
@@ -133,12 +136,25 @@ export function registrarRotasCampanhasWhatsappCadencia(app: Express) {
     } catch (e) { erro(res, e); }
   });
 
-  app.post("/api/v1/campaigns/process-cadence", exigirChaveApi, async (_req: Request, res: Response) => {
+  app.post("/api/v1/campaigns/process-cadence", exigirChaveApi, async (req: Request, res: Response) => {
     try {
-      const resultado = await processarUmaEtapaCadencia();
+      const somenteFila = req.body?.origem === "fila-programada";
+      // Uma fila confirmada pelo usuário tem prioridade quando está pronta; os dois motores compartilham o lease WTS.
+      const fila = await processarUmaEtapaFilaProgramada();
+      // A rota também atende ao cron legado. Apenas um dos motores envia por invocação.
+      const cadenciaLegada = somenteFila || fila.enviou ? null : await processarUmaEtapaCadencia();
+      const delayLegado = cadenciaLegada?.proximoDelaySegundos;
+      const delayFila = fila.proximoDelaySegundos;
+      const delays = [delayLegado, delayFila]
+        .filter((v): v is number => typeof v === "number" && v > 0);
+      const filaTemProximaExecucao = typeof delayFila === "number" && (typeof delayLegado !== "number" || delayFila <= delayLegado);
+      const origemContinuacao = somenteFila || filaTemProximaExecucao
+        ? "fila-programada"
+        : "continuidade-cadencia";
+      const resultado = somenteFila ? fila : { cadenciaLegada, fila };
       let continuaçãoEnfileirada = false;
-      if (!resultado.semFila && resultado.proximoDelaySegundos) {
-        try { continuaçãoEnfileirada = await enfileirarProximoWorker(resultado.proximoDelaySegundos); }
+      if (delays.length) {
+        try { continuaçãoEnfileirada = await enfileirarProximoWorker(Math.min(...delays), origemContinuacao); }
         catch (e) { console.error("[campanhas-whatsapp-cadencia] falha ao enfileirar continuação:", e); }
       }
       res.status(200).json({ ok: true, ...resultado, continuaçãoEnfileirada });
@@ -154,6 +170,15 @@ export function registrarRotasCampanhasWhatsappCadencia(app: Express) {
     try {
       const resultado = await registrarStatusWebhookWts({ ...parsed, payload: req.body as Record<string, unknown> });
       const db = await getDb();
+      const statusFilaAtualizado = await registrarStatusFilaProgramada(parsed);
+      if (statusFilaAtualizado) {
+        await db?.update(campanhasWhatsappStatusWebhookEventos).set({ processadoEm: new Date() })
+          .where(and(
+            eq(campanhasWhatsappStatusWebhookEventos.idMensagemExterno, parsed.idMensagem),
+            eq(campanhasWhatsappStatusWebhookEventos.status, parsed.status.toUpperCase()),
+            isNull(campanhasWhatsappStatusWebhookEventos.processadoEm),
+          ));
+      }
       const saude = await db?.select({ id: campanhasWhatsappInscricoes.id })
         .from(campanhasWhatsappInscricoes)
         .innerJoin(campanhasWhatsapp, eq(campanhasWhatsapp.id, campanhasWhatsappInscricoes.campanhaId))

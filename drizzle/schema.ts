@@ -5542,6 +5542,119 @@ export const campanhasWhatsappStatusWebhookEventos = pgTable(
 export type CampanhaWhatsappStatusWebhookEvento =
   typeof campanhasWhatsappStatusWebhookEventos.$inferSelect;
 
+/** Configuração opt-in do calendário fixo de envios em lotes; independente do motor legado de cadência. */
+export const campanhasWhatsappFilas = pgTable(
+  "campanhas_whatsapp_filas",
+  {
+    id: serial("id").primaryKey(),
+    campanhaId: integer("campanha_id").notNull().unique().references(() => campanhasWhatsapp.id, { onDelete: "cascade" }),
+    quantidadeEnvios: integer("quantidade_envios").notNull(),
+    dataInicial: date("data_inicial").notNull(),
+    intervaloDias: integer("intervalo_dias").notNull(),
+    pausaLotesMinutos: integer("pausa_lotes_minutos").notNull().default(5),
+    janelaEnvioAtiva: boolean("janela_envio_ativa").notNull().default(false),
+    janelaHoraInicio: varchar("janela_hora_inicio", { length: 5 }).notNull().default("09:00"),
+    janelaHoraFim: varchar("janela_hora_fim", { length: 5 }).notNull().default("18:00"),
+    janelaDiasSemana: integer("janela_dias_semana").array().notNull().default([1, 2, 3, 4, 5]),
+    ativo: boolean("ativo").notNull().default(true),
+    configuradoPor: varchar("configurado_por", { length: 128 }),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  t => ({
+    ativoIdx: index("campanhas_whatsapp_filas_ativo_idx").on(t.ativo),
+    janelaValida: check("campanhas_whatsapp_filas_janela_valida", sql`NOT ${t.janelaEnvioAtiva} OR (${t.janelaHoraInicio} < ${t.janelaHoraFim} AND cardinality(${t.janelaDiasSemana}) > 0)`),
+  })
+);
+export type CampanhaWhatsappFila = typeof campanhasWhatsappFilas.$inferSelect;
+
+/** Um item por data do calendário; o template é congelado ao gerar a programação. */
+export const campanhasWhatsappEnviosProgramados = pgTable(
+  "campanhas_whatsapp_envios_programados",
+  {
+    id: serial("id").primaryKey(),
+    filaId: integer("fila_id").notNull().references(() => campanhasWhatsappFilas.id, { onDelete: "cascade" }),
+    campanhaId: integer("campanha_id").notNull().references(() => campanhasWhatsapp.id, { onDelete: "cascade" }),
+    etapa: integer("etapa").notNull(),
+    dataAgendada: date("data_agendada").notNull(),
+    templateId: varchar("template_id", { length: 120 }).notNull(),
+    versaoEtapas: integer("versao_etapas").notNull(),
+    disparoId: integer("disparo_id").references(() => campanhasWhatsappDisparos.id, { onDelete: "set null" }),
+    status: varchar("status", { length: 24 }).notNull().default("agendado"),
+    totalContatos: integer("total_contatos").notNull().default(0),
+    aceitos: integer("aceitos").notNull().default(0),
+    entregues: integer("entregues").notNull().default(0),
+    falhas: integer("falhas").notNull().default(0),
+    proximoProcessamentoEm: timestamp("proximo_processamento_em", { withTimezone: true }),
+    ultimoLoteConcluidoEm: timestamp("ultimo_lote_concluido_em", { withTimezone: true }),
+    motivoPausa: text("motivo_pausa"),
+    iniciadoPor: varchar("iniciado_por", { length: 128 }),
+    iniciadoEm: timestamp("iniciado_em", { withTimezone: true }),
+    concluidoEm: timestamp("concluido_em", { withTimezone: true }),
+    leaseToken: varchar("lease_token", { length: 64 }),
+    leaseAte: timestamp("lease_ate", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  t => ({
+    etapaUnica: uniqueIndex("campanhas_whatsapp_envios_programados_etapa_unique").on(t.filaId, t.etapa),
+    campanhaDataIdx: index("campanhas_whatsapp_envios_programados_campanha_data_idx").on(t.campanhaId, t.dataAgendada),
+    workerIdx: index("campanhas_whatsapp_envios_programados_worker_idx").on(t.status, t.proximoProcessamentoEm),
+  })
+);
+export type CampanhaWhatsappEnvioProgramado = typeof campanhasWhatsappEnviosProgramados.$inferSelect;
+
+/** Inscrição persistente: contatos novos entram na etapa 1 e avançam apenas após aceite. */
+export const campanhasWhatsappFilaInscricoes = pgTable(
+  "campanhas_whatsapp_fila_inscricoes",
+  {
+    id: serial("id").primaryKey(),
+    campanhaId: integer("campanha_id").notNull().references(() => campanhasWhatsapp.id, { onDelete: "cascade" }),
+    telefone: varchar("telefone", { length: 20 }).notNull(),
+    nome: varchar("nome", { length: 200 }).notNull().default(""),
+    etapaAtual: integer("etapa_atual").notNull().default(1),
+    status: varchar("status", { length: 24 }).notNull().default("ativa"),
+    ultimoEnvioAceitoEm: timestamp("ultimo_envio_aceito_em", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  t => ({
+    campanhaTelefoneUnico: uniqueIndex("campanhas_whatsapp_fila_inscricoes_telefone_unique").on(t.campanhaId, t.telefone),
+    campanhaEtapaIdx: index("campanhas_whatsapp_fila_inscricoes_etapa_idx").on(t.campanhaId, t.etapaAtual, t.status),
+  })
+);
+
+/** Uma linha por contato/tentativa; idempotência de start e retomada vem da chave única. */
+export const campanhasWhatsappFilaItens = pgTable(
+  "campanhas_whatsapp_fila_itens",
+  {
+    id: serial("id").primaryKey(),
+    envioProgramadoId: integer("envio_programado_id").notNull().references(() => campanhasWhatsappEnviosProgramados.id, { onDelete: "cascade" }),
+    inscricaoId: integer("inscricao_id").notNull().references(() => campanhasWhatsappFilaInscricoes.id, { onDelete: "cascade" }),
+    campanhaId: integer("campanha_id").notNull().references(() => campanhasWhatsapp.id, { onDelete: "cascade" }),
+    etapa: integer("etapa").notNull(),
+    lote: integer("lote").notNull(),
+    telefone: varchar("telefone", { length: 20 }).notNull(),
+    nome: varchar("nome", { length: 200 }).notNull().default(""),
+    templateId: varchar("template_id", { length: 120 }).notNull(),
+    status: varchar("status", { length: 24 }).notNull().default("pendente"),
+    idMensagemWts: varchar("id_mensagem_wts", { length: 128 }),
+    statusEntrega: varchar("status_entrega", { length: 32 }),
+    erro: text("erro"),
+    tentativas: integer("tentativas").notNull().default(0),
+    enviadoEm: timestamp("enviado_em", { withTimezone: true }),
+    aceitoEm: timestamp("aceito_em", { withTimezone: true }),
+    entregueEm: timestamp("entregue_em", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  t => ({
+    envioInscricaoUnico: uniqueIndex("campanhas_whatsapp_fila_itens_envio_inscricao_unique").on(t.envioProgramadoId, t.inscricaoId),
+    envioLoteIdx: index("campanhas_whatsapp_fila_itens_envio_lote_idx").on(t.envioProgramadoId, t.lote, t.status),
+    mensagemUnica: uniqueIndex("campanhas_whatsapp_fila_itens_mensagem_unique").on(t.idMensagemWts).where(sql`${t.idMensagemWts} IS NOT NULL`),
+  })
+);
+
 /** Versões congeladas de listas externas. Reimportar cria outro lote, sem alterar este. */
 export const campanhasWhatsappImportacoes = pgTable(
   "campanhas_whatsapp_importacoes",
