@@ -341,6 +341,8 @@ Na data de cada etapa, o painel **Fila programada** exibe **Revisar envio** e in
 
 O painel da fila abre em **Kanban**, com colunas para **Para revisar**, **Em andamento**, **Pausadas / atenção**, **Próximas datas** e **Concluídas**. Cada cartão representa a etapa atual ou a próxima de uma campanha e resume data, lotes, aceites, entregas e pendências; ações como revisar, acompanhar, pausar, retomar e abrir o calendário ficam no próprio cartão. A opção **Lista** mantém a tabela para quem prefere a visão compacta. O calendário da campanha continua mostrando todas as etapas e suas datas.
 
+O menu lateral tem o atalho **Comercial > Campanhas WhatsApp**, que abre diretamente o painel sem passar pela aba de Crescimento e Resultado. O item e a rota direta ficam restritos aos perfis admin, master e gestor; para gestores, permanece necessária a permissão de Performance Comercial.
+
 O estado **aceito** significa que a WTS.Chat aceitou a mensagem para processamento. **Entregue** só aumenta com confirmação posterior do provedor; aceite não é entrega. Contatos novos entram na etapa 1 quando estiverem aptos. Se houver inscrições em etapas diferentes, a revisão mostra o total e os lotes por etapa. Campanhas sem fila continuam no fluxo existente de **Efetuar disparo** e o teste em um número não entra na fila.
 
 Para executar a fila em produção, configure `QSTASH_TOKEN`, `CAMPANHAS_API_KEY` e `CAMPANHAS_CADENCIA_WORKER_URL` (URL HTTPS pública terminando em `/api/v1/campaigns/process-cadence`), além das credenciais WTS.Chat já existentes. Sem QStash configurado, o sistema deixa salvar e revisar o calendário, mas bloqueia o início da fila.
