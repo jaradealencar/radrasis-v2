@@ -5,7 +5,9 @@ const nomeEmpresaCompleto = "MIRANDA COMERCIO DE LETREIROS EXPRESS LTDA";
 
 async function configurarApiCrm(page: import("@playwright/test").Page) {
   let script: Script | null = null;
+  let agendamentoAtual: { status: string; etapaAtual: number; totalEtapas: number; proximoEnvioEm: string } | null = null;
   const chamadasGetPropostas: Array<{ dataInicio?: string; dataFim?: string }> = [];
+  const agendamentos: Array<Record<string, unknown>> = [];
 
   await page.route("**/api/auth/**", route => route.fulfill({ status: 200, json: null }));
   await page.route("**/api/trpc/**", async route => {
@@ -44,6 +46,7 @@ async function configurarApiCrm(page: import("@playwright/test").Page) {
             probabilidadeExplicacao: [],
             qtdComprasCliente: 0,
             diasSemComprar: null,
+            cadenciaAutomatica: agendamentoAtual,
             totalCotacoes: 1,
             totalCompras: 0,
             orcamentosFechados: 0,
@@ -66,6 +69,12 @@ async function configurarApiCrm(page: import("@playwright/test").Page) {
           2: { label: "Faixa 2", diasInicio: 3, diasFim: 5 },
           3: { label: "Faixa 3", diasInicio: 6, diasFim: 10 },
         };
+      } else if (procedimento.endsWith("listarCampanhasFollowupAutomatico")) {
+        dados = [{ id: 42, nome: "CRM - Follow-up aberto", etapas: 3 }];
+      } else if (procedimento.endsWith("agendarFollowupAutomatico")) {
+        agendamentos.push(dadosEntrada);
+        agendamentoAtual = { status: "aguardando", etapaAtual: 1, totalEtapas: 3, proximoEnvioEm: "2026-11-23T12:30:00.000Z" };
+        dados = { inscricaoId: 9, primeiroEnvioEm: agendamentoAtual.proximoEnvioEm, etapas: 3, workerAcordado: true };
       } else if (procedimento.endsWith("getAuditoria")) {
         dados = {
           periodo: { inicio: "2026-11-21", fim: "2026-11-21" },
@@ -92,15 +101,14 @@ async function configurarApiCrm(page: import("@playwright/test").Page) {
     await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(respostas) });
   });
 
-  return chamadasGetPropostas;
+  return { chamadasGetPropostas, agendamentos };
 }
 
 test("abre o CRM com as cotações dos últimos 10 dias", async ({ page }) => {
-  const chamadas = await configurarApiCrm(page);
+  const { chamadasGetPropostas: chamadas } = await configurarApiCrm(page);
   const errosPagina: string[] = [];
   page.on("pageerror", error => errosPagina.push(error.message));
-  await page.goto("/e2e-crm.html");
-  await page.waitForLoadState("networkidle");
+  await page.goto("/e2e-crm.html", { waitUntil: "domcontentloaded" });
   const esperado = await page.evaluate(() => {
     const hoje = new Date();
     const inicio = new Date(hoje);
@@ -119,6 +127,24 @@ test("abre o CRM com as cotações dos últimos 10 dias", async ({ page }) => {
     dataInicio: esperado[0],
     dataFim: esperado[1],
   });
+});
+
+test("programa as três mensagens automáticas e exige confirmação individual de opt-in", async ({ page }) => {
+  const { agendamentos } = await configurarApiCrm(page);
+  await page.goto("/e2e-crm.html", { waitUntil: "domcontentloaded" });
+
+  await page.getByRole("button", { name: "Programar follow-up" }).click();
+  await expect(page.getByRole("heading", { name: "Programar follow-up automático" })).toBeVisible();
+  const confirmar = page.getByLabel("Confirmo que este cliente autorizou receber mensagens da empresa pelo WhatsApp.");
+  await expect(page.getByRole("button", { name: "Programar mensagens" })).toBeDisabled();
+  expect(agendamentos).toHaveLength(0);
+  await confirmar.check();
+  await page.getByRole("button", { name: "Programar mensagens" }).click();
+
+  await expect.poll(() => agendamentos.length).toBe(1);
+  expect(agendamentos).toHaveLength(1);
+  expect(agendamentos[0]).toMatchObject({ orcamentoId: "29603", campanhaId: 42, confirmarOptIn: true });
+  await expect(page.getByText("Follow-up 1/3")).toBeVisible();
 });
 
 test("salva um script de vendas e o mostra na etapa escolhida", async ({ page }) => {

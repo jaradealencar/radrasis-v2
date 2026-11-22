@@ -18,6 +18,7 @@ import {
   campanhasWhatsappQuarentena,
   campanhasWhatsappStatusWebhookEventos,
   campanhasWhatsappDisparos,
+  crmContatos,
   mubisysClientesCache,
   type CampanhaWhatsapp,
   type CampanhaWhatsappFonte,
@@ -39,6 +40,7 @@ import {
   hojeIsoCampoGrande,
   proximoHorarioEntreDisparos,
   proximoHorarioUtil,
+  proximoHorarioUtilSemFeriados,
   telefoneParaE164,
   type FatosContatoErp,
   type RegraCadenciaErp,
@@ -49,6 +51,13 @@ import {
   obterSaudeSyncErp,
 } from "./campanhaCadenciaErp";
 import { cancelarFilaProgramadaPorOptout } from "./campanhaFilaOptout";
+import { acordarWorkerCampanhas } from "./campanhaFilaAgendamento";
+import { CACHE_KEY_ABERTOS_PADRAO, CRM_CACHE_TTL_MS, getCrmAbertosCache } from "../sync/crm-abertos-cache";
+import {
+  montarEtapasCrmFollowup,
+  proximoEnvioEtapaCrm,
+  type FaixaCrmFollowup,
+} from "./crmFollowupCadencia";
 
 const ESTADOS_ATIVOS = ["aguardando", "enviando", "pendente_conciliacao", "pausado_por_resposta"] as const;
 
@@ -56,6 +65,9 @@ export interface EtapaSnapshot {
   numero: number;
   templateId: string;
   atrasoDiasUteis: number;
+  faixaCrm?: 1 | 2 | 3;
+  dataInicioCrm?: string;
+  dataFimCrm?: string;
 }
 
 interface ContatoAudiencia {
@@ -78,6 +90,9 @@ interface InscricaoDisparo {
   etapa_atual: number;
   versao_etapas: number;
   snapshot_etapas: EtapaSnapshot[];
+  origem_tipo: string;
+  origem_id: number | null;
+  created_at: Date;
   lease_token: string;
   campanha_nome: string;
   intervalo_minimo_segundos: number;
@@ -324,6 +339,9 @@ export async function sincronizarAudienciasCadencia(): Promise<{ inscricoesCriad
   const pendentes = await db.select().from(campanhasWhatsappInscricoes)
     .where(inArray(campanhasWhatsappInscricoes.status, ["aguardando", "enviando", "pendente_conciliacao"]));
   for (const inscricao of pendentes) {
+    // Inscrições explícitas do CRM não pertencem às audiências automáticas da campanha.
+    // A elegibilidade da proposta é revalidada pelo worker imediatamente antes de cada envio.
+    if (inscricao.origemTipo === "crm_proposta") continue;
     const segue = desejados.get(inscricao.campanhaId)?.has(inscricao.telefoneE164) ?? false;
     if (!segue) {
       const atualizadas = await db.update(campanhasWhatsappInscricoes).set({
@@ -451,7 +469,7 @@ async function moverEnviosVencidosParaJanelaUtil(): Promise<void> {
   await queryDatabase(
     `UPDATE campanhas_whatsapp_inscricoes
      SET proximo_envio_em = $1, updated_at = now()
-     WHERE status = 'aguardando' AND proximo_envio_em <= now()`,
+     WHERE status = 'aguardando' AND origem_tipo <> 'crm_proposta' AND proximo_envio_em <= now()`,
     [proximaJanela]
   );
 }
@@ -475,7 +493,8 @@ async function reivindicarProximaInscricao(): Promise<InscricaoDisparo | null> {
     }
     const candidate = await client.query(
       `SELECT i.id, i.campanha_id, i.telefone_e164, i.nome, i.cliente_id, i.cnpj,
-              i.etapa_atual, i.versao_etapas, i.snapshot_etapas, c.nome AS campanha_nome,
+              i.etapa_atual, i.versao_etapas, i.snapshot_etapas, i.origem_tipo, i.origem_id,
+              i.created_at, c.nome AS campanha_nome,
               c.intervalo_minimo_segundos, c.intervalo_maximo_segundos
        FROM campanhas_whatsapp_inscricoes i
        JOIN campanhas_whatsapp c ON c.id = i.campanha_id
@@ -538,13 +557,36 @@ async function contatoAindaElegivel(inscricao: InscricaoDisparo): Promise<boolea
     .from(campanhasWhatsappInscricoes).where(eq(campanhasWhatsappInscricoes.id, inscricao.id)).limit(1);
   if (estadoInscricao?.status !== "enviando" || estadoInscricao.leaseToken !== inscricao.lease_token) return false;
   const [campanha] = await db.select().from(campanhasWhatsapp).where(eq(campanhasWhatsapp.id, inscricao.campanha_id)).limit(1);
-  if (!campanha || campanha.status !== "ativa" || !campanha.motorCadenciaAtivo) return false;
+  if (!campanha || campanha.status !== "ativa" || !campanha.motorCadenciaAtivo ||
+      !campanha.consentimentoConfirmadoEm || !campanha.templatesAprovadosConfirmadosEm) return false;
   const [quarentenaAtual] = await db.select({ ultimoContatoEm: campanhasWhatsappQuarentena.ultimoContatoEm, ultimaCampanhaId: campanhasWhatsappQuarentena.ultimaCampanhaId })
     .from(campanhasWhatsappQuarentena)
     .where(eq(campanhasWhatsappQuarentena.telefone, e164ParaDigitos(inscricao.telefone_e164))).limit(1);
   if (quarentenaAtual && quarentenaAtual.ultimaCampanhaId !== campanha.id) {
     const cooldown = Math.max(campanha.intervaloMinimoEntreCampanhasDias, campanha.quarentenaDias);
     if (diasEntreDatasIso(String(quarentenaAtual.ultimoContatoEm).slice(0, 10), hojeIsoCampoGrande()) < cooldown) return false;
+  }
+  if (inscricao.origem_tipo === "crm_proposta") {
+    const fontesCrmAtivas = await db.select({ tipo: campanhasWhatsappFontes.tipo })
+      .from(campanhasWhatsappCampanhaFontes)
+      .innerJoin(campanhasWhatsappFontes, eq(campanhasWhatsappFontes.id, campanhasWhatsappCampanhaFontes.fonteId))
+      .where(and(
+        eq(campanhasWhatsappCampanhaFontes.campanhaId, campanha.id),
+        eq(campanhasWhatsappFontes.ativo, true),
+      ));
+    if (fontesCrmAtivas.length !== 1 || fontesCrmAtivas[0].tipo !== "crm_propostas") return false;
+    if (!Number.isInteger(inscricao.origem_id)) return false;
+    const cacheCrm = await getCrmAbertosCache(CACHE_KEY_ABERTOS_PADRAO);
+    if (!cacheCrm || Date.now() - cacheCrm.fetchedAt.getTime() > CRM_CACHE_TTL_MS) return false;
+    const proposta = cacheCrm.itens.find(item => String(item.id) === String(inscricao.origem_id));
+    const statusProposta = String(proposta?.status ?? "").trim().toLocaleLowerCase("pt-BR");
+    if (!proposta || !["em aberto", "em andamento", "pendente"].includes(statusProposta)) return false;
+    const contatoManual = await db.select({ id: crmContatos.id }).from(crmContatos)
+      .where(and(
+        eq(crmContatos.orcamentoId, String(inscricao.origem_id)),
+        sql`${crmContatos.contatadoEm} > ${inscricao.created_at}`,
+      )).limit(1);
+    return contatoManual.length === 0;
   }
   const links = await db.select({ fonte: campanhasWhatsappFontes }).from(campanhasWhatsappCampanhaFontes)
     .innerJoin(campanhasWhatsappFontes, eq(campanhasWhatsappFontes.id, campanhasWhatsappCampanhaFontes.fonteId))
@@ -568,6 +610,58 @@ async function contatoAindaElegivel(inscricao: InscricaoDisparo): Promise<boolea
     }
   }
   return false;
+}
+
+function localizarProximaEtapaAgendada(etapas: EtapaSnapshot[], primeiroIndice: number, agora: Date) {
+  for (let indice = primeiroIndice; indice < etapas.length; indice++) {
+    const etapa = etapas[indice];
+    const envioEm = proximoEnvioEtapaCrm(etapa, agora);
+    if (envioEm) return { etapa, envioEm };
+  }
+  return null;
+}
+
+async function pularEtapasCrmVencidas(row: InscricaoDisparo, envioId: number): Promise<boolean> {
+  if (row.origem_tipo !== "crm_proposta") return false;
+  const snapshot = row.snapshot_etapas as EtapaSnapshot[];
+  let indiceAtual = row.etapa_atual - 1;
+  const etapaAtual = snapshot[indiceAtual];
+  if (!etapaAtual?.dataFimCrm) return false;
+  const agora = new Date();
+  if (proximoEnvioEtapaCrm(etapaAtual, agora)) return false;
+
+  const db = await getDb();
+  if (!db) throw new Error("Banco de dados indisponível.");
+  await db.update(campanhasWhatsappCadenciaEnvios).set({
+    status: "cancelado",
+    erro: "Etapa não enviada: a faixa de acompanhamento do CRM expirou.",
+    updatedAt: agora,
+  }).where(and(eq(campanhasWhatsappCadenciaEnvios.id, envioId), eq(campanhasWhatsappCadenciaEnvios.status, "enviando")));
+
+  const seguinte = localizarProximaEtapaAgendada(snapshot, indiceAtual + 1, agora);
+  if (seguinte) {
+    await db.update(campanhasWhatsappInscricoes).set({
+      status: "aguardando",
+      etapaAtual: seguinte.etapa.numero,
+      proximoEnvioEm: seguinte.envioEm,
+      motivoFim: null,
+      leaseToken: null,
+      leaseAte: null,
+      updatedAt: agora,
+    }).where(and(eq(campanhasWhatsappInscricoes.id, row.id), eq(campanhasWhatsappInscricoes.status, "enviando"), eq(campanhasWhatsappInscricoes.leaseToken, row.lease_token)));
+    await completarLease(row.lease_token, seguinte.envioEm);
+  } else {
+    await db.update(campanhasWhatsappInscricoes).set({
+      status: "concluida",
+      proximoEnvioEm: null,
+      motivoFim: "faixas_crm_expiradas",
+      leaseToken: null,
+      leaseAte: null,
+      updatedAt: agora,
+    }).where(and(eq(campanhasWhatsappInscricoes.id, row.id), eq(campanhasWhatsappInscricoes.status, "enviando"), eq(campanhasWhatsappInscricoes.leaseToken, row.lease_token)));
+    await completarLease(row.lease_token, null);
+  }
+  return true;
 }
 
 async function atualizarQuarentenaEHistorico(
@@ -634,14 +728,13 @@ async function aplicarStatusMensagem(idMensagem: string, statusBruto: string, qu
       .where(eq(campanhasWhatsappInscricoes.id, envio.inscricaoId)).limit(1);
     if (inscricao && ["aguardando", "pendente_conciliacao"].includes(inscricao.status) && inscricao.etapaAtual === envio.etapa) {
       const snapshot = inscricao.snapshotEtapas as EtapaSnapshot[];
-      const etapaSeguinte = snapshot[envio.etapa];
-      if (!etapaSeguinte) {
+      const seguinte = localizarProximaEtapaAgendada(snapshot, envio.etapa, new Date());
+      if (!seguinte) {
         await db.update(campanhasWhatsappInscricoes).set({ status: "concluida", ultimoEnvioAceitoEm: envio.aceitoEm ?? entregueEm, proximoEnvioEm: null, motivoFim: null, leaseToken: null, leaseAte: null, updatedAt: new Date() })
           .where(and(eq(campanhasWhatsappInscricoes.id, inscricao.id), inArray(campanhasWhatsappInscricoes.status, ["aguardando", "pendente_conciliacao"])));
       } else {
         const base = envio.aceitoEm ?? entregueEm;
-        const proximo = proximoHorarioUtil(base, etapaSeguinte.atrasoDiasUteis);
-        await db.update(campanhasWhatsappInscricoes).set({ status: "aguardando", etapaAtual: etapaSeguinte.numero, ultimoEnvioAceitoEm: base, proximoEnvioEm: proximo, leaseToken: null, leaseAte: null, updatedAt: new Date() })
+        await db.update(campanhasWhatsappInscricoes).set({ status: "aguardando", etapaAtual: seguinte.etapa.numero, ultimoEnvioAceitoEm: base, proximoEnvioEm: seguinte.envioEm, leaseToken: null, leaseAte: null, updatedAt: new Date() })
           .where(and(eq(campanhasWhatsappInscricoes.id, inscricao.id), inArray(campanhasWhatsappInscricoes.status, ["aguardando", "pendente_conciliacao"])));
       }
     }
@@ -691,6 +784,54 @@ export async function processarUmaEtapaCadencia(): Promise<{
   if (!envio) {
     await completarLease(row.lease_token, null);
     return { enviou: false, semFila: true };
+  }
+  if (await pularEtapasCrmVencidas(row, envio.id)) {
+    return { enviou: false, semFila: false, proximoDelaySegundos: 1, inscricaoId: row.id };
+  }
+  if (row.origem_tipo === "crm_proposta") {
+    const etapaAtual = (row.snapshot_etapas as EtapaSnapshot[])[row.etapa_atual - 1];
+    const proximaJanela = etapaAtual ? proximoEnvioEtapaCrm(etapaAtual, new Date()) : null;
+    if (proximaJanela && proximaJanela.getTime() > Date.now()) {
+      await db.update(campanhasWhatsappCadenciaEnvios).set({
+        status: "cancelado",
+        erro: "Envio adiado para permanecer dentro da janela de acompanhamento do CRM.",
+        updatedAt: new Date(),
+      }).where(and(eq(campanhasWhatsappCadenciaEnvios.id, envio.id), eq(campanhasWhatsappCadenciaEnvios.status, "enviando")));
+      await db.update(campanhasWhatsappInscricoes).set({
+        status: "aguardando",
+        proximoEnvioEm: proximaJanela,
+        leaseToken: null,
+        leaseAte: null,
+        updatedAt: new Date(),
+      }).where(and(eq(campanhasWhatsappInscricoes.id, row.id), eq(campanhasWhatsappInscricoes.status, "enviando"), eq(campanhasWhatsappInscricoes.leaseToken, row.lease_token)));
+      await completarLease(row.lease_token, proximaJanela);
+      return {
+        enviou: false,
+        semFila: false,
+        proximoDelaySegundos: Math.max(1, Math.ceil((proximaJanela.getTime() - Date.now()) / 1000)),
+        inscricaoId: row.id,
+      };
+    }
+  }
+  if (row.origem_tipo === "crm_proposta") {
+    const cacheCrm = await getCrmAbertosCache(CACHE_KEY_ABERTOS_PADRAO);
+    if (!cacheCrm || Date.now() - cacheCrm.fetchedAt.getTime() > CRM_CACHE_TTL_MS) {
+      const retomarEm = proximoHorarioUtilSemFeriados(new Date(Date.now() + 5 * 60_000), 0);
+      await db.update(campanhasWhatsappCadenciaEnvios).set({
+        status: "cancelado",
+        erro: "Envio adiado até o cache de propostas abertas do CRM ser atualizado.",
+        updatedAt: new Date(),
+      }).where(and(eq(campanhasWhatsappCadenciaEnvios.id, envio.id), eq(campanhasWhatsappCadenciaEnvios.status, "enviando")));
+      await db.update(campanhasWhatsappInscricoes).set({
+        status: "aguardando",
+        proximoEnvioEm: retomarEm,
+        leaseToken: null,
+        leaseAte: null,
+        updatedAt: new Date(),
+      }).where(and(eq(campanhasWhatsappInscricoes.id, row.id), eq(campanhasWhatsappInscricoes.status, "enviando"), eq(campanhasWhatsappInscricoes.leaseToken, row.lease_token)));
+      await completarLease(row.lease_token, retomarEm);
+      return { enviou: false, semFila: false, proximoDelaySegundos: 300, inscricaoId: row.id };
+    }
   }
   const telefone = e164ParaDigitos(row.telefone_e164);
   const [optout] = await db.select({ id: campanhasWhatsappOptout.id }).from(campanhasWhatsappOptout).where(eq(campanhasWhatsappOptout.telefone, telefone)).limit(1);
@@ -789,6 +930,111 @@ export async function processarUmaEtapaCadencia(): Promise<{
   return { enviou: false, conciliacao: !!resultado.incerto, proximoDelaySegundos, inscricaoId: row.id };
 }
 
+export async function programarFollowupPropostaCrm(input: {
+  campanhaId: number;
+  propostaId: number;
+  telefone: string;
+  nome: string;
+  dataCriacao: string;
+  faixas: FaixaCrmFollowup[];
+}): Promise<{ inscricaoId: number; primeiroEnvioEm: Date; etapas: number; workerAcordado: boolean }> {
+  const db = await getDb();
+  if (!db) throw new Error("Banco de dados indisponível.");
+  const telefoneE164 = telefoneParaE164(input.telefone);
+  if (!telefoneE164) throw new Error("A proposta não possui um telefone válido para WhatsApp.");
+
+  const [campanha] = await db.select().from(campanhasWhatsapp)
+    .where(eq(campanhasWhatsapp.id, input.campanhaId)).limit(1);
+  if (!campanha || campanha.status !== "ativa" || !campanha.motorCadenciaAtivo ||
+      !campanha.consentimentoConfirmadoEm || !campanha.templatesAprovadosConfirmadosEm) {
+    throw new Error("A campanha precisa estar ativa, com cadência habilitada e confirmações de opt-in/templates registradas.");
+  }
+
+  const fontes = await db.select({ fonte: campanhasWhatsappFontes })
+    .from(campanhasWhatsappCampanhaFontes)
+    .innerJoin(campanhasWhatsappFontes, eq(campanhasWhatsappFontes.id, campanhasWhatsappCampanhaFontes.fonteId))
+    .where(and(eq(campanhasWhatsappCampanhaFontes.campanhaId, campanha.id), eq(campanhasWhatsappFontes.ativo, true)));
+  if (fontes.length !== 1 || fontes[0].fonte.tipo !== "crm_propostas") {
+    throw new Error("Use uma campanha exclusiva para propostas do CRM e vincule apenas a fonte CRM - propostas abertas.");
+  }
+
+  const etapasDb = await db.select().from(campanhasWhatsappEtapas).where(and(
+    eq(campanhasWhatsappEtapas.campanhaId, campanha.id),
+    eq(campanhasWhatsappEtapas.versao, campanha.versaoEtapasAtual),
+  )).orderBy(campanhasWhatsappEtapas.numero);
+  if (etapasDb.length !== 3 || etapasDb.some((etapa, index) => etapa.numero !== index + 1 || !etapa.templateId.trim())) {
+    throw new Error("A campanha selecionada precisa ter exatamente três templates aprovados, um para cada faixa do CRM.");
+  }
+
+  const jaInscrita = await db.select({ id: campanhasWhatsappInscricoes.id })
+    .from(campanhasWhatsappInscricoes).where(and(
+      eq(campanhasWhatsappInscricoes.origemTipo, "crm_proposta"),
+      eq(campanhasWhatsappInscricoes.origemId, input.propostaId),
+    )).limit(1);
+  if (jaInscrita.length) throw new Error("Esta proposta já foi programada para follow-up automático.");
+
+  const telefoneDigitos = e164ParaDigitos(telefoneE164);
+  const [optout] = await db.select({ id: campanhasWhatsappOptout.id }).from(campanhasWhatsappOptout)
+    .where(eq(campanhasWhatsappOptout.telefone, telefoneDigitos)).limit(1);
+  if (optout) throw new Error("Este telefone pediu para não receber mensagens e está bloqueado no WhatsApp.");
+
+  const [quarentena] = await db.select({
+    ultimaCampanhaId: campanhasWhatsappQuarentena.ultimaCampanhaId,
+    ultimoContatoEm: campanhasWhatsappQuarentena.ultimoContatoEm,
+  }).from(campanhasWhatsappQuarentena).where(eq(campanhasWhatsappQuarentena.telefone, telefoneDigitos)).limit(1);
+  if (quarentena) {
+    const cooldown = Math.max(campanha.intervaloMinimoEntreCampanhasDias, campanha.quarentenaDias);
+    if (diasEntreDatasIso(String(quarentena.ultimoContatoEm).slice(0, 10), hojeIsoCampoGrande()) < cooldown) {
+      throw new Error("Este telefone ainda está no período de quarentena de outra campanha.");
+    }
+  }
+
+  const [inscricaoAtiva] = await db.select({ id: campanhasWhatsappInscricoes.id })
+    .from(campanhasWhatsappInscricoes)
+    .where(and(
+      eq(campanhasWhatsappInscricoes.telefoneE164, telefoneE164),
+      inArray(campanhasWhatsappInscricoes.status, [...ESTADOS_ATIVOS]),
+    )).limit(1);
+  if (inscricaoAtiva) throw new Error("Este telefone já está em outra cadência automática ou aguardando atendimento.");
+
+  const programacao = montarEtapasCrmFollowup({
+    dataCriacao: input.dataCriacao,
+    agora: new Date(),
+    faixas: input.faixas,
+    templates: etapasDb.map(etapa => etapa.templateId),
+  });
+  if (!programacao.primeiroEnvioEm || !programacao.etapas.length) {
+    throw new Error("As faixas de follow-up desta proposta já venceram; não há mensagens para programar.");
+  }
+
+  const agora = new Date();
+  const [inscricao] = await db.insert(campanhasWhatsappInscricoes).values({
+    campanhaId: campanha.id,
+    telefoneE164,
+    nome: input.nome.slice(0, 256),
+    origemTipo: "crm_proposta",
+    origemId: input.propostaId,
+    status: "aguardando",
+    prioridadeNoMomento: campanha.prioridadeCadencia,
+    versaoEtapas: campanha.versaoEtapasAtual,
+    snapshotEtapas: programacao.etapas,
+    etapaAtual: 1,
+    proximoEnvioEm: programacao.primeiroEnvioEm,
+    createdAt: agora,
+    updatedAt: agora,
+  }).onConflictDoNothing().returning({ id: campanhasWhatsappInscricoes.id });
+  if (!inscricao) throw new Error("Não foi possível programar: a proposta ou o telefone já está em outra cadência.");
+  const delayAtePrimeiroEnvio = Math.max(1, Math.ceil((programacao.primeiroEnvioEm.getTime() - Date.now()) / 1000));
+  let workerAcordado = false;
+  try {
+    // O QStash limita o atraso; o worker volta a se programar até chegar a data de envio.
+    workerAcordado = await acordarWorkerCampanhas("continuidade-cadencia", Math.min(delayAtePrimeiroEnvio, 6 * 24 * 60 * 60));
+  } catch (error) {
+    console.error("[crm-followup-cadencia] inscrição gravada, mas não foi possível acordar o worker:", error instanceof Error ? error.name : "Erro desconhecido");
+  }
+  return { inscricaoId: inscricao.id, primeiroEnvioEm: programacao.primeiroEnvioEm, etapas: programacao.etapas.length, workerAcordado };
+}
+
 export async function listarInscricoesDaCampanha(campanhaId: number, limite = 100) {
   const db = await getDb();
   if (!db) return { resumo: [], itens: [] };
@@ -813,13 +1059,12 @@ export async function conciliarEnvioCadencia(
     await db.update(campanhasWhatsappCadenciaEnvios).set({ status: "entregue", entregueEm: new Date(), erro: "Conciliação manual por administrador.", updatedAt: new Date() }).where(eq(campanhasWhatsappCadenciaEnvios.id, envio.id));
     const [inscricao] = await db.select().from(campanhasWhatsappInscricoes).where(eq(campanhasWhatsappInscricoes.id, envio.inscricaoId)).limit(1);
     if (!inscricao || inscricao.status !== "pendente_conciliacao" || inscricao.etapaAtual !== envio.etapa) return;
-    const seguinte = (inscricao.snapshotEtapas as EtapaSnapshot[])[envio.etapa];
+    const seguinte = localizarProximaEtapaAgendada(inscricao.snapshotEtapas as EtapaSnapshot[], envio.etapa, new Date());
     if (!seguinte) {
       await db.update(campanhasWhatsappInscricoes).set({ status: "concluida", proximoEnvioEm: null, motivoFim: "concluida_apos_conciliacao_manual", leaseToken: null, leaseAte: null, updatedAt: new Date() })
         .where(and(eq(campanhasWhatsappInscricoes.id, inscricao.id), eq(campanhasWhatsappInscricoes.status, "pendente_conciliacao")));
     } else {
-      const base = envio.aceitoEm ?? new Date();
-      await db.update(campanhasWhatsappInscricoes).set({ status: "aguardando", etapaAtual: seguinte.numero, proximoEnvioEm: proximoHorarioUtil(base, seguinte.atrasoDiasUteis), motivoFim: null, leaseToken: null, leaseAte: null, updatedAt: new Date() })
+      await db.update(campanhasWhatsappInscricoes).set({ status: "aguardando", etapaAtual: seguinte.etapa.numero, proximoEnvioEm: seguinte.envioEm, motivoFim: null, leaseToken: null, leaseAte: null, updatedAt: new Date() })
         .where(and(eq(campanhasWhatsappInscricoes.id, inscricao.id), eq(campanhasWhatsappInscricoes.status, "pendente_conciliacao")));
     }
   } else {

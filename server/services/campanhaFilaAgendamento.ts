@@ -1,5 +1,8 @@
-/** Publica uma continuação curta da fila no QStash já configurado para campanhas. */
-export async function acordarFilaProgramada(delaySegundos = 1): Promise<boolean> {
+/** Publica uma continuação curta do worker compartilhado de campanhas no QStash. */
+export async function acordarWorkerCampanhas(
+  origem: "fila-programada" | "continuidade-cadencia",
+  delaySegundos = 1,
+): Promise<boolean> {
   const token = process.env.QSTASH_TOKEN?.trim();
   const destino = process.env.CAMPANHAS_CADENCIA_WORKER_URL?.trim();
   const chave = process.env.CAMPANHAS_API_KEY?.trim();
@@ -17,9 +20,14 @@ export async function acordarFilaProgramada(delaySegundos = 1): Promise<boolean>
       "Upstash-Retries": "0",
       "Upstash-Forward-x-api-key": chave,
     },
-    body: JSON.stringify({ origem: "fila-programada" }),
+    body: JSON.stringify({ origem }),
     signal: AbortSignal.timeout(8_000),
   });
   if (!response.ok) throw new Error(`QStash recusou a continuação da fila (HTTP ${response.status}).`);
   return true;
+}
+
+/** Acorda especificamente a fila de envios programados. */
+export function acordarFilaProgramada(delaySegundos = 1): Promise<boolean> {
+  return acordarWorkerCampanhas("fila-programada", delaySegundos);
 }

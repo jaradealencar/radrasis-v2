@@ -5071,6 +5071,7 @@ export const campanhaFonteTipoEnum = pgEnum("campanha_fonte_tipo", [
   "arquivo",
   "campanha_arquivos",
   "retargeting",
+  "crm_propostas",
 ]);
 
 export const campanhasWhatsappFontes = pgTable("campanhas_whatsapp_fontes", {
@@ -5425,7 +5426,14 @@ export const campanhasWhatsappInscricoes = pgTable(
     prioridadeNoMomento: integer("prioridade_no_momento").notNull().default(100),
     versaoEtapas: integer("versao_etapas").notNull(),
     snapshotEtapas: jsonb("snapshot_etapas")
-      .$type<Array<{ numero: number; templateId: string; atrasoDiasUteis: number }>>()
+      .$type<Array<{
+        numero: number;
+        templateId: string;
+        atrasoDiasUteis: number;
+        faixaCrm?: 1 | 2 | 3;
+        dataInicioCrm?: string;
+        dataFimCrm?: string;
+      }>>()
       .notNull(),
     etapaAtual: integer("etapa_atual").notNull().default(1),
     proximoEnvioEm: timestamp("proximo_envio_em", { withTimezone: true }),
@@ -5449,6 +5457,9 @@ export const campanhasWhatsappInscricoes = pgTable(
     telefoneAtivoUnico: uniqueIndex("campanhas_whatsapp_inscricoes_telefone_ativo_unique")
       .on(t.telefoneE164)
       .where(sql`${t.status} IN ('aguardando', 'enviando', 'pendente_conciliacao', 'pausado_por_resposta')`),
+    propostaCrmUnica: uniqueIndex("campanhas_whatsapp_inscricoes_proposta_crm_unique")
+      .on(t.origemTipo, t.origemId)
+      .where(sql`${t.origemTipo} = 'crm_proposta' AND ${t.origemId} IS NOT NULL`),
   })
 );
 

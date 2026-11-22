@@ -121,10 +121,11 @@ function localDateToUtc(ano: number, mes: number, dia: number, hora: number, min
   return new Date(estimativa);
 }
 
-function diaUtil(ano: number, mes: number, dia: number): boolean {
+function diaUtil(ano: number, mes: number, dia: number, considerarFeriados = true): boolean {
   const data = new Date(Date.UTC(ano, mes - 1, dia));
   const dow = data.getUTCDay();
   if (dow === 0 || dow === 6) return false;
+  if (!considerarFeriados) return true;
   const iso = `${ano}-${String(mes).padStart(2, "0")}-${String(dia).padStart(2, "0")}`;
   return !feriadosNacionaisDoAno(ano).has(iso);
 }
@@ -135,8 +136,7 @@ function avancarData(ano: number, mes: number, dia: number, quantidade: number):
   return [data.getUTCFullYear(), data.getUTCMonth() + 1, data.getUTCDate()];
 }
 
-/** Soma dias úteis e normaliza para a janela local 08:30–17:30, incluindo feriados nacionais. */
-export function proximoHorarioUtil(base: Date, diasUteis: number): Date {
+function calcularProximoHorarioUtil(base: Date, diasUteis: number, considerarFeriados: boolean): Date {
   const p = partes(dateTimeFormatter, base);
   let ano = p.year;
   let mes = p.month;
@@ -145,17 +145,17 @@ export function proximoHorarioUtil(base: Date, diasUteis: number): Date {
 
   while (restantes > 0) {
     [ano, mes, dia] = avancarData(ano, mes, dia, 1);
-    if (diaUtil(ano, mes, dia)) restantes--;
+    if (diaUtil(ano, mes, dia, considerarFeriados)) restantes--;
   }
 
   let hora = p.hour;
   let minuto = p.minute;
   const antesDaJanela = hora < 8 || (hora === 8 && minuto < 30);
   const depoisDaJanela = hora > 17 || (hora === 17 && (minuto > 30 || (minuto === 30 && p.second > 0)));
-  if (!diaUtil(ano, mes, dia) || depoisDaJanela) {
+  if (!diaUtil(ano, mes, dia, considerarFeriados) || depoisDaJanela) {
     do {
       [ano, mes, dia] = avancarData(ano, mes, dia, 1);
-    } while (!diaUtil(ano, mes, dia));
+    } while (!diaUtil(ano, mes, dia, considerarFeriados));
     hora = 8;
     minuto = 30;
   } else if (antesDaJanela) {
@@ -163,6 +163,16 @@ export function proximoHorarioUtil(base: Date, diasUteis: number): Date {
     minuto = 30;
   }
   return localDateToUtc(ano, mes, dia, hora, minuto);
+}
+
+/** Soma dias úteis e normaliza para 08:30–17:30, incluindo feriados nacionais. */
+export function proximoHorarioUtil(base: Date, diasUteis: number): Date {
+  return calcularProximoHorarioUtil(base, diasUteis, true);
+}
+
+/** Mesmo calendário do CRM: segunda a sexta, sem descontar feriados. */
+export function proximoHorarioUtilSemFeriados(base: Date, diasUteis = 0): Date {
+  return calcularProximoHorarioUtil(base, diasUteis, false);
 }
 
 export function proximoHorarioEntreDisparos(agora: Date, atrasoSegundos: number): Date {

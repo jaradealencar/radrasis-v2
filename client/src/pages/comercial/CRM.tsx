@@ -86,6 +86,12 @@ type Proposta = {
   diasSemComprar: number | null;
   totalCotacoes?: number;
   totalCompras?: number;
+  cadenciaAutomatica?: {
+    status: string;
+    etapaAtual: number;
+    totalEtapas: number;
+    proximoEnvioEm: string | null;
+  } | null;
   orcamentosFechados?: number;
   taxaConversao?: number | null;
   orcamentosDesde?: string | null;
@@ -290,6 +296,102 @@ function WhatsAppAgendaBotao({ p, faixa, faixasConfig }: {
       </button>
     </WhatsAppScriptsPopover>
   );
+}
+
+function BotaoFollowupAutomatico({ p }: { p: Proposta }) {
+  const [aberto, setAberto] = useState(false);
+  const [campanhaId, setCampanhaId] = useState("");
+  const [confirmouOptIn, setConfirmouOptIn] = useState(false);
+  const campanhas = trpc.crm.listarCampanhasFollowupAutomatico.useQuery(undefined, { enabled: aberto });
+  const utils = trpc.useUtils();
+  const agendar = trpc.crm.agendarFollowupAutomatico.useMutation({
+    onSuccess: resultado => {
+      const description = `${resultado.etapas} mensagem(ns); primeira prevista para ${fmtDate(new Date(resultado.primeiroEnvioEm))}.`;
+      if (resultado.workerAcordado) {
+        toast.success("Follow-up automático programado", { description });
+      } else {
+        toast.warning("Follow-up programado; worker não acordado", {
+          description: `${description} Verifique QStash e o worker das campanhas.`,
+        });
+      }
+      setAberto(false);
+      setConfirmouOptIn(false);
+      utils.crm.getPropostas.invalidate();
+    },
+    onError: erro => toast.error(erro.message),
+  });
+
+  useEffect(() => {
+    if (!campanhaId && campanhas.data?.length) setCampanhaId(String(campanhas.data[0].id));
+  }, [campanhaId, campanhas.data]);
+
+  const statusAtual = p.cadenciaAutomatica?.status;
+  if (statusAtual) {
+    const cadencia = p.cadenciaAutomatica!;
+    const rótulo = statusAtual === "concluida" ? "Follow-up concluído"
+      : statusAtual === "pausado_por_resposta" ? "Pausado: cliente respondeu"
+      : statusAtual === "opt_out" ? "Bloqueado: opt-out"
+      : ["cancelada", "removido_por_conversao", "removido_por_prioridade"].includes(statusAtual) ? "Follow-up encerrado"
+      : `Follow-up ${cadencia.etapaAtual}/${cadencia.totalEtapas}`;
+    return <span className="mt-1 block text-[10px] font-medium text-violet-700" title={cadencia.proximoEnvioEm ? `Próximo envio previsto: ${fmtDate(new Date(cadencia.proximoEnvioEm))}` : rótulo}>{rótulo}</span>;
+  }
+
+  return <>
+    <button
+      type="button"
+      onClick={() => setAberto(true)}
+      disabled={!p.telefone || p.qtdContatos >= 2}
+      className="mt-1 inline-flex items-center gap-1 rounded-full border border-violet-200 bg-violet-50 px-2 py-0.5 text-xs font-semibold text-violet-700 hover:bg-violet-100 disabled:cursor-not-allowed disabled:opacity-50"
+      title={!p.telefone ? "Cadastre um telefone na proposta" : p.qtdContatos >= 2 ? "Esta proposta já atingiu o limite de contatos do CRM" : "Programar mensagens automáticas nas três faixas de follow-up"}
+    >
+      <Calendar className="h-3 w-3" /> Programar follow-up
+    </button>
+    <Dialog open={aberto} onOpenChange={setAberto}>
+      <DialogContent className="sm:max-w-[480px]">
+        <DialogHeader>
+          <DialogTitle>Programar follow-up automático</DialogTitle>
+        </DialogHeader>
+        <div className="space-y-4 text-sm">
+          <p className="text-muted-foreground">As mensagens serão enviadas nas faixas de acompanhamento desta proposta, usando os três templates aprovados da campanha. Se o cliente responder, houver contato manual, a proposta deixar de estar aberta ou o telefone pedir para parar, os próximos envios serão interrompidos.</p>
+          <div className="space-y-2">
+            <Label htmlFor={`campanha-crm-${p.id}`}>Campanha com três mensagens</Label>
+            <Select value={campanhaId} onValueChange={setCampanhaId}>
+              <SelectTrigger id={`campanha-crm-${p.id}`}>
+                <SelectValue placeholder={campanhas.isLoading ? "Carregando campanhas..." : "Selecione uma campanha"} />
+              </SelectTrigger>
+              <SelectContent>
+                {(campanhas.data ?? []).map(campanha => (
+                  <SelectItem key={campanha.id} value={String(campanha.id)}>{campanha.nome}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            {campanhas.isError && (
+              <p className="text-xs text-amber-700">
+                Não foi possível carregar as campanhas de follow-up. <button type="button" className="underline" onClick={() => void campanhas.refetch()}>Tentar novamente</button>
+              </p>
+            )}
+            {!campanhas.isLoading && !campanhas.isError && !campanhas.data?.length && (
+              <p className="text-xs text-amber-700">Nenhuma campanha exclusiva do CRM está ativa. Em Campanhas, configure uma campanha com a fonte “CRM - propostas abertas”, três templates e a cadência automática habilitada.</p>
+            )}
+          </div>
+          <label className="flex items-start gap-2 rounded-md border p-3 text-xs leading-relaxed">
+            <input type="checkbox" checked={confirmouOptIn} onChange={event => setConfirmouOptIn(event.target.checked)} className="mt-0.5" />
+            <span>Confirmo que este cliente autorizou receber mensagens da empresa pelo WhatsApp.</span>
+          </label>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => setAberto(false)}>Cancelar</Button>
+          <Button
+            disabled={!campanhaId || !confirmouOptIn || agendar.isPending || campanhas.isLoading}
+            onClick={() => agendar.mutate({ orcamentoId: p.id, campanhaId: Number(campanhaId), confirmarOptIn: true })}
+          >
+            {agendar.isPending ? <Spinner className="mr-2 size-4" /> : <Calendar className="mr-2 size-4" />}
+            Programar mensagens
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  </>;
 }
 
 function getCanalInfo(canal: string) {
@@ -605,6 +707,7 @@ function PropostaRow({ p, vendedor, onRefresh, showVendedor, faixasConfig }: {
               </button>
             </WhatsAppScriptsPopover>
           )}
+          <BotaoFollowupAutomatico p={p} />
         </TableCell>
 
         {/* Vendedor (quando "todos") */}

@@ -413,6 +413,14 @@ Em cada data, **Revisar envio** recalcula a lista apta, respeitando fontes, bloq
 
 O status individual separa aceite da WTS.Chat de entrega confirmada. Pausar e retomar preserva os estados dos contatos aceitos, pendentes, falhos e incertos. Timeout, erro de rede e resposta 5xx ficam pausados para conciliação, sem reenvio automático; erros 401/403 também pausam e mostram o motivo. A migration é estrutural e deve ser aplicada pelo fluxo protegido usual; não foi aplicada ao banco durante esta implementação.
 
+## Follow-up automático por proposta do CRM (migrations `0143`/`0144`)
+
+A migration `0143` adiciona o tipo de fonte e a proteção contra repetir a inscrição da mesma proposta; `0144` cadastra a fonte **CRM - propostas abertas**. Ela é exclusiva para inscrições feitas pelo botão **Programar follow-up** em cada proposta e não importa a carteira inteira para a campanha. Configure uma campanha ativa com somente essa fonte, exatamente três IDs de templates aprovados e o motor legado de cadência habilitado. O worker continua usando WTS.Chat e QStash, sem depender de o CRM permanecer aberto.
+
+Ao programar uma proposta, o vendedor confirma o opt-in daquele cliente individualmente. A inscrição guarda o ID bruto da proposta e um snapshot dos três templates e das datas calculadas a partir das faixas que o CRM mostra (D+1–2, D+3–5 e D+6–10 por padrão). Como a tela usa segunda a sexta sem descontar feriados, o agendador segue o mesmo calendário; os envios são normalizados para a janela comercial de 08:30–17:30 em Campo Grande.
+
+Antes de cada envio, o worker verifica se a proposta continua aberta no cache recente do CRM, se não houve contato humano registrado depois da inscrição, se o telefone não pediu opt-out e se a campanha ainda está ativa. Resposta inbound pausa a cadência pelo mecanismo existente. Uma faixa vencida é ignorada, sem deslocar sua mensagem para fora da janela. O CRM mostra o estágio atual da inscrição.
+
 ## Script de seed das campanhas iniciais
 
 `scripts/seed-campanhas-whatsapp-iniciais.mjs` cria (idempotente, por nome) as campanhas pedidas pelo usuário em

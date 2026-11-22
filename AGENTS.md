@@ -315,8 +315,9 @@ server/
                        puras quando não precisarem de I/O:
                        inteligenciaClientes.ts (RFM/classificação/funil/previsão
                        comercial), qualificacaoLeadCnpj.ts (score de lead por CNPJ),
-                       campanhasWhatsappIa.ts (qualificação e resumo de leads) e
-                       campanhasWhatsappInboundBuffer.ts (filtro de bot e debounce de respostas),
+                       campanhasWhatsappIa.ts (qualificação e resumo de leads),
+                       campanhasWhatsappInboundBuffer.ts (filtro/debounce inbound),
+                       crmFollowupCadencia.ts (datas úteis do CRM para a fonte CRM - propostas abertas),
                        marketingFinanceiroCampanhas.ts (atribuição de receita e ranking por UF das campanhas) e
                        marketingFinanceiroEstados.ts (distribuição estadual de primeira compra e propostas de clientes novos)
                        treinamentoPop.ts (leitura de PDFs, DOCX e TXT e OCR de PDFs escaneados sob demanda para criar rascunhos de treinamento)
@@ -610,8 +611,11 @@ precisar investigar uma decisão antiga, é aí que está, mas o código ativo
   `shared/price-table.ts`) só por número — não há resolução automática de
   qual coluna/faixa de valor usar ainda.
 - **Aparência de matérias-primas para renderização 3D (pedido de 06/10/2026; migration `0094`):** em Administração > Produtos > Matérias-primas, cada item pode informar cor (HEX/descrição), textura (imagem de referência enviada ao UploadThing e descrição para IA) ou deixar a aparência sem informação, além de opacidade/translucidez/transparência e transmissão de luz. A foto é referência visual, não mapa PBR calibrado. A rota autenticada `POST /api/letra-caixa/materias-aparencia` aceita `{ materiaPrimaIds }` (até 300) e devolve um registro por ID, inclusive sem cadastro local (`cadastroDisponivel: false`), com aparência e cores/transparências de formatos de chapa; não retorna custos. `GET /api/letra-caixa/materias-cadastro` também inclui `aparencia`. O servidor aceita URLs de imagem apenas do UploadThing.
-- **Módulo Proposta (cotação) é diferente de `crm_propostas`.** A tabela
-  `crm_propostas` no schema é órfã — nenhum router lê/escreve nela; o "CRM
+- **Módulo Proposta (cotação) é diferente da tabela `crm_propostas`.** A tabela
+  `crm_propostas` no schema é órfã — nenhum router lê/escreve nela; o tipo de
+  fonte `crm_propostas` em Campanhas é outra estrutura e guarda inscrições
+  explícitas por proposta, usando o motor de cadência e confirmação individual
+  de opt-in (migrations `0143`/`0144`). O "CRM
   de Propostas" (`client/src/pages/comercial/CRM.tsx`,
   `server/routers/crm.ts`) na verdade lê orçamentos ao vivo do MubiSys (sem
   lista de itens, só um `valor` total). O módulo **Propostas** novo
