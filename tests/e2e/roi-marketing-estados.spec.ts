@@ -26,15 +26,40 @@ const novos = {
   ],
   totalPropostasNovosClientes: 10,
   propostasNovosClientesSemUf: 2,
+  fontesIndisponiveis: [],
+};
+
+const campanhas2025 = {
+  janelaDias: 30,
+  topEstados: [{ uf: "PR", receitaAtribuida: 4500, totalOs: 2, clientesConvertidos: 2 }],
+  totalOsAtribuidas: 2,
+  receitaTotalAtribuida: 4500,
+  vendasSemEstado: 0,
+  receitaSemEstado: 0,
+};
+
+const novos2025 = {
+  clientesPrimeiraCompra: [{ uf: "RS", clientes: 3 }],
+  totalClientesPrimeiraCompra: 3,
+  clientesPrimeiraCompraSemUf: 0,
+  propostasNovosClientes: [{ uf: "GO", propostas: 2, clientes: 2 }],
+  totalPropostasNovosClientes: 2,
+  propostasNovosClientesSemUf: 0,
+  fontesIndisponiveis: ["cache de enderecos do ERP"],
 };
 
 test("mostra UFs, contagens e receita das campanhas e dos novos clientes", async ({ page }) => {
+  const inputsObservados: Array<{ procedure: string; dataInicial?: string; dataFinal?: string }> = [];
   await page.route("**/api/trpc/**", async route => {
     const url = new URL(route.request().url());
     const procedures = url.pathname.replace("/api/trpc/", "").split(",");
-    const payloads = procedures.map(procedure => {
-      const result = procedure.endsWith("rankingEstadosCampanhas") ? campanhas
-        : procedure.endsWith("getDistribuicaoEstadosNovos") ? novos
+    const inputBatch: Record<string, { json?: { dataInicial?: string; dataFinal?: string } }> = JSON.parse(url.searchParams.get("input") ?? "{}");
+    const payloads = procedures.map((procedure, index) => {
+      const input = inputBatch[String(index)]?.json ?? {};
+      inputsObservados.push({ procedure, dataInicial: input.dataInicial, dataFinal: input.dataFinal });
+      const periodo2025 = input.dataInicial === "2025-01-01" && input.dataFinal === "2025-12-31";
+      const result = procedure.endsWith("rankingEstadosCampanhas") ? (periodo2025 ? campanhas2025 : campanhas)
+        : procedure.endsWith("getDistribuicaoEstadosNovos") ? (periodo2025 ? novos2025 : novos)
           : null;
       if (result == null) throw new Error(`Procedure tRPC inesperada no teste: ${procedure}`);
       return { result: { data: { json: result } } };
@@ -55,4 +80,16 @@ test("mostra UFs, contagens e receita das campanhas e dos novos clientes", async
   await expect(page.getByRole("row", { name: /Mato Grosso \(MT\) 5 4/ })).toBeVisible();
   await expect(page.getByText(/10 propostas no total/)).toBeVisible();
   await expect(page.getByText(/2 propostas sem UF confiável/)).toBeVisible();
+
+  await page.getByRole("button", { name: "2025" }).click();
+  await expect(page.getByText(/4\.500,00/)).toBeVisible();
+  await expect(page.getByRole("row", { name: /Rio Grande do Sul \(RS\) 3/ })).toBeVisible();
+  await expect(page.getByRole("row", { name: /\(GO\) 2 2/ })).toBeVisible();
+  await expect(page.getByText(/Fontes indispon/)).toBeVisible();
+  await expect(page.getByText(/2 propostas no total/)).toBeVisible();
+
+  expect(inputsObservados).toEqual(expect.arrayContaining([
+    { procedure: expect.stringContaining("rankingEstadosCampanhas"), dataInicial: "2025-01-01", dataFinal: "2025-12-31" },
+    { procedure: expect.stringContaining("getDistribuicaoEstadosNovos"), dataInicial: "2025-01-01", dataFinal: "2025-12-31" },
+  ]));
 });

@@ -24,13 +24,15 @@ import MarketingEstadosNovos from "./MarketingEstadosNovos";
 
 interface Props {
   anoSel: number;
+  dataInicial: string;
+  dataFinal: string;
   abrirCACRequest?: number;
 }
 
 type Categoria = "novo" | "recorrenteAtivo" | "reativado" | null;
 type AbaMarketing = "geral" | "insights" | "aquisicao" | "reativacao" | "mensal" | "campanhas" | "fornecedor" | "config";
 
-export default function MarketingFinanceiro({ anoSel, abrirCACRequest = 0 }: Props) {
+export default function MarketingFinanceiro({ anoSel, dataInicial, dataFinal, abrirCACRequest = 0 }: Props) {
   const [abaPrincipal, setAbaPrincipal] = useState<"marketing" | "resultado">("marketing");
   const [abaMarketing, setAbaMarketing] = useState<AbaMarketing>("geral");
   const [importOpen, setImportOpen] = useState(false);
@@ -149,8 +151,8 @@ export default function MarketingFinanceiro({ anoSel, abrirCACRequest = 0 }: Pro
             <TabsContent value="mensal">
               {dados ? (
                 <div className="space-y-5">
-                  <MarketingEstadosCampanhas ano={anoSel} />
-                  <MarketingEstadosNovos ano={anoSel} />
+                  <MarketingEstadosCampanhas dataInicial={dataInicial} dataFinal={dataFinal} />
+                  <MarketingEstadosNovos dataInicial={dataInicial} dataFinal={dataFinal} />
                   <MarketingLancamentoCAC ano={anoSel} relatorio={dados.relatorio} refetch={refetch} />
                   <MarketingAnaliseMensal ano={anoSel} relatorio={dados.relatorio} refetch={refetch} />
                 </div>

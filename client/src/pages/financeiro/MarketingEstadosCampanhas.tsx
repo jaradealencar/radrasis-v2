@@ -1,6 +1,6 @@
 import { MapPin, Trophy } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { fmtBrl, fmtNum } from "@/lib/format";
+import { fmtBrl, fmtDate, fmtNum } from "@/lib/format";
 import { trpc } from "@/lib/trpc";
 
 const NOMES_UF: Record<string, string> = {
@@ -12,11 +12,18 @@ const NOMES_UF: Record<string, string> = {
   SP: "São Paulo", SE: "Sergipe", TO: "Tocantins",
 };
 
-export default function MarketingEstadosCampanhas({ ano }: { ano: number }) {
+function dataIsoLocal(data: string): Date {
+  const [ano, mes, dia] = data.split("-").map(Number);
+  return new Date(ano, mes - 1, dia);
+}
+
+export default function MarketingEstadosCampanhas({ dataInicial, dataFinal }: { dataInicial: string; dataFinal: string }) {
   const { data, isLoading, isError } = trpc.marketingFinanceiro.rankingEstadosCampanhas.useQuery(
-    { ano },
+    { dataInicial, dataFinal },
     { staleTime: 5 * 60 * 1000 },
   );
+
+  const periodoTexto = `${fmtDate(dataIsoLocal(dataInicial))} a ${fmtDate(dataIsoLocal(dataFinal))}`;
 
   return (
     <Card>
@@ -25,7 +32,7 @@ export default function MarketingEstadosCampanhas({ ano }: { ano: number }) {
           <MapPin size={17} className="text-indigo-600" /> Estados com melhor desempenho das campanhas
         </CardTitle>
         <p className="text-xs text-muted-foreground">
-          Top 3 por receita de O.S. atribuída às campanhas WhatsApp em {ano}. Atribuição pelo último disparo elegível nos 30 dias anteriores à compra.
+          Top 3 por receita de O.S. atribuída às campanhas WhatsApp no intervalo selecionado ({periodoTexto}). Atribuição pelo último disparo elegível nos 30 dias anteriores à compra.
         </p>
       </CardHeader>
       <CardContent>
