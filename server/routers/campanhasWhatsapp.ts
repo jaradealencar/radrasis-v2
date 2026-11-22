@@ -96,6 +96,7 @@ import {
   gerarChaveCategoria,
   hojeCampoGrande,
   normalizarTelefone,
+  obterJanelaPedidosNps,
   somarDias,
   INTERVALO_DISPARO_WTS_MS,
 } from "../../shared/campanhas-whatsapp";
@@ -167,6 +168,9 @@ const MAX_STATUS_WTS_POR_DISPARO = 10;
 /** Pós-venda devolve todos os clientes (a tela rola e o botão de baixar exporta a lista inteira). */
 const MAX_CLIENTES_POS_VENDA_TELA = 5000;
 const MAX_JANELA_CALENDARIO_DIAS = 62;
+const CATEGORIA_NPS = "nps";
+const CHAVE_FONTE_NPS = "nps_pedidos_entregues";
+const CONSULTA_FONTE_NPS = "nps_pedidos_entregues";
 
 // ─── Schemas de entrada (exportados: o REST valida com os mesmos) ───────────
 
@@ -557,6 +561,7 @@ export async function registrarDisparoNoBanco(
       message: "A data do envio não pode estar no futuro.",
     });
   }
+  const ehNps = campanha.categoria === CATEGORIA_NPS;
 
   const telefonesDaLista = [
     ...new Set(
@@ -574,11 +579,11 @@ export async function registrarDisparoNoBanco(
     p.contatos,
     quarentena,
     p.dataEnvio,
-    p.aplicarQuarentena ? campanha.quarentenaDias : 0,
+    p.aplicarQuarentena && !ehNps ? campanha.quarentenaDias : 0,
     p.aplicarQuarentena ? bloqueados : new Set()
   );
   const enviados = new Set(limpeza.enviar.map(e => e.telefone));
-  const violacoesQuarentena = p.aplicarQuarentena
+  const violacoesQuarentena = ehNps || p.aplicarQuarentena
     ? 0
     : higienizarLista(
         p.contatos,
@@ -641,7 +646,7 @@ export async function registrarDisparoNoBanco(
        RETURNING 1
      ), gatilhos AS (
        INSERT INTO campanhas_whatsapp_gatilhos (campanha_id, disparo_id, os_numero, telefone)
-       SELECT $1::int, novo.id, v.os, v.tel FROM novo, unnest($14::text[], $15::text[]) AS v(os, tel)
+       SELECT $1::int, novo.id, v.os, v.tel FROM novo, unnest($15::text[], $16::text[]) AS v(os, tel)
        ON CONFLICT (campanha_id, os_numero) DO NOTHING
        RETURNING 1
      ), historico_campanha AS (
@@ -650,7 +655,7 @@ export async function registrarDisparoNoBanco(
        -- CONSULTADO (para bloquear reenvio) no fluxo de geração de lista a partir de Fontes — ver
        -- gerarListaDaCampanha. O upload manual/webhook continua sem essa trava adicional.
        INSERT INTO campanhas_whatsapp_contatos_historico AS h (campanha_id, telefone, ultimo_envio_em, disparo_id, updated_at)
-       SELECT $1::int, t, $2::date, novo.id, now() FROM novo, unnest($13::text[]) AS t
+       SELECT $1::int, t, $2::date, novo.id, now() FROM novo, unnest($14::text[]) AS t
        ON CONFLICT (campanha_id, telefone) DO UPDATE
          SET ultimo_envio_em = EXCLUDED.ultimo_envio_em, disparo_id = EXCLUDED.disparo_id, updated_at = now()
          WHERE h.ultimo_envio_em <= EXCLUDED.ultimo_envio_em
@@ -670,6 +675,7 @@ export async function registrarDisparoNoBanco(
       p.origem,
       p.observacoes?.trim() || null,
       p.registradoPor,
+      ehNps ? [] : limpeza.enviar.map(c => c.telefone),
       limpeza.enviar.map(c => c.telefone),
       [...vendas.keys()],
       [...vendas.values()],
@@ -708,12 +714,14 @@ async function montarListaCampanha(
   ctxCompartilhado?: ContextoErp | null
 ) {
   const dataEnvio = input.dataEnvio ?? hojeCampoGrande();
-  const periodoInicio = input.periodo
+  const ehNps = campanha.categoria === CATEGORIA_NPS;
+  const janelaNps = ehNps ? obterJanelaPedidosNps(dataEnvio) : null;
+  const periodoInicio = ehNps ? null : input.periodo
     ? input.periodo.inicio
     : campanha.periodoInicio
       ? iso(campanha.periodoInicio)
       : null;
-  const periodoFim = input.periodo
+  const periodoFim = ehNps ? null : input.periodo
     ? input.periodo.fim
     : campanha.periodoFim
       ? iso(campanha.periodoFim)
@@ -741,6 +749,13 @@ async function montarListaCampanha(
       message:
         'Nenhuma fonte vinculada a esta campanha. Vincule ao menos uma em "Fontes de dados".',
     });
+  }
+  const fonteNps = fontes.filter(f => f.fonte.chave === CHAVE_FONTE_NPS && f.fonte.consultaErp === CONSULTA_FONTE_NPS);
+  if (ehNps && (fontes.length !== 1 || fonteNps.length !== 1)) {
+    throw new TRPCError({ code: "PRECONDITION_FAILED", message: "A campanha NPS precisa manter somente a fonte NPS — pedidos entregues." });
+  }
+  if (!ehNps && fonteNps.length > 0) {
+    throw new TRPCError({ code: "PRECONDITION_FAILED", message: "A fonte NPS não pode ser usada por uma campanha comum." });
   }
 
   const porFonte: Array<{ fonte: string; total: number; semTelefone: number }> =
@@ -834,7 +849,7 @@ async function montarListaCampanha(
     brutos,
     quarentenaGlobal,
     dataEnvio,
-    campanha.quarentenaDias,
+    ehNps ? 0 : campanha.quarentenaDias,
     bloqueados
   );
 
@@ -861,6 +876,7 @@ async function montarListaCampanha(
   return {
     dataEnvio,
     periodo: { inicio: periodoInicio, fim: periodoFim },
+    janelaNps,
     // Padrão da data inicial na tela: primeira compra registrada no histórico (null sem fonte do ERP).
     primeiroRegistro: ctxErp ? primeiroRegistroErp(ctxErp.base) : null,
     porFonte,
@@ -1446,6 +1462,78 @@ export const campanhasWhatsappRouter = router({
     return { hoje, campanhas: linhas, resumo: resumirCampanhas(linhas, hoje) };
   }),
 
+  /** Cria (ou abre novamente) a campanha única de NPS com fonte ERP fixa. */
+  criarCampanhaNps: campanhasProcedure.mutation(async () => {
+    const db = await obterDb();
+    return db.transaction(async tx => {
+      // Serializa dois cliques simultâneos para não criar campanhas NPS duplicadas.
+      await tx.execute(sql`SELECT pg_advisory_xact_lock(2026112201)`);
+
+      let [categoria] = await tx.select().from(campanhasWhatsappCategorias)
+        .where(eq(campanhasWhatsappCategorias.chave, CATEGORIA_NPS)).limit(1);
+      if (!categoria) {
+        [categoria] = await tx.insert(campanhasWhatsappCategorias).values({
+          chave: CATEGORIA_NPS,
+          label: "NPS",
+          ordem: 0,
+        }).returning();
+      } else if (!categoria.ativo) {
+        [categoria] = await tx.update(campanhasWhatsappCategorias)
+          .set({ ativo: true, updatedAt: new Date() })
+          .where(eq(campanhasWhatsappCategorias.id, categoria.id)).returning();
+      }
+
+      let [fonte] = await tx.select().from(campanhasWhatsappFontes)
+        .where(eq(campanhasWhatsappFontes.chave, CHAVE_FONTE_NPS)).limit(1);
+      if (!fonte) {
+        [fonte] = await tx.insert(campanhasWhatsappFontes).values({
+          tipo: "erp",
+          chave: CHAVE_FONTE_NPS,
+          label: "NPS — pedidos entregues",
+          descricao: "Pedidos aprovados do dia 16 do mês anterior ao dia 15 do mês atual, com status explicitamente ENTREGUE. Uma mensagem por cliente; não aplica quarentena.",
+          consultaErp: CONSULTA_FONTE_NPS,
+        }).returning();
+      }
+      if (fonte.tipo !== "erp" || fonte.consultaErp !== CONSULTA_FONTE_NPS) {
+        throw new TRPCError({ code: "CONFLICT", message: "A fonte reservada do NPS está configurada incorretamente." });
+      }
+      if (!fonte.ativo) {
+        [fonte] = await tx.update(campanhasWhatsappFontes)
+          .set({ ativo: true, updatedAt: new Date() })
+          .where(eq(campanhasWhatsappFontes.id, fonte.id)).returning();
+      }
+
+      const [existente] = await tx.select({ campanha: campanhasWhatsapp })
+        .from(campanhasWhatsappCampanhaFontes)
+        .innerJoin(campanhasWhatsapp, eq(campanhasWhatsapp.id, campanhasWhatsappCampanhaFontes.campanhaId))
+        .where(eq(campanhasWhatsappCampanhaFontes.fonteId, fonte.id))
+        .limit(1);
+      if (existente) {
+        if (existente.campanha.categoria !== CATEGORIA_NPS) {
+          throw new TRPCError({ code: "CONFLICT", message: "A fonte reservada do NPS já está vinculada a outra campanha." });
+        }
+        return existente.campanha;
+      }
+
+      const [campanha] = await tx.insert(campanhasWhatsapp).values({
+        nome: "NPS — satisfação pós-entrega",
+        descricao: "Amostra mensal única por cliente. Considera pedidos aprovados do dia 16 do mês anterior ao dia 15 deste mês somente quando o MubiSys confirma status ENTREGUE. Opt-out continua bloqueando; quarentena não se aplica.",
+        categoria: CATEGORIA_NPS,
+        tipo: "recorrente",
+        regraCadencia: "dias_corridos",
+        frequenciaDias: 30,
+        quarentenaDias: 0,
+        status: "ativa",
+        periodoInicio: null,
+        periodoFim: null,
+        gatilhoAPartirDe: null,
+        wtsTemplateId: null,
+      }).returning();
+      await tx.insert(campanhasWhatsappCampanhaFontes).values({ campanhaId: campanha.id, fonteId: fonte.id });
+      return campanha;
+    });
+  }),
+
   obterConfiguracaoCadencia: campanhasProcedure
     .input(z.object({ campanhaId: z.number().int().positive() }))
     .query(async ({ input }) => {
@@ -1613,6 +1701,9 @@ export const campanhasWhatsappRouter = router({
     .input(campanhaBaseSchema)
     .mutation(async ({ input }) => {
       const db = await obterDb();
+      if (input.categoria === CATEGORIA_NPS) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "Crie a campanha NPS pelo botão específico para manter a fonte e as regras de elegibilidade protegidas." });
+      }
       await validarCategoria(db, input.categoria);
       validarPeriodo(input.periodoInicio, input.periodoFim);
       const [row] = await db
@@ -1644,6 +1735,22 @@ export const campanhasWhatsappRouter = router({
       const db = await obterDb();
       const { id, ...campos } = input;
       const atual = await buscarCampanha(db, id);
+      if (atual.categoria === CATEGORIA_NPS && campos.categoria !== undefined && campos.categoria !== CATEGORIA_NPS) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "A categoria da campanha NPS é fixa para preservar as regras especiais de envio." });
+      }
+      if (atual.categoria === CATEGORIA_NPS && campos.tipo !== undefined && campos.tipo !== "recorrente") {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "A campanha NPS precisa permanecer no fluxo recorrente de disparo." });
+      }
+      if (atual.categoria === CATEGORIA_NPS && (
+        (campos.regraCadencia !== undefined && campos.regraCadencia !== "dias_corridos") ||
+        (campos.frequenciaDias !== undefined && campos.frequenciaDias !== 30) ||
+        (campos.quarentenaDias !== undefined && campos.quarentenaDias !== 0)
+      )) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "A campanha NPS usa cadência mensal fixa e não aplica quarentena." });
+      }
+      if (atual.categoria !== CATEGORIA_NPS && campos.categoria === CATEGORIA_NPS) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "A categoria NPS só pode ser usada na campanha NPS específica." });
+      }
       if (campos.categoria !== undefined)
         await validarCategoria(db, campos.categoria);
       validarPeriodo(
@@ -1692,6 +1799,9 @@ export const campanhasWhatsappRouter = router({
     .mutation(async ({ input }) => {
       const db = await obterDb();
       const original = await buscarCampanha(db, input.id);
+      if (original.categoria === CATEGORIA_NPS) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "A campanha NPS é única; use o botão Campanha NPS para abrir a configuração existente." });
+      }
       const [copia] = await db
         .insert(campanhasWhatsapp)
         .values({
@@ -1831,6 +1941,11 @@ export const campanhasWhatsappRouter = router({
     .input(z.object({ id: z.number().int(), ativo: z.boolean() }))
     .mutation(async ({ input }) => {
       const db = await obterDb();
+      const [categoria] = await db.select({ chave: campanhasWhatsappCategorias.chave })
+        .from(campanhasWhatsappCategorias).where(eq(campanhasWhatsappCategorias.id, input.id)).limit(1);
+      if (categoria?.chave === CATEGORIA_NPS && !input.ativo) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "A categoria NPS é fixa e não pode ser arquivada." });
+      }
       await db
         .update(campanhasWhatsappCategorias)
         .set({ ativo: input.ativo, updatedAt: new Date() })
@@ -3048,6 +3163,11 @@ export const campanhasWhatsappRouter = router({
     .input(z.object({ id: z.number().int(), ativo: z.boolean() }))
     .mutation(async ({ input }) => {
       const db = await obterDb();
+      const [fonte] = await db.select({ chave: campanhasWhatsappFontes.chave })
+        .from(campanhasWhatsappFontes).where(eq(campanhasWhatsappFontes.id, input.id)).limit(1);
+      if (fonte?.chave === CHAVE_FONTE_NPS) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "A fonte da campanha NPS é fixa e não pode ser arquivada." });
+      }
       await db
         .update(campanhasWhatsappFontes)
         .set({ ativo: input.ativo, updatedAt: new Date() })
@@ -3065,7 +3185,18 @@ export const campanhasWhatsappRouter = router({
     )
     .mutation(async ({ input }) => {
       const db = await obterDb();
-      await buscarCampanha(db, input.campanhaId);
+      const campanha = await buscarCampanha(db, input.campanhaId);
+      const fontesEscolhidas = input.fonteIds.length
+        ? await db.select({ id: campanhasWhatsappFontes.id, chave: campanhasWhatsappFontes.chave, tipo: campanhasWhatsappFontes.tipo, consultaErp: campanhasWhatsappFontes.consultaErp })
+            .from(campanhasWhatsappFontes).where(inArray(campanhasWhatsappFontes.id, input.fonteIds))
+        : [];
+      const fonteNps = fontesEscolhidas.find(f => f.chave === CHAVE_FONTE_NPS);
+      if (campanha.categoria === CATEGORIA_NPS && (fontesEscolhidas.length !== 1 || fonteNps?.consultaErp !== CONSULTA_FONTE_NPS)) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "A campanha NPS precisa manter somente a fonte fixa NPS — pedidos entregues." });
+      }
+      if (fonteNps && (campanha.categoria !== CATEGORIA_NPS || fontesEscolhidas.length !== 1 || fonteNps.tipo !== "erp" || fonteNps.consultaErp !== CONSULTA_FONTE_NPS)) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "A fonte de NPS só pode ser vinculada à campanha NPS específica." });
+      }
       await db
         .delete(campanhasWhatsappCampanhaFontes)
         .where(

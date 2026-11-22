@@ -110,6 +110,15 @@ aprovação da OS (`DIAS_UTEIS_MINIMOS_POS_VENDA`).
 `atualizarDadosErp` (`sincronizarHistoricoRecente(1)`: mês atual e anterior, trava de 2 minutos), e a lista é
 recalculada — quem acabou de comprar sai de "inativos"; quem pediu para sair está na lista "Não quer receber".
 
+**Campanha NPS pós-entrega.** O botão "Campanha NPS" cria ou abre uma campanha única e sua fonte ERP fixa. Cada ciclo
+considera pedidos com data de aprovação do dia 16 do mês anterior ao dia 15 do mês atual (até hoje, quando o dia 15
+ainda não chegou). Só o status explícito `ENTREGUE` do MubiSys confirma elegibilidade; `CONCLUIDO`, faturamento e
+`data_entrega` não comprovam recebimento, pois essa data pode ser apenas uma previsão. A lista agrupa OS pelo ID do
+cliente e documento fiscal e usa a razão social como fallback quando faltam identificadores, sem unir empresas
+homônimas com IDs/documentos diferentes. A higienização final continua limitando um envio por telefone. A campanha
+tem cadência fixa de 30 dias, ignora a quarentena global e mantém o bloqueio de opt-out. A categoria e a fonte são
+protegidas contra uso em campanhas comuns; o template aprovado da WTS.Chat é configurado na campanha antes do envio.
+
 **Telefones: "sem telefone" x "inválido" e preenchimento do histórico** (03/10/2026). Investigado a pedido do usuário
 ("muitos inválidos, mas o cadastro tem ~98% de números"): o MubiSys tem telefone válido em 98–100% das OS (amostras de
 2023, 2024, 2025 e 2026), mas `historico_os.telefone` só estava preenchido nos meses em que o backfill rodou. A lista

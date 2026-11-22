@@ -60,6 +60,7 @@ import {
 } from "./crmFollowupCadencia";
 
 const ESTADOS_ATIVOS = ["aguardando", "enviando", "pendente_conciliacao", "pausado_por_resposta"] as const;
+const CATEGORIA_NPS = "nps";
 
 export interface EtapaSnapshot {
   numero: number;
@@ -95,6 +96,7 @@ interface InscricaoDisparo {
   created_at: Date;
   lease_token: string;
   campanha_nome: string;
+  categoria: string;
   intervalo_minimo_segundos: number;
   intervalo_maximo_segundos: number;
 }
@@ -369,6 +371,16 @@ export async function sincronizarAudienciasCadencia(): Promise<{ inscricoesCriad
 
   const bloqueios = new Map<string, string>((await db.select({ telefone: campanhasWhatsappQuarentena.telefone, data: campanhasWhatsappQuarentena.ultimoContatoEm }).from(campanhasWhatsappQuarentena))
     .map(r => [`+${r.telefone}`, String(r.data).slice(0, 10)] as const));
+  const campanhasNps = campanhasOrdenadas.filter(c => c.categoria === CATEGORIA_NPS);
+  const historicoNps = campanhasNps.length
+    ? await db.select({ campanhaId: campanhasWhatsappContatosHistorico.campanhaId, telefone: campanhasWhatsappContatosHistorico.telefone, ultimoEnvioEm: campanhasWhatsappContatosHistorico.ultimoEnvioEm })
+        .from(campanhasWhatsappContatosHistorico)
+        .where(inArray(campanhasWhatsappContatosHistorico.campanhaId, campanhasNps.map(c => c.id)))
+    : [];
+  const ultimoNpsPorCampanhaTelefone = new Map(historicoNps.map(r => [
+    `${r.campanhaId}:${r.telefone}`,
+    String(r.ultimoEnvioEm).slice(0, 10),
+  ]));
   const stepsPorCampanha = new Map<number, EtapaSnapshot[]>();
   for (const campanha of campanhasOrdenadas) stepsPorCampanha.set(campanha.id, await carregarSnapshotAtual(campanha));
 
@@ -401,11 +413,13 @@ export async function sincronizarAudienciasCadencia(): Promise<{ inscricoesCriad
 
       if (telefonesSemResultado.has(contato.telefoneE164)) continue;
 
-      const ultima = bloqueios.get(contato.telefoneE164);
-      const cooldown = Math.max(campanha.intervaloMinimoEntreCampanhasDias, campanha.quarentenaDias);
-      if (ultima) {
-      const dias = diasEntreDatasIso(ultima, hojeIsoCampoGrande());
-        if (dias < cooldown) continue;
+      if (campanha.categoria === CATEGORIA_NPS) {
+        const ultimoEnvioNps = ultimoNpsPorCampanhaTelefone.get(`${campanha.id}:${contato.telefoneE164}`);
+        if (ultimoEnvioNps && diasEntreDatasIso(ultimoEnvioNps, hojeIsoCampoGrande()) < campanha.frequenciaDias) continue;
+      } else {
+        const ultima = bloqueios.get(contato.telefoneE164);
+        const cooldown = Math.max(campanha.intervaloMinimoEntreCampanhasDias, campanha.quarentenaDias);
+        if (ultima && diasEntreDatasIso(ultima, hojeIsoCampoGrande()) < cooldown) continue;
       }
       const snapshot = stepsPorCampanha.get(campanha.id) ?? [];
       if (!snapshot.length) continue;
@@ -494,7 +508,7 @@ async function reivindicarProximaInscricao(): Promise<InscricaoDisparo | null> {
     const candidate = await client.query(
       `SELECT i.id, i.campanha_id, i.telefone_e164, i.nome, i.cliente_id, i.cnpj,
               i.etapa_atual, i.versao_etapas, i.snapshot_etapas, i.origem_tipo, i.origem_id,
-              i.created_at, c.nome AS campanha_nome,
+              i.created_at, c.nome AS campanha_nome, c.categoria,
               c.intervalo_minimo_segundos, c.intervalo_maximo_segundos
        FROM campanhas_whatsapp_inscricoes i
        JOIN campanhas_whatsapp c ON c.id = i.campanha_id
@@ -562,7 +576,7 @@ async function contatoAindaElegivel(inscricao: InscricaoDisparo): Promise<boolea
   const [quarentenaAtual] = await db.select({ ultimoContatoEm: campanhasWhatsappQuarentena.ultimoContatoEm, ultimaCampanhaId: campanhasWhatsappQuarentena.ultimaCampanhaId })
     .from(campanhasWhatsappQuarentena)
     .where(eq(campanhasWhatsappQuarentena.telefone, e164ParaDigitos(inscricao.telefone_e164))).limit(1);
-  if (quarentenaAtual && quarentenaAtual.ultimaCampanhaId !== campanha.id) {
+  if (campanha.categoria !== CATEGORIA_NPS && quarentenaAtual && quarentenaAtual.ultimaCampanhaId !== campanha.id) {
     const cooldown = Math.max(campanha.intervaloMinimoEntreCampanhasDias, campanha.quarentenaDias);
     if (diasEntreDatasIso(String(quarentenaAtual.ultimoContatoEm).slice(0, 10), hojeIsoCampoGrande()) < cooldown) return false;
   }
@@ -672,8 +686,10 @@ async function atualizarQuarentenaEHistorico(
 ): Promise<void> {
   const telefone = e164ParaDigitos(row.telefone_e164);
   const data = hojeCampoGrande(quando);
-  await db.insert(campanhasWhatsappQuarentena).values({ telefone, ultimaCampanhaId: row.campanha_id, ultimoContatoEm: data, updatedAt: quando })
-    .onConflictDoUpdate({ target: campanhasWhatsappQuarentena.telefone, set: { ultimaCampanhaId: row.campanha_id, ultimoContatoEm: sql`GREATEST(${campanhasWhatsappQuarentena.ultimoContatoEm}, ${data}::date)`, updatedAt: quando } });
+  if (row.categoria !== CATEGORIA_NPS) {
+    await db.insert(campanhasWhatsappQuarentena).values({ telefone, ultimaCampanhaId: row.campanha_id, ultimoContatoEm: data, updatedAt: quando })
+      .onConflictDoUpdate({ target: campanhasWhatsappQuarentena.telefone, set: { ultimaCampanhaId: row.campanha_id, ultimoContatoEm: sql`GREATEST(${campanhasWhatsappQuarentena.ultimoContatoEm}, ${data}::date)`, updatedAt: quando } });
+  }
   await db.insert(campanhasWhatsappContatosHistorico).values({ campanhaId: row.campanha_id, telefone, ultimoEnvioEm: data, disparoId, updatedAt: quando })
     .onConflictDoUpdate({ target: [campanhasWhatsappContatosHistorico.campanhaId, campanhasWhatsappContatosHistorico.telefone], set: { ultimoEnvioEm: sql`GREATEST(${campanhasWhatsappContatosHistorico.ultimoEnvioEm}, ${data}::date)`, disparoId, updatedAt: quando } });
 }

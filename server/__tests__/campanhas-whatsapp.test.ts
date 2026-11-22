@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   calcularProximoEnvio, classificarSemaforo, dataIsoValida, diasEntre, formatarTelefone, gerarChaveCategoria,
   hojeCampoGrande, formatarDataBr, normalizarTelefone, semNumeroDeTelefone, somarDias,
+  obterJanelaPedidosNps,
   estimarTempoDisparoSegundos, formatarSegundos,
 } from "../../shared/campanhas-whatsapp";
 import {
@@ -63,6 +64,33 @@ describe("normalizarTelefone", () => {
   it("formatarTelefone só para exibição", () => {
     expect(formatarTelefone("5567999990000")).toBe("(67) 99999-0000");
     expect(formatarTelefone("556733331234")).toBe("(67) 3333-1234");
+  });
+});
+
+describe("janela mensal de pedidos do NPS", () => {
+  it("usa do dia 16 do mês anterior ao dia 15 do mês atual", () => {
+    expect(obterJanelaPedidosNps("2026-11-22")).toEqual({
+      inicio: "2026-10-16",
+      fim: "2026-11-15",
+    });
+  });
+
+  it("não inclui dias futuros enquanto o ciclo atual ainda está no início", () => {
+    expect(obterJanelaPedidosNps("2026-11-10")).toEqual({
+      inicio: "2026-10-16",
+      fim: "2026-11-10",
+    });
+  });
+
+  it("respeita fevereiro e a virada do ano", () => {
+    expect(obterJanelaPedidosNps("2026-03-02")).toEqual({
+      inicio: "2026-02-16",
+      fim: "2026-03-02",
+    });
+    expect(obterJanelaPedidosNps("2027-01-15")).toEqual({
+      inicio: "2026-12-16",
+      fim: "2027-01-15",
+    });
   });
 });
 
@@ -235,6 +263,22 @@ describe("higienizarLista", () => {
     );
     expect(r.enviar).toHaveLength(1);
     expect(r.ignoradosQuarentena).toHaveLength(0);
+  });
+
+  it("NPS pode ignorar a quarentena sem ignorar opt-out", () => {
+    const r = higienizarLista(
+      [
+        { telefone: "(67) 99000-0001", nome: "Cliente em quarentena" },
+        { telefone: "(67) 99000-0005", nome: "Cliente bloqueado" },
+      ],
+      quarentena,
+      envio,
+      0,
+      new Set(["5567990000005"])
+    );
+    expect(r.enviar.map(c => c.nome)).toEqual(["Cliente em quarentena"]);
+    expect(r.ignoradosQuarentena).toEqual([]);
+    expect(r.ignoradosBloqueados.map(c => c.nome)).toEqual(["Cliente bloqueado"]);
   });
 
   it("separa inválidos e duplicados, e a conta fecha", () => {

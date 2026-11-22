@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { toast } from "sonner";
 import {
   AlertTriangle,
   BanIcon,
@@ -16,6 +17,7 @@ import {
   Plus,
   Send,
   Siren,
+  Star,
   CalendarClock,
   LayoutList,
   Trash2,
@@ -134,6 +136,19 @@ export default function MarketingCampanhasWhatsapp() {
     { staleTime: 5 * 60_000, refetchOnWindowFocus: false }
   );
   const [excluir, setExcluir] = useState<CampanhaLinha | null>(null);
+  const utils = trpc.useUtils();
+  const criarNps = trpc.campanhasWhatsapp.criarCampanhaNps.useMutation({
+    onSuccess: async campanha => {
+      await Promise.all([
+        utils.campanhasWhatsapp.listar.invalidate(),
+        utils.campanhasWhatsapp.listarCategorias.invalidate(),
+        utils.campanhasWhatsapp.contagemAudiencias.invalidate(),
+      ]);
+      toast.success("Campanha NPS pronta. Configure o ID do template aprovado da WTS.Chat.");
+      setFormulario(campanha as CampanhaLinha);
+    },
+    onError: e => toast.error(e.message),
+  });
 
   if (isLoading) {
     return (
@@ -172,9 +187,20 @@ export default function MarketingCampanhasWhatsapp() {
             anti-spam por telefone.
           </p>
         </div>
-        <Button className="gap-1.5" onClick={() => setFormulario(null)}>
-          <Plus size={15} /> Nova campanha
-        </Button>
+        <div className="flex flex-wrap gap-2">
+          <Button
+            variant="outline"
+            className="gap-1.5 border-emerald-300 text-emerald-800 hover:bg-emerald-50"
+            disabled={criarNps.isPending}
+            onClick={() => criarNps.mutate()}
+          >
+            {criarNps.isPending ? <Spinner className="size-4" /> : <Star size={15} />}
+            Campanha NPS
+          </Button>
+          <Button className="gap-1.5" onClick={() => setFormulario(null)}>
+            <Plus size={15} /> Nova campanha
+          </Button>
+        </div>
       </div>
 
       <AtualizarClientesAuto />
@@ -286,6 +312,7 @@ export default function MarketingCampanhasWhatsapp() {
                             : "Recorrente"}
                           {c.quarentenaDias > 0 &&
                             ` · quarentena ${c.quarentenaDias}d`}
+                          {c.categoria === "nps" && " · janela 16–15 · sem quarentena"}
                         </div>
                       </TableCell>
                       <TableCell className="align-top">
@@ -470,9 +497,11 @@ export default function MarketingCampanhasWhatsapp() {
                                   manual
                                 </DropdownMenuItem>
                               )}
-                              <DropdownMenuItem onSelect={() => setDuplicar(c)}>
-                                <Copy size={14} /> Duplicar campanha
-                              </DropdownMenuItem>
+                              {c.categoria !== "nps" && (
+                                <DropdownMenuItem onSelect={() => setDuplicar(c)}>
+                                  <Copy size={14} /> Duplicar campanha
+                                </DropdownMenuItem>
+                              )}
                               <DropdownMenuSeparator />
                               <DropdownMenuItem
                                 variant="destructive"

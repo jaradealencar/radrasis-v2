@@ -28,7 +28,9 @@ import {
   STATUS_CAMPANHA_LABEL,
   TIPO_CAMPANHA_LABEL,
   TIPOS_CAMPANHA,
+  formatarDataBr,
   hojeCampoGrande,
+  obterJanelaPedidosNps,
   type RegraCadencia,
   type StatusCampanha,
   type TipoCampanha,
@@ -163,6 +165,7 @@ export default function CampanhaFormDialog({
 }: Props) {
   const utils = trpc.useUtils();
   const editando = !!campanha;
+  const campanhaNps = campanha?.categoria === "nps";
 
   const { data: categorias, isLoading: carregandoCategorias } =
     trpc.campanhasWhatsapp.listarCategorias.useQuery(undefined, {
@@ -334,7 +337,7 @@ export default function CampanhaFormDialog({
               usuário: audiência combinando ERP + externas, modelos de script e uma "pasta" de listas. */}
           {editando ? (
             <div className="flex flex-wrap items-center gap-4 rounded-lg border bg-slate-50 px-3 py-2">
-              <FontesDadosPopover campanhaId={campanha.id} />
+              <FontesDadosPopover campanhaId={campanha.id} ehNps={campanhaNps} />
               <span className="text-slate-300">·</span>
               <ScriptsCampanhaDialog campanhaId={campanha.id} />
               <span className="text-slate-300">·</span>
@@ -359,7 +362,7 @@ export default function CampanhaFormDialog({
               <Select
                 value={categoria}
                 onValueChange={setCategoria}
-                disabled={carregandoCategorias}
+                disabled={carregandoCategorias || campanhaNps}
               >
                 <SelectTrigger>
                   <SelectValue
@@ -416,6 +419,7 @@ export default function CampanhaFormDialog({
                     <Select
                       value={regraCadencia}
                       onValueChange={v => setRegraCadencia(v as RegraCadencia)}
+                      disabled={campanhaNps}
                     >
                       <SelectTrigger className="bg-white">
                         <SelectValue />
@@ -443,9 +447,12 @@ export default function CampanhaFormDialog({
                         inputMode="numeric"
                         value={frequencia}
                         onChange={e => setFrequencia(e.target.value)}
+                        disabled={campanhaNps}
                       />
                       <p className="text-[11px] text-muted-foreground">
-                        Próximo envio = último envio + este número de dias.
+                        {campanhaNps
+                          ? "Cadência fixa de 30 dias para permitir uma pesquisa por cliente em cada ciclo mensal."
+                          : "Próximo envio = último envio + este número de dias."}
                       </p>
                     </div>
                   )}
@@ -502,21 +509,29 @@ export default function CampanhaFormDialog({
             )}
 
             <div className="space-y-1.5">
-              <LabelComAjuda
-                htmlFor="camp-quar"
-                texto="Quarentena (dias)"
-                ajuda={AJUDA_QUARENTENA}
-              />
-              <Input
-                id="camp-quar"
-                inputMode="numeric"
-                value={quarentena}
-                onChange={e => setQuarentena(e.target.value)}
-              />
-              <p className="text-[11px] text-muted-foreground">
-                Descanso mínimo de um telefone desde qualquer campanha. 0 = sem
-                trava.
-              </p>
+              {campanhaNps ? (
+                <div className="rounded-md border border-emerald-200 bg-emerald-50 p-3 text-xs text-emerald-900 sm:col-span-2">
+                  A quarentena não se aplica ao NPS. A lista continua respeitando a lista “Não quer receber” e a cadência desta campanha.
+                </div>
+              ) : (
+                <>
+                  <LabelComAjuda
+                    htmlFor="camp-quar"
+                    texto="Quarentena (dias)"
+                    ajuda={AJUDA_QUARENTENA}
+                  />
+                  <Input
+                    id="camp-quar"
+                    inputMode="numeric"
+                    value={quarentena}
+                    onChange={e => setQuarentena(e.target.value)}
+                  />
+                  <p className="text-[11px] text-muted-foreground">
+                    Descanso mínimo de um telefone desde qualquer campanha. 0 = sem
+                    trava.
+                  </p>
+                </>
+              )}
             </div>
           </div>
 
@@ -542,26 +557,38 @@ export default function CampanhaFormDialog({
             </p>
           </div>
 
-          <div className="space-y-2 rounded-lg border p-3">
-            <Label>Período de apuração</Label>
-            <PeriodoApuracao
-              id="camp"
-              inicio={inicio}
-              onInicio={setInicio}
-              fimAutomatico={fimAutomatico}
-              onFimAutomatico={setFimAutomatico}
-              fim={fim}
-              onFim={setFim}
-              hoje={hoje}
-            />
-            <p className="text-[11px] text-muted-foreground">
-              {tipo === "gatilho_venda"
-                ? "Só entram vendas faturadas dentro do período. Sem início, toda venda com prazo vencido entra (a primeira lista pode trazer o histórico inteiro). "
-                : "Conta a data em que cada cliente entrou no grupo (ex.: completou 6 meses sem comprar). Sem início, vale desde o primeiro registro. "}
-              No modo automático não há data final: a lista é permanente e se
-              retroalimenta, com quem for entrando.
-            </p>
-          </div>
+          {campanhaNps ? (
+            <div className="space-y-2 rounded-lg border border-emerald-200 bg-emerald-50/50 p-3">
+              <Label>Janela mensal do NPS</Label>
+              <p className="text-sm font-medium text-emerald-900">
+                {formatarDataBr(obterJanelaPedidosNps(hoje).inicio)} a {formatarDataBr(obterJanelaPedidosNps(hoje).fim)}
+              </p>
+              <p className="text-[11px] text-muted-foreground">
+                Considera a data de aprovação do pedido entre o dia 16 do mês anterior e o dia 15 deste mês, somente quando o status do MubiSys é ENTREGUE. Uma mensagem por cliente. A previsão de entrega não é usada como confirmação.
+              </p>
+            </div>
+          ) : (
+            <div className="space-y-2 rounded-lg border p-3">
+              <Label>Período de apuração</Label>
+              <PeriodoApuracao
+                id="camp"
+                inicio={inicio}
+                onInicio={setInicio}
+                fimAutomatico={fimAutomatico}
+                onFimAutomatico={setFimAutomatico}
+                fim={fim}
+                onFim={setFim}
+                hoje={hoje}
+              />
+              <p className="text-[11px] text-muted-foreground">
+                {tipo === "gatilho_venda"
+                  ? "Só entram vendas faturadas dentro do período. Sem início, toda venda com prazo vencido entra (a primeira lista pode trazer o histórico inteiro). "
+                  : "Conta a data em que cada cliente entrou no grupo (ex.: completou 6 meses sem comprar). Sem início, vale desde o primeiro registro. "}
+                No modo automático não há data final: a lista é permanente e se
+                retroalimenta, com quem for entrando.
+              </p>
+            </div>
+          )}
 
           {editando && (
             <div className="space-y-1.5">
