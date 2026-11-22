@@ -48,6 +48,7 @@ import {
   Activity,
   Store,
   GraduationCap,
+  Megaphone,
 } from "lucide-react";
 import { ReactNode, useState, useEffect, useMemo, useLayoutEffect, useRef } from "react";
 import { Link, useLocation } from "wouter";
@@ -59,6 +60,7 @@ interface NavItem {
   href: string;
   icon: ReactNode;
   pageKey?: string;
+  allowedRoles?: string[];
 }
 
 interface NavSection {
@@ -74,6 +76,7 @@ const navSections: NavSection[] = [
       { label: "Propostas", href: "/comercial/propostas", icon: <FileText size={15} />, pageKey: "comercial-propostas" },
       { label: "Tabela de Preços", href: "/tabela-precos", icon: <Tag size={15} />, pageKey: "tabela-preco" },
       { label: "Performance Comercial", href: "/comercial/performance", icon: <TrendingUp size={15} />, pageKey: "comercial-performance" },
+      { label: "Campanhas WhatsApp", href: "/comercial/campanhas-whatsapp", icon: <Megaphone size={15} />, pageKey: "comercial-performance", allowedRoles: ["admin", "master", "gestor"] },
       { label: "Análise Geográfica", href: "/comercial/geografia", icon: <MapPin size={15} />, pageKey: "comercial-geografia" },
       { label: "Metas Comerciais", href: "/comercial/metas", icon: <Target size={15} />, pageKey: "comercial-metas" },
       { label: "CRM de Propostas", href: "/comercial/crm", icon: <Handshake size={15} />, pageKey: "comercial-crm" },
@@ -209,6 +212,10 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
     if (user) logout().then(() => { window.location.href = "/"; });
   };
 
+  const itemVisivel = (item: NavItem) =>
+    (!item.allowedRoles || item.allowedRoles.includes(user?.role ?? "")) &&
+    (!item.pageKey || canAccess(item.pageKey));
+
   // Filtrar itens por busca — DEVE estar antes do return condicional (regra dos hooks)
   const filteredSections = useMemo(() => {
     if (!searchQuery.trim()) return null;
@@ -216,7 +223,7 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
     const results: NavItem[] = [];
     for (const section of navSections) {
       for (const item of section.items) {
-        if (!item.pageKey || canAccess(item.pageKey)) {
+        if (itemVisivel(item)) {
           if (normalizeSearch(item.label).includes(q)) {
             results.push(item);
           }
@@ -224,7 +231,7 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
       }
     }
     return results;
-  }, [searchQuery, canAccess]);
+  }, [searchQuery, canAccess, user?.role]);
 
   if (loading && !user) return <DashboardLayoutSkeleton />;
 
@@ -341,8 +348,7 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
           // Modo normal: mostrar seções
           navSections.map((section) => {
             const visibleItems = section.items.filter(item => {
-              if (!item.pageKey) return true;
-              return canAccess(item.pageKey);
+              return itemVisivel(item);
             });
             if (visibleItems.length === 0) return null;
             return (

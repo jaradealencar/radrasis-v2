@@ -49,6 +49,7 @@ import DiagnosticoApi from "./pages/comercial/DiagnosticoApi";
 import CrmAuditoria from "./pages/comercial/CrmAuditoria";
 import CrmMonitoramentoUso from "./pages/comercial/CrmMonitoramentoUso";
 import InsightsIA from "./pages/comercial/InsightsIA";
+import MarketingCampanhasWhatsapp from "./pages/financeiro/MarketingCampanhasWhatsapp";
 // Financeiro
 import Financeiro from "./pages/financeiro/Financeiro";
 import Cargos from "./pages/financeiro/Cargos";
@@ -140,6 +141,11 @@ function Router() {
       <Route path="/comercial/produtos"><L><Produtos /></L></Route>
       <Route path="/comercial/propostas"><L><Propostas /></L></Route>
       <Route path="/comercial/performance"><L><PerformanceComercial /></L></Route>
+      <Route path="/comercial/campanhas-whatsapp">
+        <ProtectedRoute pageKey="comercial-performance" allowedRoles={["admin", "master", "gestor"]}>
+          <L><MarketingCampanhasWhatsapp /></L>
+        </ProtectedRoute>
+      </Route>
       <Route path="/comercial/geografia"><L><AnaliseGeografica /></L></Route>
       <Route path="/comercial/metas"><L><MetasComerciais /></L></Route>
       <Route path="/comercial/crm"><L><CRM /></L></Route>

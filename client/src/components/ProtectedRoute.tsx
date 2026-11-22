@@ -5,6 +5,7 @@ import { Redirect } from "wouter";
 
 interface ProtectedRouteProps {
   pageKey: string;
+  allowedRoles?: string[];
   children: React.ReactNode;
 }
 
@@ -15,14 +16,14 @@ interface ProtectedRouteProps {
  * - Se sem permissão: exibe página 403
  * - Se com permissão: renderiza o conteúdo
  */
-export default function ProtectedRoute({ pageKey, children }: ProtectedRouteProps) {
+export default function ProtectedRoute({ pageKey, allowedRoles, children }: ProtectedRouteProps) {
   const { user, isLoading, canAccess } = useAuth();
 
   if (isLoading) return <DashboardLayoutSkeleton />;
 
   if (!user) return <Redirect to="/login" />;
 
-  if (!canAccess(pageKey)) return <AcessoNegado />;
+  if (!canAccess(pageKey) || allowedRoles && !allowedRoles.includes(user.role ?? "")) return <AcessoNegado />;
 
   return <>{children}</>;
 }

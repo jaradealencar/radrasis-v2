@@ -1,4 +1,52 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
+
+async function stubSession(page: Page, role: string) {
+  await page.route("**/api/auth/get-session**", route => route.fulfill({
+    status: 200,
+    contentType: "application/json",
+    body: JSON.stringify({
+      session: {
+        id: "e2e-session",
+        token: "e2e-token",
+        userId: `e2e-${role}`,
+        expiresAt: "2027-11-22T00:00:00.000Z",
+        createdAt: "2026-11-22T00:00:00.000Z",
+        updatedAt: "2026-11-22T00:00:00.000Z",
+      },
+      user: {
+        id: `e2e-${role}`,
+        name: "Usuário de Teste",
+        email: `${role}@example.test`,
+        emailVerified: true,
+        role,
+        createdAt: "2026-11-22T00:00:00.000Z",
+        updatedAt: "2026-11-22T00:00:00.000Z",
+      },
+    }),
+  }));
+}
+
+test("atalho do menu Comercial abre diretamente Campanhas WhatsApp", async ({ page }) => {
+  await stubSession(page, "admin");
+
+  await page.goto("/e2e-campanhas-whatsapp-menu.html", { waitUntil: "domcontentloaded", timeout: 45_000 });
+  await expect(page.getByRole("heading", { name: "Performance Comercial de teste" })).toBeVisible();
+  await page.getByRole("link", { name: "Campanhas WhatsApp" }).click();
+
+  await expect(page).toHaveURL(/\/comercial\/campanhas-whatsapp$/);
+  await expect(page.getByRole("heading", { name: "Campanhas e cadência no WhatsApp" })).toBeVisible();
+  await expect(page.getByText("Nenhuma campanha cadastrada")).toBeVisible();
+});
+
+test("atalho e rota direta ficam restritos a admin, master e gestor", async ({ page }) => {
+  await stubSession(page, "vendas");
+  await page.goto("/e2e-campanhas-whatsapp-menu.html", { waitUntil: "domcontentloaded", timeout: 45_000 });
+
+  await expect(page.getByRole("link", { name: "Performance Comercial" })).toBeVisible();
+  await expect(page.getByRole("link", { name: "Campanhas WhatsApp" })).toHaveCount(0);
+  await page.getByRole("link", { name: "Abrir rota direta para o teste de acesso" }).click();
+  await expect(page.getByRole("heading", { name: "Acesso Negado" })).toBeVisible();
+});
 
 test("revisa calendários e pausa/retoma a fila com 1.700 contatos fictícios", async ({ page }) => {
   await page.goto("/e2e-campanhas-whatsapp.html", { waitUntil: "domcontentloaded", timeout: 45_000 });
