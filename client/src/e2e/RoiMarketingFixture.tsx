@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { httpBatchLink } from "@trpc/client";
 import { createRoot } from "react-dom/client";
@@ -103,11 +104,19 @@ function MarketingVisaoGeralE2E() {
 }
 
 function RoiMarketingFixture() {
+  const [periodo, setPeriodo] = useState<"2026" | "2025">("2026");
+  const dataInicial = periodo === "2026" ? "2026-01-01" : "2025-01-01";
+  const dataFinal = periodo === "2026" ? "2026-11-30" : "2025-12-31";
+
   return (
     <main className="mx-auto max-w-7xl space-y-6 p-6">
       <MarketingVisaoGeralE2E />
-      <MarketingEstadosCampanhas ano={2026} />
-      <MarketingEstadosNovos ano={2026} />
+      <nav aria-label="Período de análise" className="flex gap-2">
+        <button type="button" aria-pressed={periodo === "2026"} onClick={() => setPeriodo("2026")}>2026</button>
+        <button type="button" aria-pressed={periodo === "2025"} onClick={() => setPeriodo("2025")}>2025</button>
+      </nav>
+      <MarketingEstadosCampanhas dataInicial={dataInicial} dataFinal={dataFinal} />
+      <MarketingEstadosNovos dataInicial={dataInicial} dataFinal={dataFinal} />
     </main>
   );
 }

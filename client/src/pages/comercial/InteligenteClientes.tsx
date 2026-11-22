@@ -152,6 +152,16 @@ function SeletorPeriodo({
   const [anoIni, mesIni] = dataInicial.split("-").map(Number);
   const [anoFim, mesFim] = dataFinal.split("-").map(Number);
 
+  function alterarInicio(inicio: string) {
+    const fimAtual = `${anoFim}-${pad(mesFim)}`;
+    onChange(inicio, inicio > fimAtual ? inicio : fimAtual);
+  }
+
+  function alterarFim(fim: string) {
+    const inicioAtual = `${anoIni}-${pad(mesIni)}`;
+    onChange(fim < inicioAtual ? fim : inicioAtual, fim);
+  }
+
   function setAnoCompleto(ano: number) {
     onChange(`${ano}-01`, `${ano}-12`);
   }
@@ -176,14 +186,14 @@ function SeletorPeriodo({
         <CalendarDays className="w-3.5 h-3.5 text-slate-400" />
         <select
           value={mesIni}
-          onChange={e => onChange(`${anoIni}-${pad(Number(e.target.value))}`, dataFinal)}
+          onChange={e => alterarInicio(`${anoIni}-${pad(Number(e.target.value))}`)}
           className="text-xs border border-slate-200 rounded-lg px-2 py-1.5 bg-white text-slate-700 focus:outline-none focus:border-blue-400"
         >
           {MESES.map((m, i) => <option key={i + 1} value={i + 1}>{m.slice(0, 3)}</option>)}
         </select>
         <select
           value={anoIni}
-          onChange={e => onChange(`${e.target.value}-${pad(mesIni)}`, dataFinal)}
+          onChange={e => alterarInicio(`${e.target.value}-${pad(mesIni)}`)}
           className="text-xs border border-slate-200 rounded-lg px-2 py-1.5 bg-white text-slate-700 focus:outline-none focus:border-blue-400"
         >
           {anos.map(a => <option key={a} value={a}>{a}</option>)}
@@ -193,14 +203,14 @@ function SeletorPeriodo({
       <div className="flex items-center gap-1.5">
         <select
           value={mesFim}
-          onChange={e => onChange(dataInicial, `${anoFim}-${pad(Number(e.target.value))}`)}
+          onChange={e => alterarFim(`${anoFim}-${pad(Number(e.target.value))}`)}
           className="text-xs border border-slate-200 rounded-lg px-2 py-1.5 bg-white text-slate-700 focus:outline-none focus:border-blue-400"
         >
           {MESES.map((m, i) => <option key={i + 1} value={i + 1}>{m.slice(0, 3)}</option>)}
         </select>
         <select
           value={anoFim}
-          onChange={e => onChange(dataInicial, `${e.target.value}-${pad(mesFim)}`)}
+          onChange={e => alterarFim(`${e.target.value}-${pad(mesFim)}`)}
           className="text-xs border border-slate-200 rounded-lg px-2 py-1.5 bg-white text-slate-700 focus:outline-none focus:border-blue-400"
         >
           {anos.map(a => <option key={a} value={a}>{a}</option>)}
@@ -1654,7 +1664,7 @@ export default function InteligenteClientes({ anoSelecionado }: InteligenteClien
       </div>
 
       {vista === "visao-geral" && <VistaVisaoGeral dataInicial={dataInicial} dataFinal={dataFinal} />}
-      {vista === "crescimento" && isAdmin && <MarketingFinanceiro anoSel={anoSelecionado} abrirCACRequest={abrirCACRequest} />}
+      {vista === "crescimento" && isAdmin && <MarketingFinanceiro anoSel={anoSelecionado} dataInicial={dataInicial} dataFinal={dataFinal} abrirCACRequest={abrirCACRequest} />}
       {vista === "clientes" && <VistaClientes dataInicial={dataInicial} dataFinal={dataFinal} />}
       {vista === "fila" && <VistaFilaAcoes />}
       {vista === "retencao" && <VistaRetencao />}

@@ -1,7 +1,8 @@
 import { z } from "zod";
-import { eq, and, gte, lte } from "drizzle-orm";
+import { eq, and, gte, lte, lt } from "drizzle-orm";
 import { router, publicProcedure, protectedProcedure } from "../_core/trpc";
 import { getDb, insertAuditLogMarketingConfig } from "../db/db";
+import { safeErrorType } from "../db/db-connection";
 import {
   marketingConfig, custoMarketing, historicoOs, historicoOrcamentos, financeiroMensal, dreMensal,
   mubisysApiCache, clientesPerfilCnpj,
@@ -139,7 +140,32 @@ function estadoDoOrcamentoApi(orcamento: any): string | null {
 }
 
 function dataOsMarketing(data: string | null | undefined, mes: number, ano: number): Date {
-  return parseDataFlexivel(data ?? null) ?? new Date(Date.UTC(ano, mes - 1, 1));
+  return parseDataFlexivel(data ?? null) ?? new Date(ano, mes - 1, 1);
+}
+
+const dataIsoMarketingSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/).refine((value) => {
+  const data = new Date(`${value}T00:00:00.000Z`);
+  return Number.isFinite(data.getTime()) && data.toISOString().slice(0, 10) === value;
+}, "Invalid date");
+
+const periodoMarketingSchema = z.object({
+  dataInicial: dataIsoMarketingSchema,
+  dataFinal: dataIsoMarketingSchema,
+}).refine((periodo) => {
+  const anoInicial = Number(periodo.dataInicial.slice(0, 4));
+  const anoFinal = Number(periodo.dataFinal.slice(0, 4));
+  return periodo.dataInicial <= periodo.dataFinal && anoInicial >= 2020 && anoFinal <= 2100 && anoFinal - anoInicial <= 10;
+}, {
+  message: "Date range is invalid or too broad",
+});
+
+function dataDentroPeriodoMarketing(data: Date, dataInicial: string, dataFinal: string): boolean {
+  const iso = dataLocalParaIso(data);
+  return iso >= dataInicial && iso <= dataFinal;
+}
+
+function registrarFalhaFonteEstadosMarketing(fonte: string, error: unknown): void {
+  console.error(`[MARKETING-ESTADOS] Source unavailable (${fonte}):`, safeErrorType(error));
 }
 
 function dataIsoEnvio(v: unknown): string | null {
@@ -253,17 +279,25 @@ export const marketingFinanceiroRouter = router({
   /** Origem estadual dos clientes de primeira compra e das propostas emitidas
    * antes de uma compra anterior, no mesmo ano do relatório de Marketing. */
   getDistribuicaoEstadosNovos: publicProcedure
-    .input(z.object({ ano: z.number().int().min(2020).max(2100) }))
+    .input(periodoMarketingSchema)
     .query(async ({ input }) => {
       const db = await getDb();
-      if (!db) return resumirEstadosNovos([], []);
+      if (!db) return { ...resumirEstadosNovos([], []), fontesIndisponiveis: ["base de dados"] };
 
-      const config = await buscarConfig(db);
-      const agora = new Date();
-      const mesLimite = input.ano === agora.getFullYear() ? agora.getMonth() + 1 : input.ano < agora.getFullYear() ? 12 : 0;
-      const [classificadas, osHistoricas, propostasHistoricas, cachesMubiSys, perfisCnpj] = await Promise.all([
-        classificarAno(db, input.ano, config.mesesInatividadeReativacao),
+      const fontesIndisponiveis: string[] = [];
+      const marcarFonteIndisponivel = (fonte: string, error: unknown) => {
+        registrarFalhaFonteEstadosMarketing(fonte, error);
+        fontesIndisponiveis.push(fonte);
+      };
+      const anoInicial = Number(input.dataInicial.slice(0, 4));
+      const anoFinal = Number(input.dataFinal.slice(0, 4));
+      const config = await buscarConfig(db).catch(error => {
+        marcarFonteIndisponivel("configuração de marketing", error);
+        return CONFIG_DEFAULTS;
+      });
+      const [osHistoricas, propostasHistoricas, cachesMubiSys, perfisCnpj] = await Promise.all([
         db.select({
+          id: historicoOs.id,
           empresa: historicoOs.empresa,
           estado: historicoOs.estado,
           dataAprovacao: historicoOs.dataAprovacao,
@@ -271,39 +305,60 @@ export const marketingFinanceiroRouter = router({
           ano: historicoOs.ano,
           tipoOs: historicoOs.tipoOs,
           status: historicoOs.status,
-        }).from(historicoOs),
+        }).from(historicoOs).catch(error => {
+          marcarFonteIndisponivel("histórico de O.S.", error);
+          return [];
+        }),
         db.select({
           id: historicoOrcamentos.id,
           orcNumero: historicoOrcamentos.orcNumero,
           empresa: historicoOrcamentos.empresa,
-          clienteId: historicoOrcamentos.clienteId,
           dataCadastro: historicoOrcamentos.dataCadastro,
           mes: historicoOrcamentos.mes,
           ano: historicoOrcamentos.ano,
           status: historicoOrcamentos.status,
-        }).from(historicoOrcamentos).where(eq(historicoOrcamentos.ano, input.ano)),
-        db.select({ cacheKey: mubisysApiCache.cacheKey, mes: mubisysApiCache.mes, orcData: mubisysApiCache.orcData })
-          .from(mubisysApiCache).where(eq(mubisysApiCache.ano, input.ano)),
-        db.select({ empresaKey: clientesPerfilCnpj.empresaKey, uf: clientesPerfilCnpj.uf }).from(clientesPerfilCnpj),
+        }).from(historicoOrcamentos)
+          .where(and(gte(historicoOrcamentos.ano, anoInicial), lte(historicoOrcamentos.ano, anoFinal)))
+          .catch(error => {
+            marcarFonteIndisponivel("histórico de propostas", error);
+            return [];
+          }),
+        db.select({ cacheKey: mubisysApiCache.cacheKey, mes: mubisysApiCache.mes, ano: mubisysApiCache.ano, orcData: mubisysApiCache.orcData })
+          .from(mubisysApiCache)
+          .where(and(gte(mubisysApiCache.ano, anoInicial), lte(mubisysApiCache.ano, anoFinal)))
+          .catch(error => {
+            marcarFonteIndisponivel("cache de enderecos do ERP", error);
+            return [];
+          }),
+        db.select({ empresaKey: clientesPerfilCnpj.empresaKey, uf: clientesPerfilCnpj.uf }).from(clientesPerfilCnpj)
+          .catch(error => {
+            marcarFonteIndisponivel("perfil estadual por CNPJ", error);
+            return [];
+          }),
       ]);
+      const agora = new Date();
+      const mesAtualIso = `${agora.getFullYear()}-${String(agora.getMonth() + 1).padStart(2, "0")}`;
+      const incluiMesAtual = input.dataInicial.slice(0, 7) <= mesAtualIso && input.dataFinal.slice(0, 7) >= mesAtualIso;
+      const classificadasAoVivo = incluiMesAtual
+        ? await classificarAno(db, agora.getFullYear(), config.mesesInatividadeReativacao).catch(error => {
+          marcarFonteIndisponivel("classificação atual do ERP", error);
+          return [];
+        })
+        : [];
+      const linhasAoVivoNoPeriodo = classificadasAoVivo.filter(linha => dataDentroPeriodoMarketing(
+        dataOsMarketing(linha.dataAprovacao, linha.mes, linha.ano), input.dataInicial, input.dataFinal,
+      ));
 
       const compradorPrimeiraCompra = new Map<string, { estado: string | null; data: Date }>();
-      for (const linha of classificadas) {
-        if (linha.categoria !== "novo" || !linha.clienteKey) continue;
-        const data = dataOsMarketing(linha.dataAprovacao, linha.mes, linha.ano);
-        const estado = ufMarketing(linha.estado);
-        const atual = compradorPrimeiraCompra.get(linha.clienteKey);
-        if (!atual || (estado && (!atual.estado || data < atual.data)) || (!atual.estado && data < atual.data)) {
-          compradorPrimeiraCompra.set(linha.clienteKey, { estado: estado ?? atual?.estado ?? null, data });
-        }
-      }
-
       const primeiraCompraPorCliente = new Map<string, Date>();
-      const estadoHistoricoPorCliente = new Map<string, { estado: string; data: Date }>();
-      const guardarMaisRecente = (mapa: Map<string, { estado: string; data: Date }>, chave: string, estado: string | null, data: Date) => {
+      const estadoHistoricoPorCliente = new Map<string, { estado: string; data: Date; id: number }>();
+      const estadoPrimeiraCompraPorCliente = new Map<string, { estado: string | null; data: Date; id: number }>();
+      const guardarMaisRecente = (mapa: Map<string, { estado: string; data: Date; id: number }>, chave: string, estado: string | null, data: Date, id: number) => {
         if (!estado) return;
         const atual = mapa.get(chave);
-        if (!atual || data > atual.data) mapa.set(chave, { estado, data });
+        if (!atual || data > atual.data || (dataLocalParaIso(data) === dataLocalParaIso(atual.data) && id > atual.id)) {
+          mapa.set(chave, { estado, data, id });
+        }
       };
       for (const os of osHistoricas) {
         if (!isOsNormalDb(os)) continue;
@@ -311,23 +366,41 @@ export const marketingFinanceiroRouter = router({
         if (!empresaKey) continue;
         const data = dataOsMarketing(os.dataAprovacao, os.mes, os.ano);
         const primeira = primeiraCompraPorCliente.get(empresaKey);
-        if (!primeira || data < primeira) primeiraCompraPorCliente.set(empresaKey, data);
         const estado = ufMarketing(os.estado);
-        guardarMaisRecente(estadoHistoricoPorCliente, empresaKey, estado, data);
+        if (!primeira || data < primeira) {
+          primeiraCompraPorCliente.set(empresaKey, data);
+          estadoPrimeiraCompraPorCliente.set(empresaKey, { estado, data, id: os.id });
+        } else if (dataLocalParaIso(data) === dataLocalParaIso(primeira) && estado) {
+          const atualPrimeira = estadoPrimeiraCompraPorCliente.get(empresaKey);
+          if (!atualPrimeira?.estado || os.id < atualPrimeira.id) {
+            estadoPrimeiraCompraPorCliente.set(empresaKey, { estado, data: primeira, id: os.id });
+          }
+        }
+        guardarMaisRecente(estadoHistoricoPorCliente, empresaKey, estado, data, os.id);
       }
-      // Inclui OS do mês corrente ainda vindas ao vivo do MubiSys, que podem
-      // não ter entrado no histórico local até a próxima sincronização.
-      for (const linha of classificadas) {
+      for (const [clienteKey, dados] of estadoPrimeiraCompraPorCliente) {
+        if (dataDentroPeriodoMarketing(dados.data, input.dataInicial, input.dataFinal)) {
+          compradorPrimeiraCompra.set(clienteKey, dados);
+        }
+      }
+      for (const linha of linhasAoVivoNoPeriodo) {
         if (!linha.clienteKey) continue;
         const data = dataOsMarketing(linha.dataAprovacao, linha.mes, linha.ano);
         const primeira = primeiraCompraPorCliente.get(linha.clienteKey);
         if (!primeira || data < primeira) primeiraCompraPorCliente.set(linha.clienteKey, data);
+        if (linha.categoria !== "novo") continue;
+        const primeiraConhecida = primeiraCompraPorCliente.get(linha.clienteKey);
+        if (primeiraConhecida && dataLocalParaIso(data) !== dataLocalParaIso(primeiraConhecida)) continue;
+        const estado = ufMarketing(linha.estado);
+        const atual = compradorPrimeiraCompra.get(linha.clienteKey);
+        if (!atual || data < atual.data || (dataLocalParaIso(data) === dataLocalParaIso(atual.data) && estado && !atual.estado)) {
+          compradorPrimeiraCompra.set(linha.clienteKey, { estado: estado ?? atual?.estado ?? null, data });
+        }
       }
 
       const estadoCachePorOrcamento = new Map<string, { estado: string; id: number }>();
-      const estadoCachePorClienteId = new Map<number, { estado: string; id: number }>();
       for (const cache of cachesMubiSys) {
-        if (cache.cacheKey !== `raw_${cache.mes}_${input.ano}` || !cache.orcData) continue;
+        if (cache.cacheKey !== `raw_${cache.mes}_${cache.ano}` || !cache.orcData) continue;
         let orcamentosApi: any[];
         try {
           const parsed: unknown = JSON.parse(cache.orcData);
@@ -341,14 +414,9 @@ export const marketingFinanceiroRouter = router({
           if (!estado) continue;
           const id = Number(orc?.id) || 0;
           const numero = String(orc?.sequencial_orcamento ?? orc?.id ?? "").trim();
-          const clienteId = Number(orc?.cliente_id ?? orc?.cliente?.id) || null;
           if (numero) {
             const atual = estadoCachePorOrcamento.get(numero);
             if (!atual || id >= atual.id) estadoCachePorOrcamento.set(numero, { estado, id });
-          }
-          if (clienteId != null) {
-            const atual = estadoCachePorClienteId.get(clienteId);
-            if (!atual || id >= atual.id) estadoCachePorClienteId.set(clienteId, { estado, id });
           }
         }
       }
@@ -362,50 +430,57 @@ export const marketingFinanceiroRouter = router({
       const propostasNovas: Array<{ id: number; orcNumero: string | null; clienteKey: string; estado: string | null }> = [];
       const statusExcluidos = new Set(["cancelada", "cancelado", "excluída", "excluído", "excluida", "excluido"]);
       for (const proposta of propostasHistoricas) {
-        if (proposta.mes > mesLimite || statusExcluidos.has((proposta.status ?? "").trim().toLowerCase())) continue;
+        if (statusExcluidos.has((proposta.status ?? "").trim().toLowerCase())) continue;
         const clienteKey = normalizeEmpresaKey(proposta.empresa ?? "");
         if (!clienteKey) continue;
         const primeiraCompra = primeiraCompraPorCliente.get(clienteKey);
         const dataProposta = parseDataFlexivel(proposta.dataCadastro)
-          ?? new Date(Date.UTC(proposta.ano, proposta.mes - 1, 1));
+          ?? new Date(proposta.ano, proposta.mes - 1, 1);
+        if (!dataDentroPeriodoMarketing(dataProposta, input.dataInicial, input.dataFinal)) continue;
         if (primeiraCompra && primeiraCompra < dataProposta) continue;
 
         const numero = proposta.orcNumero?.trim() ?? "";
         const estado = (numero ? estadoCachePorOrcamento.get(numero)?.estado : null)
-          ?? (proposta.clienteId != null ? estadoCachePorClienteId.get(proposta.clienteId)?.estado : null)
           ?? estadoHistoricoPorCliente.get(clienteKey)?.estado
           ?? estadoPerfilPorCliente.get(clienteKey)
           ?? null;
         propostasNovas.push({ id: proposta.id, orcNumero: proposta.orcNumero, clienteKey, estado });
       }
 
-      return resumirEstadosNovos(
+      return {
+        ...resumirEstadosNovos(
         [...compradorPrimeiraCompra.entries()].map(([clienteKey, dados]) => ({ clienteKey, estado: dados.estado })),
         propostasNovas,
-      );
+        ),
+        fontesIndisponiveis,
+      };
     }),
 
   /** Top 3 UFs por receita de O.S. atribuída a disparos de campanhas WhatsApp
    * no ano. Mantém a janela de 30 dias e atribui cada venda a um único último
    * contato elegível para não duplicar o mesmo pedido entre campanhas. */
   rankingEstadosCampanhas: publicProcedure
-    .input(z.object({ ano: z.number().int().min(2020).max(2100) }))
+    .input(periodoMarketingSchema)
     .query(async ({ input }) => {
       const db = await getDb();
       if (!db) return resumirEstadosCampanhas([], []);
 
-      const inicioJanela = new Date(Date.UTC(input.ano, 0, 1));
+      const anoInicial = Number(input.dataInicial.slice(0, 4));
+      const anoFinal = Number(input.dataFinal.slice(0, 4));
+      const inicioJanela = new Date(`${input.dataInicial}T00:00:00.000Z`);
       inicioJanela.setUTCDate(inicioJanela.getUTCDate() - 30);
       const inicioIso = inicioJanela.toISOString().slice(0, 10);
-      const fimIso = `${input.ano}-12-31`;
+      const fimExclusivo = new Date(`${input.dataFinal}T00:00:00.000Z`);
+      fimExclusivo.setUTCDate(fimExclusivo.getUTCDate() + 1);
+      const fimExclusivoIso = fimExclusivo.toISOString().slice(0, 10);
       const [historicoEnvios, itensDisparados, osRows] = await Promise.all([
         db.select({ disparoId: campanhasWhatsappContatosHistorico.disparoId, telefone: campanhasWhatsappContatosHistorico.telefone, dataEnvio: campanhasWhatsappContatosHistorico.ultimoEnvioEm })
           .from(campanhasWhatsappContatosHistorico)
-          .where(and(gte(campanhasWhatsappContatosHistorico.ultimoEnvioEm, inicioIso), lte(campanhasWhatsappContatosHistorico.ultimoEnvioEm, fimIso))),
+          .where(and(gte(campanhasWhatsappContatosHistorico.ultimoEnvioEm, inicioIso), lt(campanhasWhatsappContatosHistorico.ultimoEnvioEm, fimExclusivoIso))),
         db.select({ disparoId: campanhasWhatsappDisparoItens.disparoId, telefone: campanhasWhatsappDisparoItens.telefone, dataEnvio: campanhasWhatsappDisparos.enviadoEm, status: campanhasWhatsappDisparoItens.status })
           .from(campanhasWhatsappDisparoItens)
           .innerJoin(campanhasWhatsappDisparos, eq(campanhasWhatsappDisparoItens.disparoId, campanhasWhatsappDisparos.id))
-          .where(and(gte(campanhasWhatsappDisparos.enviadoEm, inicioIso), lte(campanhasWhatsappDisparos.enviadoEm, fimIso))),
+          .where(and(gte(campanhasWhatsappDisparos.enviadoEm, inicioIso), lt(campanhasWhatsappDisparos.enviadoEm, fimExclusivoIso))),
         db.select({
           osNumero: historicoOs.osNumero,
           empresa: historicoOs.empresa,
@@ -417,7 +492,7 @@ export const marketingFinanceiroRouter = router({
           valorTotal: historicoOs.valorTotal,
           tipoOs: historicoOs.tipoOs,
           status: historicoOs.status,
-        }).from(historicoOs).where(eq(historicoOs.ano, input.ano)),
+        }).from(historicoOs).where(and(gte(historicoOs.ano, anoInicial), lte(historicoOs.ano, anoFinal))),
       ]);
 
       const itensFalhos = new Set(itensDisparados.flatMap(item => {
@@ -442,7 +517,7 @@ export const marketingFinanceiroRouter = router({
         const dtAprovacao = parseDataFlexivel(os.dataAprovacao);
         const dtFaturamento = parseDataFlexivel(os.dataFaturamento);
         const dataCompra = dtAprovacao ? dataLocalParaIso(dtAprovacao) : dtFaturamento ? dataLocalParaIso(dtFaturamento) : null;
-        if (!dataCompra || dataCompra.slice(0, 4) !== String(input.ano)) return [];
+        if (!dataCompra || dataCompra < input.dataInicial || dataCompra > input.dataFinal) return [];
         return [{
           osNumero: os.osNumero,
           telefone: os.telefone,
