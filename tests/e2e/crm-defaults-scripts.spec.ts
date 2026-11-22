@@ -43,7 +43,12 @@ async function configurarApiCrm(page: import("@playwright/test").Page) {
             contato1NoPrazo: null,
             meta2Contatos: false,
             probabilidadeCompra: 6,
-            probabilidadeExplicacao: [],
+            probabilidadeExplicacao: [
+              "Base: taxa geral da carteira 29% (280 orçamentos decididos)",
+              "Histórico do cliente: 2/5 decididos, ajustado bayesianamente para 31%",
+              "Faixa de tíquete \"R$ 2 mil–R$ 5 mil\": converte 26% (ajustado bayesianamente)",
+              "Região Centro-Oeste: converte 32% (ajustado bayesianamente)",
+            ],
             qtdComprasCliente: 0,
             diasSemComprar: null,
             cadenciaAutomatica: agendamentoAtual,
@@ -127,6 +132,26 @@ test("abre o CRM com as cotações dos últimos 10 dias", async ({ page }) => {
     dataInicio: esperado[0],
     dataFim: esperado[1],
   });
+});
+
+test("abre a memória de cálculo da possibilidade de compra pelo clique e teclado", async ({ page }) => {
+  await configurarApiCrm(page);
+  await page.goto("/e2e-crm.html", { waitUntil: "domcontentloaded" });
+
+  const possibilidade = page.getByRole("button", { name: "Ver memória de cálculo da possibilidade de compra (6%)" });
+  await possibilidade.click();
+  await expect(page.getByText("Memória do cálculo")).toBeVisible();
+  await expect(page.getByText(/taxa geral da carteira 29%/)).toBeVisible();
+  await expect(page.getByText(/Histórico do cliente: 2\/5/)).toBeVisible();
+  await expect(page.getByText(/Faixa de tíquete/)).toBeVisible();
+  await expect(page.getByText(/Região Centro-Oeste/)).toBeVisible();
+  await expect(page.getByText("Possibilidade estimada")).toBeVisible();
+
+  await page.keyboard.press("Escape");
+  await expect(page.getByText("Memória do cálculo")).toBeHidden();
+  await expect(possibilidade).toBeFocused();
+  await page.keyboard.press("Enter");
+  await expect(page.getByText("Memória do cálculo")).toBeVisible();
 });
 
 test("programa as três mensagens automáticas e exige confirmação individual de opt-in", async ({ page }) => {

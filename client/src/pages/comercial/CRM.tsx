@@ -28,6 +28,7 @@ import { Label } from "@/components/ui/label";
 import {
   Tooltip, TooltipContent, TooltipProvider, TooltipTrigger
 } from "@/components/ui/tooltip";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { ScriptsFaixaPopover } from "@/components/ScriptsFaixaPopover";
 import { WhatsAppScriptsPopover } from "@/components/WhatsAppScriptsPopover";
 import { BibliotecaMidias } from "@/components/BibliotecaMidias";
@@ -158,25 +159,44 @@ function ExplicacaoLinha({ linha }: { linha: string }) {
   );
 }
 
-function ProbabilidadeBadge({ p, explicacao }: { p: number | null; explicacao: string[] }) {
+function ProbabilidadeBadge({ p, explicacao, nomeCliente }: { p: number | null; explicacao: string[]; nomeCliente?: string }) {
   if (p == null) return null;
   const cor = probabilidadeCor(p);
   return (
-    <TooltipProvider>
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full border text-[10px] font-bold cursor-default ${cor.bg} ${cor.text}`}>
-            <TrendingUp className="w-2.5 h-2.5" /> {p}%
-          </span>
-        </TooltipTrigger>
-        <TooltipContent side="top" className="text-xs max-w-[280px] py-2">
-          <p className="text-[9px] font-bold text-gray-400 uppercase tracking-wide mb-1.5">Como chegamos a {p}%</p>
-          <div className="space-y-1.5">
-            {explicacao.map((linha, i) => <ExplicacaoLinha key={i} linha={linha} />)}
+    <Popover>
+      <PopoverTrigger asChild>
+        <button
+          type="button"
+          aria-label={`Ver memória de cálculo da possibilidade de compra (${p}%)`}
+          className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full border text-[10px] font-bold cursor-pointer transition hover:brightness-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 ${cor.bg} ${cor.text}`}
+        >
+          <TrendingUp className="w-2.5 h-2.5" /> {p}%
+        </button>
+      </PopoverTrigger>
+      <PopoverContent side="top" align="start" sideOffset={6} className="w-[min(22rem,calc(100vw-2rem))] border-slate-700 bg-slate-900 p-3 text-white shadow-xl">
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <p className="text-[10px] font-bold uppercase tracking-wide text-slate-400">Memória do cálculo</p>
+            <p className="mt-0.5 truncate text-sm font-semibold text-white">{nomeCliente || "Esta proposta"}</p>
           </div>
-        </TooltipContent>
-      </Tooltip>
-    </TooltipProvider>
+          <span className={`shrink-0 rounded-full border px-2 py-0.5 text-xs font-bold ${cor.bg} ${cor.text}`}>{p}%</span>
+        </div>
+        <p className="mt-2 text-[11px] leading-4 text-slate-300">
+          O modelo combina a taxa geral da carteira com os sinais disponíveis de cliente, faixa de tíquete e região. A suavização bayesiana aproxima segmentos com poucas decisões da taxa geral.
+        </p>
+        <div className="mt-3 space-y-2 border-t border-slate-700 pt-2.5">
+          <p className="text-[9px] font-bold uppercase tracking-wide text-slate-400">Fatores considerados</p>
+          {explicacao.length > 0
+            ? explicacao.map((linha, i) => <ExplicacaoLinha key={i} linha={linha} />)
+            : <p className="text-xs text-slate-300">O sistema não retornou os detalhes deste cálculo.</p>}
+        </div>
+        <div className="mt-3 flex items-center justify-between gap-3 rounded-md bg-white/10 px-2.5 py-2">
+          <span className="text-[11px] font-medium text-slate-200">Possibilidade estimada</span>
+          <span className="text-sm font-bold text-white">{p}%</span>
+        </div>
+        <p className="mt-2 text-[9px] leading-3 text-slate-400">Estimativa orientativa, limitada pelo modelo entre 5% e 95%.</p>
+      </PopoverContent>
+    </Popover>
   );
 }
 
@@ -609,7 +629,7 @@ function PropostaRow({ p, vendedor, onRefresh, showVendedor, faixasConfig }: {
               </div>
               <div className="flex items-center gap-1.5 flex-wrap">
                 <span className="text-xs text-muted-foreground">{fmt(p.valor)}</span>
-                <ProbabilidadeBadge p={p.probabilidadeCompra} explicacao={p.probabilidadeExplicacao} />
+                <ProbabilidadeBadge p={p.probabilidadeCompra} explicacao={p.probabilidadeExplicacao} nomeCliente={p.nomeCliente} />
                 {p.clienteNovo && (
                   <TooltipProvider>
                     <Tooltip>
