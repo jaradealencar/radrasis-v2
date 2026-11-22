@@ -14,7 +14,7 @@ import { fmtBrl, fmtBrlCompact, fmtPct, fmtNum, MESES_ABREV } from "@/lib/format
 import type { RouterOutputs } from "@/lib/trpc";
 import {
   cacPonderado, custoReativacaoPonderado, calcularResultadoGrupo, calcularResultadoConsolidado,
-  somarOuNull, avaliarSemaforoTeto, type NivelSemaforo,
+  calcularFaturamentoLiquidoAposMarketing, somarOuNull, avaliarSemaforoTeto, type NivelSemaforo,
 } from "@shared/marketing-financeiro";
 
 type RelatorioAno = RouterOutputs["marketingFinanceiro"]["getRelatorioAno"];
@@ -94,6 +94,8 @@ export default function MarketingVisaoGeral({ ano, relatorio, config, mesFiltro,
     const custoReativ = custoReativacaoPonderado(investReativ, eventosReativadosCobertos);
     const resultadoNovo = calcularResultadoGrupo(investAquis, margemNovos, fatNovosCobertos);
     const resultadoReativado = calcularResultadoGrupo(investReativ, margemReativados, fatReativadosCobertos);
+    const faturamentoLiquidoNovos = calcularFaturamentoLiquidoAposMarketing(fatNovosCobertos, investAquis);
+    const faturamentoLiquidoReativados = calcularFaturamentoLiquidoAposMarketing(fatReativadosCobertos, investReativ);
     const investAquisConsolidado = somarOuNull(mesesConsolidadosCobertos.map(m => m.investimentoAquisicao));
     const investReativConsolidado = somarOuNull(mesesConsolidadosCobertos.map(m => m.investimentoReativacao));
     const consolidado = calcularResultadoConsolidado([
@@ -108,6 +110,7 @@ export default function MarketingVisaoGeral({ ano, relatorio, config, mesFiltro,
     return {
       investAquis, investReativ, clientesNovos, eventosReativados, clientesRecorrentes,
       fatNovos, fatReativados, fatRecorrente, margemNovos, margemReativados, margemRecorrente,
+      fatNovosCobertos, faturamentoLiquidoNovos, fatReativadosCobertos, faturamentoLiquidoReativados,
       coberturaAquisicao: mesesAquisicaoCobertos.length,
       coberturaReativacao: mesesReativacaoCobertos.length,
       coberturaConsolidado: mesesConsolidadosCobertos.length,
@@ -269,10 +272,34 @@ export default function MarketingVisaoGeral({ ano, relatorio, config, mesFiltro,
             tooltip="Margem de contribuição de novos e investimento de aquisição dos mesmos meses completos com lançamento. O ROI separado é exibido quando existe investimento."
           />
           <KpiCard
+            variant="border" color={COR_POSITIVO} icon={<TrendingUp size={18} />}
+            label="Faturamento bruto — Novos" value={fmtBrlCompact(totais.fatNovosCobertos)}
+            sub={`${totais.coberturaAquisicao}/${totais.mesesElegiveis} meses com investimento`}
+            tooltip="Faturamento das compras de clientes novos nos mesmos meses com investimento de aquisição informado."
+          />
+          <KpiCard
+            variant="border" color={totais.faturamentoLiquidoNovos != null && totais.faturamentoLiquidoNovos < 0 ? COR_ALERTA : "#0d9488"} icon={<TrendingUp size={18} />}
+            label="Faturamento líquido — Novos" value={totais.faturamentoLiquidoNovos != null ? fmtBrlCompact(totais.faturamentoLiquidoNovos) : "Pendente"}
+            sub="Bruto menos investimento em aquisição"
+            tooltip="Faturamento bruto dos meses cobertos menos o investimento em aquisição. Não representa lucro nem margem após custos dos pedidos."
+          />
+          <KpiCard
             variant="border" color={totais.resultadoReativado.resultado != null && totais.resultadoReativado.resultado >= 0 ? COR_POSITIVO : COR_ALERTA} icon={totais.resultadoReativado.resultado != null && totais.resultadoReativado.resultado >= 0 ? <CheckCircle2 size={18} /> : <ShieldAlert size={18} />}
             label="Resultado após Marketing — Reativados" value={totais.resultadoReativado.resultado != null ? fmtBrl(totais.resultadoReativado.resultado) : "—"}
             sub={`${totais.coberturaReativacao}/${totais.mesesElegiveis} meses com reativação · ${totais.resultadoReativado.roiPct != null ? `ROI: ${fmtPct(totais.resultadoReativado.roiPct)}` : "ROI pendente"}`}
             tooltip="Margem de contribuição de reativados e investimento de reativação dos mesmos meses completos com lançamento. O ROI separado é exibido quando existe investimento."
+          />
+          <KpiCard
+            variant="border" color={COR_POSITIVO} icon={<TrendingUp size={18} />}
+            label="Faturamento bruto — Reativados" value={fmtBrlCompact(totais.fatReativadosCobertos)}
+            sub={`${totais.coberturaReativacao}/${totais.mesesElegiveis} meses com investimento`}
+            tooltip="Faturamento das compras de clientes reativados nos mesmos meses com investimento de reativação informado."
+          />
+          <KpiCard
+            variant="border" color={totais.faturamentoLiquidoReativados != null && totais.faturamentoLiquidoReativados < 0 ? COR_ALERTA : "#0d9488"} icon={<TrendingUp size={18} />}
+            label="Faturamento líquido — Reativados" value={totais.faturamentoLiquidoReativados != null ? fmtBrlCompact(totais.faturamentoLiquidoReativados) : "Pendente"}
+            sub="Bruto menos investimento em reativação"
+            tooltip="Faturamento bruto dos meses cobertos menos o investimento em reativação. Não representa lucro nem margem após custos dos pedidos."
           />
           <KpiCard
             variant="border" color="#2563eb" icon={<Percent size={18} />}

@@ -7,7 +7,7 @@ import ChartTooltip from "@/components/ChartTooltip";
 import { trpc } from "@/lib/trpc";
 import { fmtBrl, fmtPct, fmtNum, MESES_ABREV } from "@/lib/format";
 import type { RouterOutputs } from "@/lib/trpc";
-import { custoReativacaoPonderado, calcularResultadoGrupo, somarOuNull } from "@shared/marketing-financeiro";
+import { custoReativacaoPonderado, calcularFaturamentoLiquidoAposMarketing, calcularResultadoGrupo, somarOuNull } from "@shared/marketing-financeiro";
 
 type RelatorioAno = RouterOutputs["marketingFinanceiro"]["getRelatorioAno"];
 
@@ -42,8 +42,9 @@ export default function MarketingReativacao({ ano, relatorio, mesFiltro, onDrill
     const margem = mesesComInvestimento.reduce((s, m) => s + m.reativado.margem.margemTotal, 0);
     const custoPonderado = custoReativacaoPonderado(investimento, eventosReativacao);
     const resultado = calcularResultadoGrupo(investimento, margem, faturamento);
+    const faturamentoLiquido = calcularFaturamentoLiquidoAposMarketing(faturamento, investimento);
     const ticketMedio = pedidos > 0 ? faturamento / pedidos : null;
-    return { investimento, eventosReativacao, pedidos, faturamento, margem, custoPonderado, resultado, ticketMedio };
+    return { investimento, eventosReativacao, pedidos, faturamento, faturamentoLiquido, margem, custoPonderado, resultado, ticketMedio };
   }, [mesesComInvestimento]);
 
   const clientesUnicosNoPeriodo = mesFiltro != null ? totais.eventosReativacao : relatorio.reativacaoAnual.clientesReativadosUnicosAno;
@@ -80,7 +81,8 @@ export default function MarketingReativacao({ ano, relatorio, mesFiltro, onDrill
           tooltip={mesFiltro != null ? "Únicos = eventos dentro de 1 mês (não há diferença dentro de um único mês)." : "O valor principal conta clientes únicos do ano inteiro; eventos e pedidos secundários consideram somente meses fechados com investimento de reativação informado. O mesmo cliente pode reativar mais de uma vez."}
         />
         <KpiCard variant="border" color={COR_REATIVACAO} icon={<RefreshCw size={18} />} label="Custo por Reativado" value={totais.custoPonderado != null ? fmtBrl(totais.custoPonderado) : "—"} tooltip="Investimento em reativação ÷ eventos de reativação do período (denominador = eventos, não únicos)." />
-        <KpiCard variant="border" color={COR_FATURAMENTO} icon={<TrendingUp size={18} />} label="Faturamento" value={fmtBrl(totais.faturamento)} sub={totais.ticketMedio != null ? `Ticket médio: ${fmtBrl(totais.ticketMedio)}` : undefined} />
+        <KpiCard variant="border" color={COR_FATURAMENTO} icon={<TrendingUp size={18} />} label="Faturamento bruto" value={fmtBrl(totais.faturamento)} sub={`${mesesComInvestimento.length}/${mesesFiltrados.length} meses com investimento`} tooltip="Faturamento de clientes reativados nos mesmos meses com investimento de reativação informado." />
+        <KpiCard variant="border" color={totais.faturamentoLiquido != null && totais.faturamentoLiquido < 0 ? "#dc2626" : "#0d9488"} icon={<TrendingUp size={18} />} label="Faturamento líquido após campanha" value={totais.faturamentoLiquido != null ? fmtBrl(totais.faturamentoLiquido) : "Pendente"} sub="Bruto menos investimento em reativação" tooltip="Faturamento bruto dos meses cobertos menos o investimento em reativação. Não representa lucro nem margem após custos dos pedidos." />
         <KpiCard
           variant="border" color={totais.resultado.resultado != null && totais.resultado.resultado >= 0 ? COR_FATURAMENTO : "#dc2626"} icon={<Percent size={18} />}
           label="Resultado após Marketing" value={totais.resultado.resultado != null ? fmtBrl(totais.resultado.resultado) : "—"}

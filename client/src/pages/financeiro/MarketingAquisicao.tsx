@@ -7,7 +7,7 @@ import ChartTooltip from "@/components/ChartTooltip";
 import { trpc } from "@/lib/trpc";
 import { fmtBrl, fmtPct, fmtNum, MESES_ABREV } from "@/lib/format";
 import type { RouterOutputs } from "@/lib/trpc";
-import { cacPonderado, calcularResultadoGrupo, somarOuNull } from "@shared/marketing-financeiro";
+import { cacPonderado, calcularFaturamentoLiquidoAposMarketing, calcularResultadoGrupo, somarOuNull } from "@shared/marketing-financeiro";
 
 type RelatorioAno = RouterOutputs["marketingFinanceiro"]["getRelatorioAno"];
 
@@ -44,8 +44,9 @@ export default function MarketingAquisicao({ ano, relatorio, mesFiltro, onDrillD
     const margem = mesesComInvestimento.reduce((s, m) => s + m.novo.margem.margemTotal, 0);
     const cac = cacPonderado(investimento, clientesNovosComInvestimento);
     const resultado = calcularResultadoGrupo(investimento, margem, faturamentoComInvestimento);
+    const faturamentoLiquido = calcularFaturamentoLiquidoAposMarketing(faturamentoComInvestimento, investimento);
     const ticketMedio = pedidos > 0 ? faturamento / pedidos : null;
-    return { investimento, clientesNovos, pedidos, faturamento, margem, cac, resultado, ticketMedio };
+    return { investimento, clientesNovos, pedidos, faturamento, faturamentoComInvestimento, faturamentoLiquido, margem, cac, resultado, ticketMedio };
   }, [mesesFiltrados, mesesComInvestimento]);
 
   const dadosTicket = useMemo(() => mesesFiltrados.map(m => ({
@@ -75,7 +76,8 @@ export default function MarketingAquisicao({ ano, relatorio, mesFiltro, onDrillD
         <KpiCard variant="border" color={COR_AQUISICAO} icon={<DollarSign size={18} />} label="Investimento" value={totais.investimento != null ? fmtBrl(totais.investimento) : "Pendente"} />
         <KpiCard variant="border" color="#2563eb" icon={<Users size={18} />} label="Clientes Novos" value={fmtNum(totais.clientesNovos)} sub={`${fmtNum(totais.pedidos)} pedidos`} />
         <KpiCard variant="border" color="#ea580c" icon={<Target size={18} />} label="CAC Ponderado" value={totais.cac != null ? fmtBrl(totais.cac) : "—"} tooltip="Investimento em aquisição ÷ clientes novos do período." />
-        <KpiCard variant="border" color={COR_FATURAMENTO} icon={<TrendingUp size={18} />} label="Faturamento" value={fmtBrl(totais.faturamento)} sub={totais.ticketMedio != null ? `Ticket médio: ${fmtBrl(totais.ticketMedio)}` : undefined} />
+        <KpiCard variant="border" color={COR_FATURAMENTO} icon={<TrendingUp size={18} />} label="Faturamento bruto" value={fmtBrl(totais.faturamentoComInvestimento)} sub={`${mesesComInvestimento.length}/${mesesFiltrados.length} meses com investimento`} tooltip="Faturamento de clientes novos nos mesmos meses com investimento de aquisição informado." />
+        <KpiCard variant="border" color={totais.faturamentoLiquido != null && totais.faturamentoLiquido < 0 ? "#dc2626" : "#0d9488"} icon={<TrendingUp size={18} />} label="Faturamento líquido após campanha" value={totais.faturamentoLiquido != null ? fmtBrl(totais.faturamentoLiquido) : "Pendente"} sub="Bruto menos investimento em aquisição" tooltip="Faturamento bruto dos meses cobertos menos o investimento em aquisição. Não representa lucro nem margem após custos dos pedidos." />
         <KpiCard
           variant="border" color={totais.resultado.resultado != null && totais.resultado.resultado >= 0 ? COR_FATURAMENTO : "#dc2626"} icon={<Percent size={18} />}
           label="Resultado após Marketing" value={totais.resultado.resultado != null ? fmtBrl(totais.resultado.resultado) : "—"}
