@@ -30,6 +30,7 @@ import { leadsCnpjRouter } from "./routers/leadsCnpj";
 import { perfilClientesCnpjRouter } from "./routers/perfilClientesCnpj";
 import { planosAcaoComercialRouter } from "./routers/planosAcaoComercial";
 import { campanhasWhatsappRouter } from "./routers/campanhasWhatsapp";
+import { cotacoesExternasRouter } from "./routers/cotacoesExternas";
 import { radarMercadoRouter } from "./routers/radarMercado";
 import { custoLedRouter } from "./routers/custoLed";
 import { perfilEstoqueRouter } from "./routers/perfilEstoque";
@@ -72,6 +73,7 @@ import {
   deleteErrorLibraryItem,
   listKnowledge, getKnowledgeById, createKnowledge, updateKnowledge, deleteKnowledge,
   listSuppliers, getSupplierById, createSupplier, updateSupplier, deleteSupplier,
+  updateSupplierNfe,
   listRoutines, createRoutine, updateRoutine, deleteRoutine, listPendingRoutines, markRoutineDone,
   listRegulations, getRegulationById, createRegulation, updateRegulation, deleteRegulation,
   listPops, getPopById, createPop, updatePop, deletePop,
@@ -644,7 +646,51 @@ Seja direto, técnico e prático. Use dados específicos dos números fornecidos
       .input(z.object({ id: z.number(), data: z.object({ name: z.string().optional(), company: z.string().optional().nullable(), category: z.string().optional(), supplies: z.string().optional().nullable(), contact: z.string().optional().nullable(), phone: z.string().optional().nullable(), email: z.string().optional().nullable(), paymentTerms: z.string().optional().nullable(), notes: z.string().optional().nullable(), active: z.enum(["sim", "nao"]).optional() }) }))
       .mutation(({ input, ctx }) => updateSupplier(input.id, { ...input.data, updatedByNome: ctx.user.name ?? ctx.user.email ?? "sistema" } as any)),
     delete: protectedProcedure.input(z.object({ id: z.number() })).mutation(({ input }) => deleteSupplier(input.id)),
-  }),
+    }),
+
+    // ─── OPERAÇÕES: Fornecedores - NF-e ──────────────────────────────────────────
+    fornecedorNfe: router({
+      upload: protectedProcedure
+        .input(z.object({
+          id: z.number(),
+          nfeCnpj: z.string().optional().nullable(),
+          nfeRazaoSocial: z.string().optional().nullable(),
+          nfeNomeFantasia: z.string().optional().nullable(),
+          nfeNumero: z.string().optional().nullable(),
+          nfeSerie: z.string().optional().nullable(),
+          nfeChaveAcesso: z.string().optional().nullable(),
+          nfeArquivoNome: z.string().optional().nullable(),
+          nfeArquivoKey: z.string().optional().nullable(),
+          nfeArquivoUrl: z.string().optional().nullable(),
+          nfeUltimaAtualizacao: z.string().optional().nullable(),
+        }))
+        .mutation(({ input, ctx }) => {
+          const data: any = {};
+          if (input.nfeCnpj !== undefined) data.nfeCnpj = input.nfeCnpj ?? null;
+          if (input.nfeRazaoSocial !== undefined) data.nfeRazaoSocial = input.nfeRazaoSocial ?? null;
+          if (input.nfeNomeFantasia !== undefined) data.nfeNomeFantasia = input.nfeNomeFantasia ?? null;
+          if (input.nfeNumero !== undefined) data.nfeNumero = input.nfeNumero ?? null;
+          if (input.nfeSerie !== undefined) data.nfeSerie = input.nfeSerie ?? null;
+          if (input.nfeChaveAcesso !== undefined) data.nfeChaveAcesso = input.nfeChaveAcesso ?? null;
+          if (input.nfeArquivoNome !== undefined) data.nfeArquivoNome = input.nfeArquivoNome ?? null;
+          if (input.nfeArquivoKey !== undefined) data.nfeArquivoKey = input.nfeArquivoKey ?? null;
+          if (input.nfeArquivoUrl !== undefined) data.nfeArquivoUrl = input.nfeArquivoUrl ?? null;
+          if (input.nfeUltimaAtualizacao !== undefined) {
+            data.nfeUltimaAtualizacao = input.nfeUltimaAtualizacao ? new Date(input.nfeUltimaAtualizacao) : new Date();
+          }
+          return updateSupplierNfe(input.id, data);
+        }),
+      extrair: protectedProcedure
+        .input(z.object({ id: z.number(), arquivoUrl: z.string().url(), arquivoKey: z.string() }))
+        .mutation(async ({ input }) => {
+          const { extrairDadosNfePdf } = await import("./services/nfeParser");
+          const resposta = await fetch(input.arquivoUrl);
+          if (!resposta.ok) throw new Error("Não foi possível baixar o arquivo da NF-e.");
+          const buffer = Buffer.from(await resposta.arrayBuffer());
+          const dados = await extrairDadosNfePdf(buffer);
+          return dados;
+        }),
+    }),
 
   // ─── OPERAÇÕES: Rotinas ──────────────────────────────────────────────────────────────────
   routines: router({
@@ -1590,6 +1636,7 @@ O POP deve:
   perfilClientesCnpj: perfilClientesCnpjRouter,
   planosAcaoComercial: planosAcaoComercialRouter,
   campanhasWhatsapp: campanhasWhatsappRouter,
+  cotacoesExternas: cotacoesExternasRouter,
   radarMercado: radarMercadoRouter,
   custoLed: custoLedRouter,
   perfilEstoque: perfilEstoqueRouter,
