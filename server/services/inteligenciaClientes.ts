@@ -1127,6 +1127,91 @@ export function calcularConversaoPorFaixaTicket(
 // calcularConversaoPorFaixaTicket: "Em aberto" com validade vencida conta como
 // perdido. Só meses FECHADOS entram (o mês corrente ainda tem decisões em curso).
 
+export interface FaixaTicketEvolucao {
+  faixa: string;
+  ganhos: number;
+  perdidos: number;
+  emAberto: number;
+  decididos: number;
+  taxaConversaoPct: number | null;
+}
+
+export interface MesEvolucaoFaixaTicket {
+  chave: number;
+  mes: string;
+  faixas: FaixaTicketEvolucao[];
+}
+
+/** Evolucao mensal por mes de emissao; orcamentos em aberto aparecem separados. */
+export function calcularEvolucaoConversaoPorFaixaTicket(
+  rows: Array<{ status: string | null; total: string | null; dataCadastro: string | null; validade: string | null }>,
+  hoje: Date,
+  maxMeses = 12,
+): MesEvolucaoFaixaTicket[] {
+  const quantidadeMeses = Math.max(1, Math.min(36, Math.floor(maxMeses)));
+  const chaveAtual = hoje.getFullYear() * 12 + hoje.getMonth();
+  const inicio = chaveAtual - quantidadeMeses + 1;
+  const porMes = new Map<number, Map<string, Omit<FaixaTicketEvolucao, "taxaConversaoPct">>>();
+
+  for (let i = 0; i < quantidadeMeses; i++) {
+    const chave = inicio + i;
+    const faixasDoMes = new Map<string, Omit<FaixaTicketEvolucao, "taxaConversaoPct">>();
+    for (const { faixa } of FAIXAS_TICKET) {
+      faixasDoMes.set(faixa, { faixa, ganhos: 0, perdidos: 0, emAberto: 0, decididos: 0 });
+    }
+    porMes.set(chave, faixasDoMes);
+  }
+
+  for (const row of rows) {
+    const dataCadastro = parseDataFlexivel(row.dataCadastro);
+    if (!dataCadastro) continue;
+    const chave = dataCadastro.getFullYear() * 12 + dataCadastro.getMonth();
+    const faixasDoMes = porMes.get(chave);
+    if (!faixasDoMes) continue;
+
+    const statusKey = (row.status ?? "").trim().toLowerCase();
+    const ganho = STATUS_GANHO.has(statusKey);
+    let perdido = STATUS_PERDIDO.has(statusKey);
+    let emAberto = false;
+    if (!ganho && !perdido && statusKey === STATUS_ABERTO) {
+      const validadeDias = toNum(row.validade);
+      if (validadeDias > 0) {
+        const vencimento = new Date(dataCadastro);
+        vencimento.setDate(vencimento.getDate() + validadeDias);
+        perdido = vencimento < hoje;
+      }
+      emAberto = !perdido;
+    }
+    if (!ganho && !perdido && !emAberto) continue;
+
+    const valor = toNum(row.total);
+    const faixa = FAIXAS_TICKET.find(f => valor <= f.ate)?.faixa ?? FAIXAS_TICKET[FAIXAS_TICKET.length - 1].faixa;
+    const bucket = faixasDoMes.get(faixa)!;
+    if (ganho) bucket.ganhos++;
+    else if (perdido) bucket.perdidos++;
+    else bucket.emAberto++;
+    if (ganho || perdido) bucket.decididos++;
+  }
+
+  const nomesMeses = ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez"];
+  return [...porMes.entries()].sort(([a], [b]) => a - b).map(([chave, faixas]) => {
+    const mesDoAno = (chave % 12) + 1;
+    const ano = Math.floor(chave / 12);
+    return {
+      chave,
+      mes: `${nomesMeses[mesDoAno - 1]}/${String(ano).slice(-2)}`,
+      faixas: [...faixas.values()].map(({ faixa, ganhos, perdidos, emAberto, decididos }) => ({
+        faixa,
+        ganhos,
+        perdidos,
+        emAberto,
+        decididos,
+        taxaConversaoPct: decididos > 0 ? (ganhos / decididos) * 100 : null,
+      })),
+    };
+  });
+}
+
 export interface FunilMes {
   mes: string; // "08/2026"
   chave: number; // ano*12 + (mes-1)

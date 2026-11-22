@@ -13,11 +13,17 @@ import {
   crmAtividadeLog,
   inteligenciaAcoesClientes,
   mubisysClientesCache,
+  campanhasWhatsapp,
+  campanhasWhatsappCampanhaFontes,
+  campanhasWhatsappFontes,
+  campanhasWhatsappEtapas,
+  campanhasWhatsappInscricoes,
 } from "../../drizzle/schema";
 import type { CrmContato } from "../../drizzle/schema";
 import {
   CACHE_KEY_ABERTOS_PADRAO,
   CACHE_KEY_ABERTOS_ESTENDIDO,
+  CRM_CACHE_TTL_MS,
   JANELA_ABERTOS_DIAS_PADRAO,
   JANELA_ABERTOS_DIAS_MAX,
   getCrmAbertosCache,
@@ -31,6 +37,7 @@ import {
 import type { TrpcContext } from "../_core/context";
 import {
   construirMapaConversaoClientes,
+  limitarComprasAOrcamentos,
   normalizeEmpresaKey,
   construirModeloBayesiano,
   calcularProbabilidadeBayesiana,
@@ -38,6 +45,7 @@ import {
 } from "../services/probabilidadeCompra";
 import { UF_PARA_REGIAO, normalizarUf } from "../utils/regioesBrasil";
 import { diasUteisEntre } from "../../shared/dias-uteis";
+import { programarFollowupPropostaCrm } from "../services/campanhaCadenciaEngine";
 
 // ─── Faixas de follow-up (config compartilhada) ──────────────────────────────
 export type FaixaConfig = {
@@ -258,6 +266,113 @@ const MOTIVACIONAL_PROMPTS = [
 
 // ─── Router ───────────────────────────────────────────────────────────────────
 export const crmRouter = router({
+  listarCampanhasFollowupAutomatico: protectedProcedure
+    .use(requireRole("admin", "master", "gestor", "vendas"))
+    .query(async () => {
+      const db = (await getDb())!;
+      const candidatas = await db.select().from(campanhasWhatsapp).where(and(
+        eq(campanhasWhatsapp.status, "ativa"),
+        eq(campanhasWhatsapp.motorCadenciaAtivo, true),
+      ));
+      if (!candidatas.length) return [];
+      const fontes = await db.select({ campanhaId: campanhasWhatsappCampanhaFontes.campanhaId, tipo: campanhasWhatsappFontes.tipo })
+        .from(campanhasWhatsappCampanhaFontes)
+        .innerJoin(campanhasWhatsappFontes, eq(campanhasWhatsappFontes.id, campanhasWhatsappCampanhaFontes.fonteId))
+        .where(and(
+          inArray(campanhasWhatsappCampanhaFontes.campanhaId, candidatas.map(c => c.id)),
+          eq(campanhasWhatsappFontes.ativo, true),
+        ));
+      const campanhasCrm = candidatas.filter(c => {
+        const vinculadas = fontes.filter(f => f.campanhaId === c.id);
+        return vinculadas.length === 1 && vinculadas[0].tipo === "crm_propostas"
+          && !!c.consentimentoConfirmadoEm && !!c.templatesAprovadosConfirmadosEm;
+      });
+      const resultado = [];
+      for (const campanha of campanhasCrm) {
+        const etapas = await db.select({ numero: campanhasWhatsappEtapas.numero, templateId: campanhasWhatsappEtapas.templateId })
+          .from(campanhasWhatsappEtapas).where(and(
+            eq(campanhasWhatsappEtapas.campanhaId, campanha.id),
+            eq(campanhasWhatsappEtapas.versao, campanha.versaoEtapasAtual),
+          )).orderBy(campanhasWhatsappEtapas.numero);
+        if (etapas.length === 3 && etapas.every((etapa, index) => etapa.numero === index + 1 && !!etapa.templateId.trim())) {
+          resultado.push({ id: campanha.id, nome: campanha.nome, etapas: 3 });
+        }
+      }
+      return resultado;
+    }),
+
+  agendarFollowupAutomatico: protectedProcedure
+    .use(requireRole("admin", "master", "gestor", "vendas"))
+    .input(z.object({
+      orcamentoId: z.string().regex(/^\d+$/),
+      campanhaId: z.number().int().positive(),
+      confirmarOptIn: z.literal(true),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      const cache = await getCrmAbertosCache(CACHE_KEY_ABERTOS_PADRAO);
+      if (!cache || Date.now() - cache.fetchedAt.getTime() > CRM_CACHE_TTL_MS) {
+        throw new TRPCError({ code: "PRECONDITION_FAILED", message: "A lista de propostas abertas está desatualizada. Atualize o CRM e tente novamente." });
+      }
+      const proposta = cache.itens.find(item => String(item.id) === input.orcamentoId);
+      const status = String(proposta?.status ?? "").trim().toLocaleLowerCase("pt-BR");
+      if (!proposta || !["em aberto", "em andamento", "pendente"].includes(status)) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "A proposta não está mais aberta no MubiSys." });
+      }
+      const propostaId = Number(input.orcamentoId);
+      if (!Number.isSafeInteger(propostaId) || propostaId < 1) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "Identificador da proposta inválido." });
+      }
+      const contatos = Array.isArray(proposta.cliente_contato) ? proposta.cliente_contato : [];
+      const contato = contatos.find((item: any) => item?.celular || item?.telefone);
+      const telefone = contato?.celular || contato?.telefone;
+      if (!telefone) throw new TRPCError({ code: "PRECONDITION_FAILED", message: "A proposta não possui celular ou telefone cadastrado." });
+
+      const db = (await getDb())!;
+      const faixasDb = await db.select().from(crmFaixaEtiquetas);
+      const faixas = { ...FAIXA_DEFAULTS };
+      for (const faixa of faixasDb) {
+        if (faixa.faixa === 1 || faixa.faixa === 2 || faixa.faixa === 3) {
+          faixas[faixa.faixa] = {
+            faixa: faixa.faixa,
+            label: faixa.label,
+            diasInicio: faixa.diasInicio,
+            diasFim: faixa.diasFim,
+          };
+        }
+      }
+      const cliente = proposta.cliente;
+      const nomeEmpresa = typeof cliente === "object" && cliente !== null
+        ? String(cliente.nome ?? cliente.razao_social ?? "")
+        : String(cliente ?? "");
+      const nome = String(contato?.nome_contato ?? contato?.nome ?? nomeEmpresa).trim();
+
+      let programacao;
+      try {
+        programacao = await programarFollowupPropostaCrm({
+          campanhaId: input.campanhaId,
+          propostaId,
+          telefone: String(telefone),
+          nome,
+          dataCriacao: String(proposta.data_cadastro ?? ""),
+          faixas: [faixas[1], faixas[2], faixas[3]],
+        });
+      } catch (error) {
+        throw new TRPCError({
+          code: "CONFLICT",
+          message: error instanceof Error ? error.message : "Não foi possível programar o follow-up.",
+        });
+      }
+
+      await logAtividade(ctx, {
+        vendedor: ctx.user.name ?? ctx.user.email ?? "CRM",
+        acao: "agendarFollowupAutomatico",
+        orcamentoId: input.orcamentoId,
+        empresa: nomeEmpresa || undefined,
+        detalhe: `Campanha ${input.campanhaId}; ${programacao.etapas} etapa(s); consentimento individual confirmado.`,
+      });
+      return programacao;
+    }),
+
   // Atualização manual de emergência quando o schedule externo do QStash para.
   // Busca só a fatia mais recente (hoje + ontem), mantendo o limite de duração
   // e a chamada sequencial ao MubiSys usados pelo job agendado.
@@ -400,6 +515,25 @@ export const crmRouter = router({
       // Buscar contatos registrados para essas propostas
       const idsAbertos = propostasAbertas.map((o: any) => String(o.id));
       const db = (await getDb())!;
+      const idsNumericosAbertos = idsAbertos.map(Number).filter(id => Number.isSafeInteger(id) && id > 0);
+      const inscricoesCrm = idsNumericosAbertos.length
+        ? await db.select({
+            origemId: campanhasWhatsappInscricoes.origemId,
+            status: campanhasWhatsappInscricoes.status,
+            etapaAtual: campanhasWhatsappInscricoes.etapaAtual,
+            totalEtapas: sql<number>`jsonb_array_length(${campanhasWhatsappInscricoes.snapshotEtapas})::int`,
+            proximoEnvioEm: campanhasWhatsappInscricoes.proximoEnvioEm,
+          }).from(campanhasWhatsappInscricoes).where(and(
+            eq(campanhasWhatsappInscricoes.origemTipo, "crm_proposta"),
+            inArray(campanhasWhatsappInscricoes.origemId, idsNumericosAbertos),
+          ))
+        : [];
+      const cadenciaPorProposta = new Map(inscricoesCrm.map(inscricao => [String(inscricao.origemId), {
+        status: inscricao.status,
+        etapaAtual: inscricao.etapaAtual,
+        totalEtapas: inscricao.totalEtapas,
+        proximoEnvioEm: inscricao.proximoEnvioEm?.toISOString() ?? null,
+      }]));
       // Buscar contatos de todas as propostas abertas (sem filtro de vendedor no DB)
       const contatosDb =
         idsAbertos.length > 0
@@ -574,7 +708,6 @@ export const crmRouter = router({
           : { probabilidade: null as number | null, explicacao: [] as string[] };
         const chaveCliente = normalizeEmpresaKey(nomeCliente);
         const conversaoCliente = mapaConversao?.porCliente.get(chaveCliente);
-        const qtdComprasCliente = conversaoCliente?.qtdCompras ?? 0;
         // Só faz sentido "dias sem comprar" para quem já comprou alguma vez —
         // cliente novo não tem essa métrica (ver clienteNovo acima).
         const diasSemComprar = conversaoCliente?.ultimaCompra
@@ -591,12 +724,16 @@ export const crmRouter = router({
         const numeroDestaProposta = p.sequencial ? String(p.sequencial) : (p.id ? String(p.id) : "");
         if (numeroDestaProposta) todosOrcsDoCliente.add(numeroDestaProposta);
         const totalCotacoes = Math.max(1, todosOrcsDoCliente.size);
+        const qtdComprasCliente = limitarComprasAOrcamentos(
+          conversaoCliente?.qtdCompras ?? 0,
+          totalCotacoes,
+        );
 
         // Conversão = orçamentos fechados ÷ orçamentos, os dois do histórico de orçamentos.
         const orcamentosFechados = Math.min(conversaoCliente?.orcamentosFechados ?? 0, totalCotacoes);
         const taxaConversao = calcularTaxaConversaoCliente(totalCotacoes, orcamentosFechados, conversaoCliente?.totalOrcamentos ?? 0);
 
-        return { ...p, telefone, nomeCliente, nomeContato: p.nomeContato ?? "", clienteNovo, probabilidadeCompra, probabilidadeExplicacao, qtdComprasCliente, totalCompras: qtdComprasCliente, diasSemComprar, totalCotacoes, orcamentosFechados, taxaConversao, orcamentosDesde: mapaConversao?.orcamentosDesde ?? null, estadoCliente, regiaoCliente };
+        return { ...p, telefone, nomeCliente, nomeContato: p.nomeContato ?? "", clienteNovo, probabilidadeCompra, probabilidadeExplicacao, qtdComprasCliente, totalCompras: qtdComprasCliente, diasSemComprar, totalCotacoes, orcamentosFechados, taxaConversao, orcamentosDesde: mapaConversao?.orcamentosDesde ?? null, estadoCliente, regiaoCliente, cadenciaAutomatica: cadenciaPorProposta.get(String(p.id)) ?? null };
       });
       return {
         propostas: propostasComTelefone.sort(
@@ -676,6 +813,7 @@ export const crmRouter = router({
         canal: z.enum([
           "nao_retornou",
           "esperando_cliente",
+          "relacionamento",
           "garantiu_fechamento",
           "aguardando_resposta",
         ]),
@@ -851,6 +989,7 @@ export const crmRouter = router({
         canal: z.enum([
           "nao_retornou",
           "esperando_cliente",
+          "relacionamento",
           "garantiu_fechamento",
           "aguardando_resposta",
         ]),

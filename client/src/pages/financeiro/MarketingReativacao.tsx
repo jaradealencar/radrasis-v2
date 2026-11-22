@@ -27,39 +27,47 @@ export default function MarketingReativacao({ ano, relatorio, mesFiltro, onDrill
     [relatorio.meses, mesFiltro],
   );
   const labelPeriodo = mesFiltro != null ? MESES_ABREV[mesFiltro - 1] : `Ano ${ano}`;
+  const mesesComInvestimento = useMemo(
+    () => mesesFiltrados.filter(m => m.investimentoReativacao != null),
+    [mesesFiltrados],
+  );
 
   const { data: medianaOutliers } = trpc.marketingFinanceiro.getMedianaOutliers.useQuery({ ano, mes: mesFiltro, categoria: "reativado" });
 
   const totais = useMemo(() => {
-    const investimento = somarOuNull(mesesFiltrados.map(m => m.investimentoReativacao));
-    const eventosReativacao = mesesFiltrados.reduce((s, m) => s + m.reativado.qtdClientesUnicos, 0);
-    const pedidos = mesesFiltrados.reduce((s, m) => s + m.reativado.qtdOs, 0);
-    const faturamento = mesesFiltrados.reduce((s, m) => s + m.reativado.faturamento, 0);
-    const margem = mesesFiltrados.reduce((s, m) => s + m.reativado.margem.margemTotal, 0);
+    const investimento = somarOuNull(mesesComInvestimento.map(m => m.investimentoReativacao));
+    const eventosReativacao = mesesComInvestimento.reduce((s, m) => s + m.reativado.qtdClientesUnicos, 0);
+    const pedidos = mesesComInvestimento.reduce((s, m) => s + m.reativado.qtdOs, 0);
+    const faturamento = mesesComInvestimento.reduce((s, m) => s + m.reativado.faturamento, 0);
+    const margem = mesesComInvestimento.reduce((s, m) => s + m.reativado.margem.margemTotal, 0);
     const custoPonderado = custoReativacaoPonderado(investimento, eventosReativacao);
     const resultado = calcularResultadoGrupo(investimento, margem, faturamento);
     const ticketMedio = pedidos > 0 ? faturamento / pedidos : null;
     return { investimento, eventosReativacao, pedidos, faturamento, margem, custoPonderado, resultado, ticketMedio };
-  }, [mesesFiltrados]);
+  }, [mesesComInvestimento]);
 
   const clientesUnicosNoPeriodo = mesFiltro != null ? totais.eventosReativacao : relatorio.reativacaoAnual.clientesReativadosUnicosAno;
 
   const dadosGrafico = useMemo(() => mesesFiltrados.map(m => ({
     mes: MESES_ABREV[m.mes - 1],
-    "Custo por Reativado": m.reativado.custoReativacaoPonderado ?? 0,
-    "Ticket Médio": m.reativado.qtdOs > 0 ? Math.round((m.reativado.faturamento / m.reativado.qtdOs) * 100) / 100 : 0,
+    "Custo por Reativado": m.investimentoReativacao != null ? m.reativado.custoReativacaoPonderado : null,
+    "Ticket Médio": m.investimentoReativacao != null && m.reativado.qtdOs > 0 ? Math.round((m.reativado.faturamento / m.reativado.qtdOs) * 100) / 100 : null,
   })), [mesesFiltrados]);
 
   const participacao = useMemo(() => {
-    const investTotal = somarOuNull(relatorio.meses.filter(m => !m.mesParcial).map(m => (m.investimentoAquisicao ?? 0) + (m.investimentoReativacao ?? 0))) ?? 0;
-    const fatTotal = relatorio.meses.filter(m => !m.mesParcial).reduce((s, m) => s + m.novo.faturamento + m.recorrenteAtivo.faturamento + m.reativado.faturamento, 0);
-    const pctInvest = investTotal > 0 ? ((totais.investimento ?? 0) / investTotal) * 100 : 0;
-    const pctFat = fatTotal > 0 ? (totais.faturamento / fatTotal) * 100 : 0;
+    const mesesSelecionados = relatorio.meses.filter(m => !m.mesParcial && (mesFiltro == null || m.mes === mesFiltro));
+    const mesesCoberturaCompleta = mesesSelecionados.filter(m => m.investimentoAquisicao != null && m.investimentoReativacao != null);
+    const investTotal = somarOuNull(mesesCoberturaCompleta.map(m => m.investimentoAquisicao! + m.investimentoReativacao!)) ?? 0;
+    const fatReativados = mesesCoberturaCompleta.reduce((s, m) => s + m.reativado.faturamento, 0);
+    const fatTotal = mesesCoberturaCompleta.reduce((s, m) => s + m.novo.faturamento + m.recorrenteAtivo.faturamento + m.reativado.faturamento, 0);
+    const investReativacao = somarOuNull(mesesCoberturaCompleta.map(m => m.investimentoReativacao)) ?? 0;
+    const pctInvest = investTotal > 0 ? (investReativacao / investTotal) * 100 : 0;
+    const pctFat = fatTotal > 0 ? (fatReativados / fatTotal) * 100 : 0;
     return [
       { name: "% do Investimento Total", value: pctInvest },
       { name: "% do Faturamento Total", value: pctFat },
     ];
-  }, [relatorio.meses, totais]);
+  }, [relatorio.meses, mesFiltro]);
 
   return (
     <div className="space-y-6">
@@ -68,8 +76,8 @@ export default function MarketingReativacao({ ano, relatorio, mesFiltro, onDrill
         <KpiCard
           variant="border" color="#b45309" icon={<Users size={18} />} label="Reativados"
           value={fmtNum(clientesUnicosNoPeriodo)}
-          sub={`${fmtNum(totais.eventosReativacao)} eventos · ${fmtNum(totais.pedidos)} pedidos`}
-          tooltip={mesFiltro != null ? "Únicos = eventos dentro de 1 mês (não há diferença dentro de um único mês)." : "Únicos: clientes distintos reativados no ano inteiro. Eventos: cada reativação conta separadamente — o mesmo cliente pode reativar mais de uma vez."}
+          sub={mesFiltro != null ? `${fmtNum(totais.eventosReativacao)} eventos · ${fmtNum(totais.pedidos)} pedidos nos meses cobertos` : `${fmtNum(clientesUnicosNoPeriodo)} clientes únicos no ano · ${fmtNum(totais.eventosReativacao)} eventos nos meses cobertos`}
+          tooltip={mesFiltro != null ? "Únicos = eventos dentro de 1 mês (não há diferença dentro de um único mês)." : "O valor principal conta clientes únicos do ano inteiro; eventos e pedidos secundários consideram somente meses fechados com investimento de reativação informado. O mesmo cliente pode reativar mais de uma vez."}
         />
         <KpiCard variant="border" color={COR_REATIVACAO} icon={<RefreshCw size={18} />} label="Custo por Reativado" value={totais.custoPonderado != null ? fmtBrl(totais.custoPonderado) : "—"} tooltip="Investimento em reativação ÷ eventos de reativação do período (denominador = eventos, não únicos)." />
         <KpiCard variant="border" color={COR_FATURAMENTO} icon={<TrendingUp size={18} />} label="Faturamento" value={fmtBrl(totais.faturamento)} sub={totais.ticketMedio != null ? `Ticket médio: ${fmtBrl(totais.ticketMedio)}` : undefined} />
@@ -79,6 +87,7 @@ export default function MarketingReativacao({ ano, relatorio, mesFiltro, onDrill
           sub={totais.resultado.roiPct != null ? `ROI: ${fmtPct(totais.resultado.roiPct)} · ROAS: ${totais.resultado.roas != null ? totais.resultado.roas.toFixed(2) + "x" : "—"}` : undefined}
         />
       </div>
+      <p className="text-xs text-muted-foreground">Custo por reativação e ROI ponderados usam {mesesComInvestimento.length}/{mesesFiltrados.length} meses fechados com investimento de reativação lançado; meses em branco ficam fora.</p>
 
       {medianaOutliers && medianaOutliers.qtdPedidos > 0 && (
         <Card>

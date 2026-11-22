@@ -27,37 +27,47 @@ export default function MarketingAquisicao({ ano, relatorio, mesFiltro, onDrillD
     [relatorio.meses, mesFiltro],
   );
   const labelPeriodo = mesFiltro != null ? MESES_ABREV[mesFiltro - 1] : `Ano ${ano}`;
+  const mesesComInvestimento = useMemo(
+    () => mesesFiltrados.filter(m => m.investimentoAquisicao != null),
+    [mesesFiltrados],
+  );
 
   const { data: medianaOutliers } = trpc.marketingFinanceiro.getMedianaOutliers.useQuery({ ano, mes: mesFiltro, categoria: "novo" });
 
   const totais = useMemo(() => {
-    const investimento = somarOuNull(mesesFiltrados.map(m => m.investimentoAquisicao));
+    const investimento = somarOuNull(mesesComInvestimento.map(m => m.investimentoAquisicao));
     const clientesNovos = mesesFiltrados.reduce((s, m) => s + m.novo.qtdClientesUnicos, 0);
+    const clientesNovosComInvestimento = mesesComInvestimento.reduce((s, m) => s + m.novo.qtdClientesUnicos, 0);
     const pedidos = mesesFiltrados.reduce((s, m) => s + m.novo.qtdOs, 0);
     const faturamento = mesesFiltrados.reduce((s, m) => s + m.novo.faturamento, 0);
-    const margem = mesesFiltrados.reduce((s, m) => s + m.novo.margem.margemTotal, 0);
-    const cac = cacPonderado(investimento, clientesNovos);
-    const resultado = calcularResultadoGrupo(investimento, margem, faturamento);
+    const faturamentoComInvestimento = mesesComInvestimento.reduce((s, m) => s + m.novo.faturamento, 0);
+    const margem = mesesComInvestimento.reduce((s, m) => s + m.novo.margem.margemTotal, 0);
+    const cac = cacPonderado(investimento, clientesNovosComInvestimento);
+    const resultado = calcularResultadoGrupo(investimento, margem, faturamentoComInvestimento);
     const ticketMedio = pedidos > 0 ? faturamento / pedidos : null;
     return { investimento, clientesNovos, pedidos, faturamento, margem, cac, resultado, ticketMedio };
-  }, [mesesFiltrados]);
+  }, [mesesFiltrados, mesesComInvestimento]);
 
   const dadosTicket = useMemo(() => mesesFiltrados.map(m => ({
     mes: MESES_ABREV[m.mes - 1],
-    "CAC": m.novo.cacPonderado ?? 0,
-    "Ticket Médio": m.novo.qtdOs > 0 ? Math.round((m.novo.faturamento / m.novo.qtdOs) * 100) / 100 : 0,
+    "CAC": m.investimentoAquisicao != null ? m.novo.cacPonderado : null,
+    "Ticket Médio": m.novo.qtdOs > 0 ? Math.round((m.novo.faturamento / m.novo.qtdOs) * 100) / 100 : null,
   })), [mesesFiltrados]);
 
   const participacao = useMemo(() => {
-    const investTotal = somarOuNull(relatorio.meses.filter(m => !m.mesParcial).map(m => (m.investimentoAquisicao ?? 0) + (m.investimentoReativacao ?? 0))) ?? 0;
-    const fatTotal = relatorio.meses.filter(m => !m.mesParcial).reduce((s, m) => s + m.novo.faturamento + m.recorrenteAtivo.faturamento + m.reativado.faturamento, 0);
-    const pctInvest = investTotal > 0 ? ((totais.investimento ?? 0) / investTotal) * 100 : 0;
-    const pctFat = fatTotal > 0 ? (totais.faturamento / fatTotal) * 100 : 0;
+    const mesesSelecionados = relatorio.meses.filter(m => !m.mesParcial && (mesFiltro == null || m.mes === mesFiltro));
+    const mesesCoberturaCompleta = mesesSelecionados.filter(m => m.investimentoAquisicao != null && m.investimentoReativacao != null);
+    const investTotal = somarOuNull(mesesCoberturaCompleta.map(m => m.investimentoAquisicao! + m.investimentoReativacao!)) ?? 0;
+    const fatNovos = mesesCoberturaCompleta.reduce((s, m) => s + m.novo.faturamento, 0);
+    const fatTotal = mesesCoberturaCompleta.reduce((s, m) => s + m.novo.faturamento + m.recorrenteAtivo.faturamento + m.reativado.faturamento, 0);
+    const investAquisicao = somarOuNull(mesesCoberturaCompleta.map(m => m.investimentoAquisicao)) ?? 0;
+    const pctInvest = investTotal > 0 ? (investAquisicao / investTotal) * 100 : 0;
+    const pctFat = fatTotal > 0 ? (fatNovos / fatTotal) * 100 : 0;
     return [
       { name: "% do Investimento Total", value: pctInvest },
       { name: "% do Faturamento Total", value: pctFat },
     ];
-  }, [relatorio.meses, totais]);
+  }, [relatorio.meses, mesFiltro]);
 
   return (
     <div className="space-y-6">
@@ -72,6 +82,7 @@ export default function MarketingAquisicao({ ano, relatorio, mesFiltro, onDrillD
           sub={totais.resultado.roiPct != null ? `ROI: ${fmtPct(totais.resultado.roiPct)} · ROAS: ${totais.resultado.roas != null ? totais.resultado.roas.toFixed(2) + "x" : "—"}` : undefined}
         />
       </div>
+      <p className="text-xs text-muted-foreground">CAC e ROI ponderados usam {mesesComInvestimento.length}/{mesesFiltrados.length} meses fechados com investimento de aquisição lançado; meses em branco ficam fora.</p>
 
       {medianaOutliers && medianaOutliers.qtdPedidos > 0 && (
         <Card>

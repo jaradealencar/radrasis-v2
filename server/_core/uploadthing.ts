@@ -1,6 +1,8 @@
 import { createUploadthing, type FileRouter } from "uploadthing/express";
 import { UploadThingError } from "uploadthing/server";
 import { fromNodeHeaders } from "better-auth/node";
+import { type AppRole } from "../../drizzle/schema";
+import { canRoleAccessPage } from "../db/db";
 import { auth } from "./auth";
 
 const f = createUploadthing();
@@ -19,6 +21,20 @@ async function requireUser(req: any) {
     headers: fromNodeHeaders(req.headers),
   });
   if (!session) throw new UploadThingError("Não autenticado");
+  return { userId: session.user.id };
+}
+
+async function requireTrainingEditor(req: any) {
+  const session = await auth.api.getSession({
+    headers: fromNodeHeaders(req.headers),
+  });
+  if (!session) throw new UploadThingError("Não autenticado");
+  const role = String(session.user.role ?? "");
+  if (
+    !["admin", "master", "gestor"].includes(role) ||
+    !(await canRoleAccessPage(role as AppRole, "treinamento"))
+  )
+    throw new UploadThingError("Somente instrutores podem enviar materiais");
   return { userId: session.user.id };
 }
 
@@ -48,6 +64,26 @@ export const uploadRouter = {
     .onUploadComplete(({ file, metadata }) => {
       return { uploadedBy: metadata.userId, name: file.name };
     }),
+
+  materialAvaliacao: f({
+    pdf: { maxFileSize: "32MB", maxFileCount: 1, contentDisposition: "inline" },
+    text: { maxFileSize: "8MB", maxFileCount: 1, contentDisposition: "inline" },
+    image: {
+      maxFileSize: "16MB",
+      maxFileCount: 1,
+      contentDisposition: "inline",
+    },
+    blob: {
+      maxFileSize: "32MB",
+      maxFileCount: 1,
+      contentDisposition: "inline",
+    },
+  })
+    .middleware(({ req }) => requireTrainingEditor(req))
+    .onUploadComplete(({ file, metadata }) => ({
+      uploadedBy: metadata.userId,
+      name: file.name,
+    })),
 } satisfies FileRouter;
 
 export type UploadRouter = typeof uploadRouter;

@@ -33,6 +33,16 @@ import {
 } from "../../shared/campanhas-whatsapp-ia";
 import { analisarRespostaComGemini } from "./campanhasWhatsappIa";
 
+async function refletirRespostaNaCadencia(telefone: string, nome: string | null | undefined, texto: string | null | undefined, mensagemId: string | null | undefined, quando: Date): Promise<void> {
+  const engine = await import("./campanhaCadenciaEngine");
+  const mensagem = texto ?? "";
+  if (mensagem && engine.detectarPedidoOptOut(mensagem)) {
+    await engine.registrarOptOutInbound(telefone, nome ?? null, mensagem, mensagemId ?? null, quando);
+  } else {
+    await engine.pausarInscricoesPorResposta(telefone, quando);
+  }
+}
+
 async function obterDb() {
   const db = await getDb();
   if (!db) throw new Error("DB indisponível");
@@ -168,6 +178,8 @@ export async function registrarMensagemInbound(
       )
       .limit(1);
     if (existente)
+      await refletirRespostaNaCadencia(telefone, entrada.nome, entrada.texto, entrada.mensagemIdExterno, entrada.recebidoEm ?? new Date());
+    if (existente)
       return {
         ok: true,
         telefone,
@@ -222,6 +234,7 @@ export async function registrarMensagemInbound(
         processado: deteccao.ehBot, // bot não entra na consolidação: já nasce "processado" (não é qualificado por IA)
       })
       .returning({ id: campanhasWhatsappMensagensInbound.id });
+    await refletirRespostaNaCadencia(telefone, entrada.nome, entrada.texto, entrada.mensagemIdExterno, momentoRecebimento);
     return {
       ok: true,
       telefone,
@@ -236,6 +249,7 @@ export async function registrarMensagemInbound(
       entrada.mensagemIdExterno &&
       /duplicate key|unique constraint/i.test(String((erro as Error)?.message))
     ) {
+      await refletirRespostaNaCadencia(telefone, entrada.nome, entrada.texto, entrada.mensagemIdExterno, momentoRecebimento);
       return {
         ok: true,
         telefone,

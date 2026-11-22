@@ -125,6 +125,21 @@ export function diasEntre(de: string, ate: string): number {
   return Math.round((isoParaUtcMs(ate) - isoParaUtcMs(de)) / 86_400_000);
 }
 
+/** Janela mensal do NPS: do dia 16 do mês anterior até o dia 15 do mês atual.
+ * Antes do dia 15, o fim acompanha hoje para não incluir pedidos futuros. */
+export function obterJanelaPedidosNps(hoje: string = hojeCampoGrande()): {
+  inicio: string;
+  fim: string;
+} {
+  if (!dataIsoValida(hoje)) throw new Error(`Data inválida: "${hoje}"`);
+  const [ano, mes, dia] = hoje.split("-").map(Number);
+  const anterior = new Date(Date.UTC(ano, mes - 2, 1));
+  const inicio = `${anterior.getUTCFullYear()}-${String(anterior.getUTCMonth() + 1).padStart(2, "0")}-16`;
+  const fimDia = Math.min(dia, 15);
+  const fim = `${ano}-${String(mes).padStart(2, "0")}-${String(fimDia).padStart(2, "0")}`;
+  return { inicio, fim };
+}
+
 /**
  * Próximo envio de uma campanha recorrente.
  * Suporta:

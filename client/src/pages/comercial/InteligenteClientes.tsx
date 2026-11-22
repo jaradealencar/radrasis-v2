@@ -31,6 +31,7 @@ import MarketingFinanceiro from "@/pages/financeiro/MarketingFinanceiro";
 import VistaRetencao from "@/pages/comercial/VistaRetencao";
 import PainelMeta from "@/pages/comercial/PainelMeta";
 import PriceRevenueDashboard from "@/components/PriceRevenueDashboard";
+import EvolucaoFaixaTicket from "@/pages/comercial/EvolucaoFaixaTicket";
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -371,7 +372,6 @@ function VistaVisaoGeral({ dataInicial, dataFinal }: { dataInicial: string; data
 
       <SecaoTempoFollowUp />
       <SecaoConversaoPorFaixaTicket />
-
       <SecaoRecompraNovosReativados dataInicial={dataInicial} dataFinal={dataFinal} />
 
       <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
@@ -1147,6 +1147,7 @@ function SecaoConversaoPorFaixaTicket() {
           Dos orçamentos já decididos (ganhos + perdidos), qual % fecha em cada faixa de valor — quanto maior o tíquete, menor a taxa de fechamento histórica. Esse mesmo efeito também entra como fator no Score de Probabilidade de Compra.
         </p>
       </div>
+      <EvolucaoFaixaTicket embedded />
       <div className="grid md:grid-cols-2 gap-4 p-4">
         <ResponsiveContainer width="100%" height={220}>
           <BarChart data={data} margin={{ top: 5, right: 10, left: 0, bottom: 5 }}>

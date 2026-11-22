@@ -33,6 +33,8 @@ import {
 import {
   diasEntre,
   hojeCampoGrande,
+  normalizarTelefone,
+  obterJanelaPedidosNps,
   somarDias,
 } from "../../shared/campanhas-whatsapp";
 import {
@@ -124,6 +126,107 @@ export function construirBaseComTelefone(
     }
   }
   return base;
+}
+
+/** NPS: uma entrada por cliente com pedido aprovado na janela e status explicitamente ENTREGUE.
+ * `dataEntrega` não é usado como prova: no MubiSys ela pode ser apenas a previsão de entrega. */
+export function resolverPedidosNpsEntregues(
+  rows: HistoricoOs[],
+  hoje: string = hojeCampoGrande()
+): ContatoFonte[] {
+  const janela = obterJanelaPedidosNps(hoje);
+  const elegiveis: Array<{ row: HistoricoOs; data: string; aliases: string[] }> = [];
+  for (const row of rows) {
+    if (!isOsNormalDb(row)) continue;
+    const status = String(row.status ?? "")
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .trim()
+      .toLocaleUpperCase("pt-BR");
+    if (status !== "ENTREGUE") continue;
+    const parsed = parseDataFlexivel(row.dataAprovacao);
+    if (!parsed) continue;
+    const data = dataLocalParaIso(parsed);
+    if (data < janela.inicio || data > janela.fim) continue;
+
+    const aliases: string[] = [];
+    const identidadeForte: string[] = [];
+    if (Number.isInteger(row.clienteId) && Number(row.clienteId) > 0)
+      identidadeForte.push(`id:${row.clienteId}`);
+    const documento = String(row.cnpj ?? "").replace(/\D/g, "");
+    if (documento.length === 11 || documento.length === 14)
+      identidadeForte.push(`doc:${documento}`);
+    const empresa = normalizeEmpresaKey(row.empresa ?? "");
+    if (empresa) aliases.push(`empresa:${empresa}`);
+    aliases.push(...identidadeForte);
+    if (!aliases.length) {
+      const telefone = normalizarTelefone(row.telefone);
+      if (telefone) aliases.push(`telefone:${telefone}`);
+    }
+    if (!aliases.length) continue;
+    elegiveis.push({ row, data, aliases });
+  }
+
+  // Une os registros pelas chaves confiáveis disponíveis. Isso também combina linhas antigas sem ID/CNPJ
+  // com linhas novas quando o nome da empresa é o único elo disponível.
+  const pais = elegiveis.map((_, index) => index);
+  const raiz = (index: number): number => {
+    if (pais[index] !== index) pais[index] = raiz(pais[index]);
+    return pais[index];
+  };
+  const unir = (a: number, b: number) => {
+    const ra = raiz(a);
+    const rb = raiz(b);
+    if (ra !== rb) pais[rb] = ra;
+  };
+  const porIdentidadeForte = new Map<string, number>();
+  elegiveis.forEach((item, index) => {
+    for (const alias of item.aliases.filter(a => !a.startsWith("empresa:"))) {
+      const anterior = porIdentidadeForte.get(alias);
+      if (anterior === undefined) porIdentidadeForte.set(alias, index);
+      else unir(index, anterior);
+    }
+  });
+
+  // O nome serve de fallback quando falta ID/CNPJ. Se o mesmo nome estiver ligado a
+  // identificadores fortes diferentes, não presumimos que sejam a mesma empresa.
+  const porEmpresa = new Map<string, number[]>();
+  elegiveis.forEach((item, index) => {
+    const nome = item.aliases.find(a => a.startsWith("empresa:"));
+    if (!nome) return;
+    const linhas = porEmpresa.get(nome) ?? [];
+    linhas.push(index);
+    porEmpresa.set(nome, linhas);
+  });
+  for (const indices of porEmpresa.values()) {
+    const raizesFortes = new Set(
+      indices
+        .filter(index => elegiveis[index].aliases.some(a => !a.startsWith("empresa:")))
+        .map(raiz)
+    );
+    const indicesParaUnir = raizesFortes.size <= 1
+      ? indices
+      : indices.filter(index => !elegiveis[index].aliases.some(a => !a.startsWith("empresa:")));
+    for (const index of indicesParaUnir.slice(1)) unir(index, indicesParaUnir[0]);
+  }
+
+  const porCliente = new Map<number, typeof elegiveis>();
+  elegiveis.forEach((item, index) => {
+    const grupo = raiz(index);
+    const linhas = porCliente.get(grupo) ?? [];
+    linhas.push(item);
+    porCliente.set(grupo, linhas);
+  });
+
+  return [...porCliente.values()].map(linhas => {
+    linhas.sort((a, b) => b.data.localeCompare(a.data));
+    const maisRecente = linhas[0];
+    const telefone = linhas
+      .map(item => item.row.telefone)
+      .find(valor => normalizarTelefone(valor)) ?? null;
+    const nome = linhas.find(item => item.row.empresa?.trim())?.row.empresa?.trim() ?? "";
+    return { telefone, nome, dataEntrada: maisRecente.data };
+  });
 }
 
 // ─── Fontes automáticas (funções puras — recebem a base já carregada) ───────────────────────────────────
@@ -570,6 +673,8 @@ export const RESOLVEDORES_ERP: Record<
   string,
   (ctx: ContextoErp, hoje: string) => ContatoFonte[]
 > = {
+  nps_pedidos_entregues: (ctx, hoje) =>
+    resolverPedidosNpsEntregues(ctx.osRows, hoje),
   clientes_ativos: (ctx, hoje) => resolverClientesAtivos(ctx.base, hoje),
   primeira_compra: (ctx, hoje) => resolverPrimeiraCompra(ctx.base, hoje),
   ativos_5_mais_6m: (ctx, hoje) => resolverAtivosCincoMais(ctx.osRows, hoje),

@@ -4,7 +4,7 @@ import {
   construirBaseComTelefone, construirHistoricoComprasPorCliente, construirVolumePorJanela,
   resolverClientesAtivos, resolverCompraramUmaVez, resolverCompraramUmaVezESumiram, resolverInativos,
   resolverNovosDoMes, resolverOrcaramNaoCompraram, resolverPrimeiraCompra, resolverReativadosDoMes,
-  resolverReducaoDeVolume,
+  resolverReducaoDeVolume, resolverPedidosNpsEntregues,
 } from "../services/fontesErpCampanhas";
 import type { HistoricoOrcamento, HistoricoOs } from "../../drizzle/schema";
 
@@ -32,6 +32,47 @@ function orc(empresa: string, dataCadastro: string, status: string, extra: Parti
 }
 
 describe("fontes ERP — resolução local (sem chamada à API)", () => {
+  it("NPS inclui somente ENTREGUE na janela e deduplica cliente sem unir empresas de mesmo nome com IDs diferentes", () => {
+    const resultado = resolverPedidosNpsEntregues([
+      os("Cliente Alfa", "16/10/2026", {
+        status: "ENTREGUE", clienteId: 10, cnpj: "12.345.678/0001-90", telefone: "67999990001",
+      }),
+      os("Cliente Alfa", "10/11/2026", {
+        status: "ENTREGUE", clienteId: 10, cnpj: "12345678000190", telefone: "",
+      }),
+      os("Cliente Beta", "15/11/2026", {
+        status: "ENTREGUE", clienteId: 20, cnpj: "98765432000100", telefone: "67999990002",
+      }),
+      os("Concluído não comprova entrega", "05/11/2026", {
+        status: "CONCLUIDO", clienteId: 21, cnpj: "11111111000111",
+      }),
+      os("Fora início", "15/10/2026", {
+        status: "ENTREGUE", clienteId: 22, cnpj: "22222222000122",
+      }),
+      os("Fora fim", "16/11/2026", {
+        status: "ENTREGUE", clienteId: 23, cnpj: "33333333000133",
+      }),
+      os("Empresa com homônimo", "02/11/2026", {
+        status: "ENTREGUE", clienteId: 30, cnpj: "44444444000144", telefone: "67999990003",
+      }),
+      os("Empresa com homônimo", "03/11/2026", {
+        status: "ENTREGUE", clienteId: 31, cnpj: "55555555000155", telefone: "67999990003",
+      }),
+      os("", "04/11/2026", {
+        status: "ENTREGUE", telefone: "67999990004",
+      }),
+    ], "2026-11-22");
+
+    expect(resultado).toHaveLength(5);
+    expect(resultado).toEqual(expect.arrayContaining([
+      expect.objectContaining({ nome: "Cliente Alfa", dataEntrada: "2026-11-10", telefone: "67999990001" }),
+      expect.objectContaining({ nome: "Cliente Beta", dataEntrada: "2026-11-15" }),
+      expect.objectContaining({ nome: "Empresa com homônimo", dataEntrada: "2026-11-02" }),
+      expect.objectContaining({ nome: "Empresa com homônimo", dataEntrada: "2026-11-03" }),
+      expect.objectContaining({ nome: "", dataEntrada: "2026-11-04", telefone: "67999990004" }),
+    ]));
+  });
+
   it("clientes ativos: última compra dentro de 180 dias; ignora quem passou disso", () => {
     const base = construirBaseComTelefone([
       os("TESTE Ativo Recente", "20/08/2026"), // ~37 dias atrás

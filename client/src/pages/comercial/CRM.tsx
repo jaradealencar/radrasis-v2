@@ -1,4 +1,5 @@
 import { useState, useMemo, useEffect } from "react";
+import { Link } from "wouter";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { trpc } from "@/lib/trpc";
 import { fmtDate } from "@/lib/format";
@@ -9,7 +10,7 @@ import {
   CheckSquare, Square, Clock, ThumbsUp, AlertCircle, AlertTriangle,
   ChevronDown, ChevronUp, Star,
   Activity, CheckCircle2, Target, Trash2, TrendingUp, Zap, Info,
-  ChevronLeft, ChevronRight
+  ChevronLeft, ChevronRight, MessageSquareText
 } from "lucide-react";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue
@@ -27,6 +28,7 @@ import { Label } from "@/components/ui/label";
 import {
   Tooltip, TooltipContent, TooltipProvider, TooltipTrigger
 } from "@/components/ui/tooltip";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { ScriptsFaixaPopover } from "@/components/ScriptsFaixaPopover";
 import { WhatsAppScriptsPopover } from "@/components/WhatsAppScriptsPopover";
 import { BibliotecaMidias } from "@/components/BibliotecaMidias";
@@ -52,6 +54,7 @@ const FAIXA_DEFAULTS_CLIENTE: Record<1 | 2 | 3, FaixaConfig> = {
 const OPCOES_RESPOSTA = [
   { value: "nao_retornou" as const, label: "Não retornou", icon: AlertCircle, color: "text-red-600", bg: "bg-red-50 border-red-200 hover:bg-red-100", badgeBg: "bg-red-100 text-red-700 border-red-200", emoji: "🔴" },
   { value: "esperando_cliente" as const, label: "Esperando cliente", icon: Clock, color: "text-amber-600", bg: "bg-amber-50 border-amber-200 hover:bg-amber-100", badgeBg: "bg-amber-100 text-amber-700 border-amber-200", emoji: "🟡" },
+  { value: "relacionamento" as const, label: "Relacionamento", icon: Users, color: "text-violet-600", bg: "bg-violet-50 border-violet-200 hover:bg-violet-100", badgeBg: "bg-violet-100 text-violet-700 border-violet-200", emoji: "🤝" },
   { value: "garantiu_fechamento" as const, label: "Garantiu fechamento", icon: ThumbsUp, color: "text-green-600", bg: "bg-green-50 border-green-200 hover:bg-green-100", badgeBg: "bg-green-100 text-green-700 border-green-200", emoji: "🟢" },
   // O vendedor já fez o contato, mas o cliente ainda não deu devolutiva.
   { value: "aguardando_resposta" as const, label: "Vendedor aguardando resposta", icon: MessageCircle, color: "text-blue-600", bg: "bg-blue-50 border-blue-200 hover:bg-blue-100", badgeBg: "bg-blue-100 text-blue-700 border-blue-200", emoji: "🔵" },
@@ -84,6 +87,12 @@ type Proposta = {
   diasSemComprar: number | null;
   totalCotacoes?: number;
   totalCompras?: number;
+  cadenciaAutomatica?: {
+    status: string;
+    etapaAtual: number;
+    totalEtapas: number;
+    proximoEnvioEm: string | null;
+  } | null;
   orcamentosFechados?: number;
   taxaConversao?: number | null;
   orcamentosDesde?: string | null;
@@ -98,6 +107,10 @@ const LIMIAR_PARCELAMENTO = 3;
 // — usado só para destacar visualmente o badge de dias sem comprar, não afeta
 // nenhum cálculo de negócio.
 const MESES_REATIVACAO_DIAS = 180;
+
+function isClienteReativacao(p: Pick<Proposta, "clienteNovo" | "diasSemComprar">): boolean {
+  return !p.clienteNovo && p.diasSemComprar != null && p.diasSemComprar >= MESES_REATIVACAO_DIAS;
+}
 
 // ─── Score de Probabilidade de Compra (Fase 1) ────────────────────────────────
 function probabilidadeCor(p: number) {
@@ -146,25 +159,44 @@ function ExplicacaoLinha({ linha }: { linha: string }) {
   );
 }
 
-function ProbabilidadeBadge({ p, explicacao }: { p: number | null; explicacao: string[] }) {
+function ProbabilidadeBadge({ p, explicacao, nomeCliente }: { p: number | null; explicacao: string[]; nomeCliente?: string }) {
   if (p == null) return null;
   const cor = probabilidadeCor(p);
   return (
-    <TooltipProvider>
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full border text-[10px] font-bold cursor-default ${cor.bg} ${cor.text}`}>
-            <TrendingUp className="w-2.5 h-2.5" /> {p}%
-          </span>
-        </TooltipTrigger>
-        <TooltipContent side="top" className="text-xs max-w-[280px] py-2">
-          <p className="text-[9px] font-bold text-gray-400 uppercase tracking-wide mb-1.5">Como chegamos a {p}%</p>
-          <div className="space-y-1.5">
-            {explicacao.map((linha, i) => <ExplicacaoLinha key={i} linha={linha} />)}
+    <Popover>
+      <PopoverTrigger asChild>
+        <button
+          type="button"
+          aria-label={`Ver memória de cálculo da possibilidade de compra (${p}%)`}
+          className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full border text-[10px] font-bold cursor-pointer transition hover:brightness-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 ${cor.bg} ${cor.text}`}
+        >
+          <TrendingUp className="w-2.5 h-2.5" /> {p}%
+        </button>
+      </PopoverTrigger>
+      <PopoverContent side="top" align="start" sideOffset={6} className="w-[min(22rem,calc(100vw-2rem))] border-slate-700 bg-slate-900 p-3 text-white shadow-xl">
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <p className="text-[10px] font-bold uppercase tracking-wide text-slate-400">Memória do cálculo</p>
+            <p className="mt-0.5 truncate text-sm font-semibold text-white">{nomeCliente || "Esta proposta"}</p>
           </div>
-        </TooltipContent>
-      </Tooltip>
-    </TooltipProvider>
+          <span className={`shrink-0 rounded-full border px-2 py-0.5 text-xs font-bold ${cor.bg} ${cor.text}`}>{p}%</span>
+        </div>
+        <p className="mt-2 text-[11px] leading-4 text-slate-300">
+          O modelo combina a taxa geral da carteira com os sinais disponíveis de cliente, faixa de tíquete e região. A suavização bayesiana aproxima segmentos com poucas decisões da taxa geral.
+        </p>
+        <div className="mt-3 space-y-2 border-t border-slate-700 pt-2.5">
+          <p className="text-[9px] font-bold uppercase tracking-wide text-slate-400">Fatores considerados</p>
+          {explicacao.length > 0
+            ? explicacao.map((linha, i) => <ExplicacaoLinha key={i} linha={linha} />)
+            : <p className="text-xs text-slate-300">O sistema não retornou os detalhes deste cálculo.</p>}
+        </div>
+        <div className="mt-3 flex items-center justify-between gap-3 rounded-md bg-white/10 px-2.5 py-2">
+          <span className="text-[11px] font-medium text-slate-200">Possibilidade estimada</span>
+          <span className="text-sm font-bold text-white">{p}%</span>
+        </div>
+        <p className="mt-2 text-[9px] leading-3 text-slate-400">Estimativa orientativa, limitada pelo modelo entre 5% e 95%.</p>
+      </PopoverContent>
+    </Popover>
   );
 }
 
@@ -284,6 +316,102 @@ function WhatsAppAgendaBotao({ p, faixa, faixasConfig }: {
       </button>
     </WhatsAppScriptsPopover>
   );
+}
+
+function BotaoFollowupAutomatico({ p }: { p: Proposta }) {
+  const [aberto, setAberto] = useState(false);
+  const [campanhaId, setCampanhaId] = useState("");
+  const [confirmouOptIn, setConfirmouOptIn] = useState(false);
+  const campanhas = trpc.crm.listarCampanhasFollowupAutomatico.useQuery(undefined, { enabled: aberto });
+  const utils = trpc.useUtils();
+  const agendar = trpc.crm.agendarFollowupAutomatico.useMutation({
+    onSuccess: resultado => {
+      const description = `${resultado.etapas} mensagem(ns); primeira prevista para ${fmtDate(new Date(resultado.primeiroEnvioEm))}.`;
+      if (resultado.workerAcordado) {
+        toast.success("Follow-up automático programado", { description });
+      } else {
+        toast.warning("Follow-up programado; worker não acordado", {
+          description: `${description} Verifique QStash e o worker das campanhas.`,
+        });
+      }
+      setAberto(false);
+      setConfirmouOptIn(false);
+      utils.crm.getPropostas.invalidate();
+    },
+    onError: erro => toast.error(erro.message),
+  });
+
+  useEffect(() => {
+    if (!campanhaId && campanhas.data?.length) setCampanhaId(String(campanhas.data[0].id));
+  }, [campanhaId, campanhas.data]);
+
+  const statusAtual = p.cadenciaAutomatica?.status;
+  if (statusAtual) {
+    const cadencia = p.cadenciaAutomatica!;
+    const rótulo = statusAtual === "concluida" ? "Follow-up concluído"
+      : statusAtual === "pausado_por_resposta" ? "Pausado: cliente respondeu"
+      : statusAtual === "opt_out" ? "Bloqueado: opt-out"
+      : ["cancelada", "removido_por_conversao", "removido_por_prioridade"].includes(statusAtual) ? "Follow-up encerrado"
+      : `Follow-up ${cadencia.etapaAtual}/${cadencia.totalEtapas}`;
+    return <span className="mt-1 block text-[10px] font-medium text-violet-700" title={cadencia.proximoEnvioEm ? `Próximo envio previsto: ${fmtDate(new Date(cadencia.proximoEnvioEm))}` : rótulo}>{rótulo}</span>;
+  }
+
+  return <>
+    <button
+      type="button"
+      onClick={() => setAberto(true)}
+      disabled={!p.telefone || p.qtdContatos >= 2}
+      className="mt-1 inline-flex items-center gap-1 rounded-full border border-violet-200 bg-violet-50 px-2 py-0.5 text-xs font-semibold text-violet-700 hover:bg-violet-100 disabled:cursor-not-allowed disabled:opacity-50"
+      title={!p.telefone ? "Cadastre um telefone na proposta" : p.qtdContatos >= 2 ? "Esta proposta já atingiu o limite de contatos do CRM" : "Programar mensagens automáticas nas três faixas de follow-up"}
+    >
+      <Calendar className="h-3 w-3" /> Programar follow-up
+    </button>
+    <Dialog open={aberto} onOpenChange={setAberto}>
+      <DialogContent className="sm:max-w-[480px]">
+        <DialogHeader>
+          <DialogTitle>Programar follow-up automático</DialogTitle>
+        </DialogHeader>
+        <div className="space-y-4 text-sm">
+          <p className="text-muted-foreground">As mensagens serão enviadas nas faixas de acompanhamento desta proposta, usando os três templates aprovados da campanha. Se o cliente responder, houver contato manual, a proposta deixar de estar aberta ou o telefone pedir para parar, os próximos envios serão interrompidos.</p>
+          <div className="space-y-2">
+            <Label htmlFor={`campanha-crm-${p.id}`}>Campanha com três mensagens</Label>
+            <Select value={campanhaId} onValueChange={setCampanhaId}>
+              <SelectTrigger id={`campanha-crm-${p.id}`}>
+                <SelectValue placeholder={campanhas.isLoading ? "Carregando campanhas..." : "Selecione uma campanha"} />
+              </SelectTrigger>
+              <SelectContent>
+                {(campanhas.data ?? []).map(campanha => (
+                  <SelectItem key={campanha.id} value={String(campanha.id)}>{campanha.nome}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            {campanhas.isError && (
+              <p className="text-xs text-amber-700">
+                Não foi possível carregar as campanhas de follow-up. <button type="button" className="underline" onClick={() => void campanhas.refetch()}>Tentar novamente</button>
+              </p>
+            )}
+            {!campanhas.isLoading && !campanhas.isError && !campanhas.data?.length && (
+              <p className="text-xs text-amber-700">Nenhuma campanha exclusiva do CRM está ativa. Em Campanhas, configure uma campanha com a fonte “CRM - propostas abertas”, três templates e a cadência automática habilitada.</p>
+            )}
+          </div>
+          <label className="flex items-start gap-2 rounded-md border p-3 text-xs leading-relaxed">
+            <input type="checkbox" checked={confirmouOptIn} onChange={event => setConfirmouOptIn(event.target.checked)} className="mt-0.5" />
+            <span>Confirmo que este cliente autorizou receber mensagens da empresa pelo WhatsApp.</span>
+          </label>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => setAberto(false)}>Cancelar</Button>
+          <Button
+            disabled={!campanhaId || !confirmouOptIn || agendar.isPending || campanhas.isLoading}
+            onClick={() => agendar.mutate({ orcamentoId: p.id, campanhaId: Number(campanhaId), confirmarOptIn: true })}
+          >
+            {agendar.isPending ? <Spinner className="mr-2 size-4" /> : <Calendar className="mr-2 size-4" />}
+            Programar mensagens
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  </>;
 }
 
 function getCanalInfo(canal: string) {
@@ -464,7 +592,7 @@ function PropostaRow({ p, vendedor, onRefresh, showVendedor, faixasConfig }: {
             </div>
             <div className="min-w-0">
               <div className="flex items-center gap-1">
-                <span className="font-semibold text-sm leading-tight truncate max-w-[120px]" title={p.nomeCliente}>{p.nomeCliente}</span>
+                <span className="min-w-0 flex-1 font-semibold text-sm leading-tight whitespace-normal break-words" title={p.nomeCliente}>{p.nomeCliente}</span>
                 {p.clienteNovo && (
                   <TooltipProvider>
                     <Tooltip>
@@ -479,6 +607,20 @@ function PropostaRow({ p, vendedor, onRefresh, showVendedor, faixasConfig }: {
                     </Tooltip>
                   </TooltipProvider>
                 )}
+                {isClienteReativacao(p) && (
+                  <TooltipProvider>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <span className="flex-shrink-0 cursor-default">
+                          <Star className="w-3.5 h-3.5 text-red-600 fill-red-500" />
+                        </span>
+                      </TooltipTrigger>
+                      <TooltipContent side="top" className="text-xs">
+                        Cliente sem comprar há 6 meses ou mais ({p.diasSemComprar} dias)
+                      </TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
+                )}
                 {p.estadoCliente && (
                   <span className="flex-shrink-0 text-[10px] font-bold text-slate-500 bg-slate-100 border border-slate-200 rounded px-1" title={`Cliente em ${p.estadoCliente}`}>
                     {p.estadoCliente}
@@ -487,7 +629,7 @@ function PropostaRow({ p, vendedor, onRefresh, showVendedor, faixasConfig }: {
               </div>
               <div className="flex items-center gap-1.5 flex-wrap">
                 <span className="text-xs text-muted-foreground">{fmt(p.valor)}</span>
-                <ProbabilidadeBadge p={p.probabilidadeCompra} explicacao={p.probabilidadeExplicacao} />
+                <ProbabilidadeBadge p={p.probabilidadeCompra} explicacao={p.probabilidadeExplicacao} nomeCliente={p.nomeCliente} />
                 {p.clienteNovo && (
                   <TooltipProvider>
                     <Tooltip>
@@ -519,7 +661,7 @@ function PropostaRow({ p, vendedor, onRefresh, showVendedor, faixasConfig }: {
                           ? `Elegível a parcelamento (mais de ${LIMIAR_PARCELAMENTO} compras no histórico)`
                           : `${p.qtdComprasCliente} compra${p.qtdComprasCliente === 1 ? "" : "s"} no histórico`}
                         <br />
-                        <span className="text-gray-400">Conta as O.S. válidas do histórico local (a partir de 2023), sem retrabalho, amostra, cortesia nem cancelada.</span>
+                        <span className="text-gray-400">Conta O.S. válidas do histórico local, sem retrabalho, amostra, cortesia nem cancelada; o total fica limitado às cotações conhecidas.</span>
                       </TooltipContent>
                     </Tooltip>
                   </TooltipProvider>
@@ -534,7 +676,7 @@ function PropostaRow({ p, vendedor, onRefresh, showVendedor, faixasConfig }: {
                       </TooltipTrigger>
                       <TooltipContent side="top" className="text-xs max-w-[220px]">
                         Taxa de conversão: {p.orcamentosFechados ?? 0} orçamento{(p.orcamentosFechados ?? 0) === 1 ? "" : "s"} fechado{(p.orcamentosFechados ?? 0) === 1 ? "" : "s"} em {p.totalCotacoes || 1} cotações registradas
-                        {p.orcamentosDesde ? ` desde ${p.orcamentosDesde}` : ""}. O número de compras pode ser maior porque as O.S. começam antes do histórico de orçamentos.
+                        {p.orcamentosDesde ? ` desde ${p.orcamentosDesde}` : ""}. O número de compras exibido é limitado às cotações conhecidas para este cliente.
                       </TooltipContent>
                     </Tooltip>
                   </TooltipProvider>
@@ -544,7 +686,7 @@ function PropostaRow({ p, vendedor, onRefresh, showVendedor, faixasConfig }: {
                     <Tooltip>
                       <TooltipTrigger asChild>
                         <span className={`inline-flex items-center px-1.5 py-0.5 rounded-full border text-[10px] cursor-default ${
-                          p.diasSemComprar > MESES_REATIVACAO_DIAS
+                          p.diasSemComprar >= MESES_REATIVACAO_DIAS
                             ? "font-bold bg-red-100 text-red-700 border-red-200"
                             : "text-gray-500 bg-gray-50 border-gray-200"
                         }`}>
@@ -552,8 +694,8 @@ function PropostaRow({ p, vendedor, onRefresh, showVendedor, faixasConfig }: {
                         </span>
                       </TooltipTrigger>
                       <TooltipContent side="top" className="text-xs max-w-[220px]">
-                        {p.diasSemComprar > MESES_REATIVACAO_DIAS
-                          ? `Mais de ${MESES_REATIVACAO_DIAS} dias sem comprar — se fechar, conta como cliente reativado.`
+                        {p.diasSemComprar >= MESES_REATIVACAO_DIAS
+                          ? "6 meses ou mais sem comprar — se fechar, conta como cliente reativado."
                           : "Dias desde a última compra registrada no histórico local."}
                       </TooltipContent>
                     </Tooltip>
@@ -585,6 +727,7 @@ function PropostaRow({ p, vendedor, onRefresh, showVendedor, faixasConfig }: {
               </button>
             </WhatsAppScriptsPopover>
           )}
+          <BotaoFollowupAutomatico p={p} />
         </TableCell>
 
         {/* Vendedor (quando "todos") */}
@@ -792,6 +935,10 @@ export default function CRM() {
   const mesAtual = now.getMonth() + 1;
   const anoAtual = now.getFullYear();
   const lastDay = new Date(anoAtual, mesAtual, 0).getDate();
+  const dataHoje = `${anoAtual}-${pad(mesAtual)}-${pad(now.getDate())}`;
+  const inicioUltimos10Dias = new Date(now);
+  inicioUltimos10Dias.setDate(now.getDate() - 9);
+  const dataInicioUltimos10Dias = `${inicioUltimos10Dias.getFullYear()}-${pad(inicioUltimos10Dias.getMonth() + 1)}-${pad(inicioUltimos10Dias.getDate())}`;
 
   // Vendedor: admin/gestor/master vê todos; vendedor comum vê apenas as suas
   const [vendedor, setVendedor] = useState("");
@@ -800,10 +947,11 @@ export default function CRM() {
       setVendedor(user.name ?? "");
     }
   }, [user, isAdmin]);
-  const [dataInicio, setDataInicio] = useState(`${anoAtual}-${pad(mesAtual)}-01`);
-  const [dataFim, setDataFim] = useState(`${anoAtual}-${pad(mesAtual)}-${pad(lastDay)}`);
+  const [dataInicio, setDataInicio] = useState(() => dataInicioUltimos10Dias);
+  const [dataFim, setDataFim] = useState(() => dataHoje);
   const [verHistorico, setVerHistorico] = useState(false);
   const [apenasNovos, setApenasNovos] = useState(false);
+  const [apenasSemCompra6Meses, setApenasSemCompra6Meses] = useState(false);
   const [apenasHoje, setApenasHoje] = useState(false);
   const [filtroProbabilidade, setFiltroProbabilidade] = useState<"todas" | "alta" | "media" | "baixa">("todas");
   const [apenasMS, setApenasMS] = useState(false);
@@ -811,7 +959,7 @@ export default function CRM() {
   const [filtroResposta, setFiltroResposta] = useState<string>("todos");
   const [filtroFaixa, setFiltroFaixa] = useState<string>("todas");
   const [abaAtiva, setAbaAtiva] = useState<string>("propostas");
-  // Busca padrão cobre 15 dias; ativar para incluir propostas abertas há mais tempo (raro)
+  // A consulta pode ampliar a janela de cache das propostas abertas para períodos antigos.
   const [buscarAntigas, setBuscarAntigas] = useState(false);
 
   // ─── Estados da aba Auditoria ────────────────────────────────────────────────
@@ -831,7 +979,6 @@ export default function CRM() {
     },
     { refetchOnWindowFocus: false, enabled: abaAtiva === "auditoria" }
   );
-
   const { data, isLoading, isError, error, refetch } = trpc.crm.getPropostas.useQuery(
     { vendedor: vendedor || undefined, preset: "personalizado", dataInicio, dataFim, buscarAntigas },
     // retry: 1 (em vez do padrão 3 do React Query) — consulta ao MubiSys pode ser lenta;
@@ -872,6 +1019,7 @@ export default function CRM() {
   const propostasAtivas = useMemo(() => {
     let list = propostas.filter(p => !p.meta2Contatos);
     if (apenasNovos) list = list.filter(p => p.clienteNovo);
+    if (apenasSemCompra6Meses) list = list.filter(isClienteReativacao);
     if (filtroResposta !== "todos") {
       if (filtroResposta === "sem_contato") {
         list = list.filter(p => p.qtdContatos === 0);
@@ -914,7 +1062,7 @@ export default function CRM() {
     if (apenasMS) list = list.filter(p => p.estadoCliente === "MS");
     if (ordenarPorProbabilidade) list = [...list].sort((a, b) => (b.probabilidadeCompra ?? -1) - (a.probabilidadeCompra ?? -1));
     return list;
-  }, [propostas, apenasNovos, apenasHoje, filtroResposta, filtroFaixa, filtroProbabilidade, apenasMS, ordenarPorProbabilidade, faixasConfig]);
+  }, [propostas, apenasNovos, apenasSemCompra6Meses, apenasHoje, filtroResposta, filtroFaixa, filtroProbabilidade, apenasMS, ordenarPorProbabilidade, faixasConfig]);
 
   const propostasHistorico = useMemo(() => propostas.filter(p => p.meta2Contatos), [propostas]);
   const showVendedor = !vendedor;
@@ -979,23 +1127,30 @@ export default function CRM() {
             )}
           </p>
         </div>
-        {isAdmin ? (
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => sincronizarPropostasRecentes.mutate()}
-            disabled={sincronizarPropostasRecentes.isPending}
-            className="gap-2 self-start sm:self-auto"
-          >
-            {sincronizarPropostasRecentes.isPending
-              ? <><Spinner /> Sincronizando...</>
-              : <><RefreshCw className="w-4 h-4" /> Sincronizar recentes</>}
+        <div className="flex flex-wrap items-center gap-2 self-start sm:self-auto">
+          <Button asChild variant="outline" size="sm" className="gap-2">
+            <Link href="/comercial/crm/scripts">
+              <MessageSquareText className="w-4 h-4" /> Scripts de vendas
+            </Link>
           </Button>
-        ) : (
-          <Button variant="outline" size="sm" onClick={() => refetch()} className="gap-2 self-start sm:self-auto">
-            <RefreshCw className="w-4 h-4" /> Atualizar
-          </Button>
-        )}
+          {isAdmin ? (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => sincronizarPropostasRecentes.mutate()}
+              disabled={sincronizarPropostasRecentes.isPending}
+              className="gap-2"
+            >
+              {sincronizarPropostasRecentes.isPending
+                ? <><Spinner /> Sincronizando...</>
+                : <><RefreshCw className="w-4 h-4" /> Sincronizar recentes</>}
+            </Button>
+          ) : (
+            <Button variant="outline" size="sm" onClick={() => refetch()} className="gap-2">
+              <RefreshCw className="w-4 h-4" /> Atualizar
+            </Button>
+          )}
+        </div>
       </div>
 
       {/* Biblioteca de mídias: arsenal de imagens para copiar e colar nas conversas */}
@@ -1105,8 +1260,9 @@ export default function CRM() {
         </div>
         <div className="flex flex-wrap gap-2">
           {[
-            { label: "Hoje", di: `${anoAtual}-${pad(mesAtual)}-${pad(now.getDate())}`, df: `${anoAtual}-${pad(mesAtual)}-${pad(now.getDate())}` },
+            { label: "Hoje", di: dataHoje, df: dataHoje },
             { label: "7 dias", di: (() => { const d = new Date(now); d.setDate(now.getDate()-6); return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`; })(), df: `${anoAtual}-${pad(mesAtual)}-${pad(now.getDate())}` },
+            { label: "10 dias", di: dataInicioUltimos10Dias, df: dataHoje },
             { label: "15 dias", di: (() => { const d = new Date(now); d.setDate(now.getDate()-14); return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`; })(), df: `${anoAtual}-${pad(mesAtual)}-${pad(now.getDate())}` },
             { label: "Este mês", di: `${anoAtual}-${pad(mesAtual)}-01`, df: `${anoAtual}-${pad(mesAtual)}-${pad(lastDay)}` },
           ].map(p => (
@@ -1138,9 +1294,23 @@ export default function CRM() {
           );
         })()}
         {/* Filtro clientes novos */}
-        <button onClick={() => setApenasNovos(!apenasNovos)}
+        <button
+          onClick={() => {
+            if (!apenasNovos) setApenasSemCompra6Meses(false);
+            setApenasNovos(!apenasNovos);
+          }}
           className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-full border transition-all ${apenasNovos ? "bg-amber-400 text-white border-amber-400 shadow-sm" : "bg-white text-gray-600 border-gray-300 hover:border-amber-400 hover:text-amber-600"}`}>
           <Star className="w-3.5 h-3.5" /> {apenasNovos ? "Apenas novos ✕" : "Clientes novos"}
+        </button>
+        {/* Filtro clientes sem compra há 6 meses ou mais */}
+        <button
+          onClick={() => {
+            if (!apenasSemCompra6Meses) setApenasNovos(false);
+            setApenasSemCompra6Meses(!apenasSemCompra6Meses);
+          }}
+          className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-full border transition-all ${apenasSemCompra6Meses ? "bg-red-500 text-white border-red-500 shadow-sm" : "bg-white text-gray-600 border-gray-300 hover:border-red-400 hover:text-red-600"}`}>
+          <Star className={`w-3.5 h-3.5 ${apenasSemCompra6Meses ? "fill-white" : "text-red-500 fill-red-200"}`} />
+          {apenasSemCompra6Meses ? "Apenas 6+ meses ✕" : "Sem compra 6+ meses"}
         </button>
         {/* Filtro por faixa */}
         <div className="flex flex-col gap-1">
@@ -1155,7 +1325,7 @@ export default function CRM() {
             </SelectContent>
           </Select>
         </div>
-        {/* Buscar propostas mais antigas (raro: proposta aberta há mais de 15 dias) */}
+        {/* Buscar propostas abertas em uma janela maior para períodos antigos */}
         <div className="flex flex-col gap-1">
           <label className="text-xs font-semibold text-transparent select-none">.</label>
           <TooltipProvider>
@@ -1171,7 +1341,7 @@ export default function CRM() {
                 </button>
               </TooltipTrigger>
               <TooltipContent side="top" className="text-xs max-w-[220px]">
-                Por padrão, o CRM busca propostas abertas nos últimos 15 dias. Ative para incluir até 30 dias — a busca pode demorar mais.
+                O período inicial mostra os últimos 10 dias. Para consultar propostas abertas mais antigas, selecione um período anterior e ative esta opção (até 30 dias; a busca pode demorar mais).
               </TooltipContent>
             </Tooltip>
           </TooltipProvider>

@@ -1,11 +1,22 @@
 import { z } from "zod";
-import { eq, and } from "drizzle-orm";
+import { eq, and, gte, lte, lt, or, inArray } from "drizzle-orm";
 import { router, publicProcedure, protectedProcedure } from "../_core/trpc";
 import { getDb, insertAuditLogMarketingConfig } from "../db/db";
-import { marketingConfig, custoMarketing, historicoOs, financeiroMensal, dreMensal } from "../../drizzle/schema";
+import {
+  marketingConfig, custoMarketing, historicoOs, historicoOrcamentos, financeiroMensal, dreMensal,
+  mubisysApiCache, clientesPerfilCnpj,
+  campanhasWhatsappContatosHistorico, campanhasWhatsappDisparoItens,
+  campanhasWhatsappDisparos, campanhasWhatsappCadenciaEnvios,
+} from "../../drizzle/schema";
 import { isOsNormalDb, normalizeEmpresaKey } from "./performanceComercial";
 import { calcularRadarMargens } from "./financeiro";
 import { classificarAno, agregarMes, calcularReativacaoAnual } from "../services/marketingFinanceiroClientes";
+import { carregarTelefonesClientes, completarTelefonesPeloCadastro } from "../sync/clientes-mubisys";
+import { parseDataFlexivel } from "../services/inteligenciaClientes";
+import { dataLocalParaIso } from "../services/campanhasWhatsapp";
+import { resumirEstadosCampanhas } from "../services/marketingFinanceiroCampanhas";
+import { resumirEstadosNovos } from "../services/marketingFinanceiroEstados";
+import { hojeCampoGrande, normalizarTelefone } from "../../shared/campanhas-whatsapp";
 import {
   cacPonderado, custoReativacaoPonderado, calcularResultadoGrupo, calcularResultadoConsolidado,
   mediana, participacaoTopN, conciliar,
@@ -106,6 +117,37 @@ function configParaLinhaBanco(input: z.infer<typeof configInputSchema>) {
 // ─── Helpers de conversão numérica (decimal do banco -> number|null) ─────────
 const toNum = (v: string | number | null | undefined): number | null => v == null ? null : Number(v);
 
+const UFS_MARKETING = new Set([
+  "AC", "AL", "AP", "AM", "BA", "CE", "DF", "ES", "GO", "MA", "MT", "MS", "MG",
+  "PA", "PB", "PR", "PE", "PI", "RJ", "RN", "RS", "RO", "RR", "SC", "SP", "SE", "TO",
+]);
+
+function ufMarketing(valor: unknown): string | null {
+  const uf = String(valor ?? "").trim().toUpperCase();
+  return UFS_MARKETING.has(uf) ? uf : null;
+}
+
+function estadoDoOrcamentoApi(orcamento: any): string | null {
+  const cliente = typeof orcamento?.cliente === "object" && orcamento.cliente !== null ? orcamento.cliente : null;
+  const enderecosRaw = orcamento?.cliente_endereco ?? cliente?.cliente_endereco ?? cliente?.enderecos ?? cliente?.endereco;
+  const enderecos = Array.isArray(enderecosRaw) ? enderecosRaw : enderecosRaw ? [enderecosRaw] : [];
+  for (const endereco of enderecos) {
+    const uf = ufMarketing(endereco?.estado ?? endereco?.uf);
+    if (uf) return uf;
+  }
+  return null;
+}
+
+function dataOsMarketing(data: string | null | undefined, mes: number, ano: number): Date {
+  return parseDataFlexivel(data ?? null) ?? new Date(Date.UTC(ano, mes - 1, 1));
+}
+
+function dataIsoEnvio(v: unknown): string | null {
+  if (v instanceof Date) return hojeCampoGrande(v);
+  const data = String(v ?? "").slice(0, 10);
+  return /^\d{4}-\d{2}-\d{2}$/.test(data) ? data : null;
+}
+
 /** Situação "Cancelada" de uma O.S. normal (mesmo critério de tipo de
  * isOsNormalDb, mas SEM excluir status=cancelada — é exatamente o
  * complemento, para a linha informativa de cancelamentos). */
@@ -194,7 +236,7 @@ export const marketingFinanceiroRouter = router({
         meses.push({
           mes, ano: input.ano, mesParcial,
           investimentoAquisicao, investimentoReativacao,
-          investimentoTotal: investimentoAquisicao == null && investimentoReativacao == null ? null : (investimentoAquisicao ?? 0) + (investimentoReativacao ?? 0),
+          investimentoTotal: investimentoAquisicao == null || investimentoReativacao == null ? null : investimentoAquisicao + investimentoReativacao,
           novo: { ...resumo.porCategoria.novo, ...resultadoNovo, cacPonderado: cacPonderado(investimentoAquisicao, resumo.porCategoria.novo.qtdClientesUnicos) },
           recorrenteAtivo: resumo.porCategoria.recorrenteAtivo,
           reativado: { ...resumo.porCategoria.reativado, ...resultadoReativado, custoReativacaoPonderado: custoReativacaoPonderado(investimentoReativacao, resumo.porCategoria.reativado.qtdClientesUnicos) },
@@ -206,6 +248,239 @@ export const marketingFinanceiroRouter = router({
 
       const reativacaoAnual = calcularReativacaoAnual(classificadas);
       return { meses, reativacaoAnual, config, origem: "local" as const };
+    }),
+
+  /** Origem estadual dos clientes de primeira compra e das propostas emitidas
+   * antes de uma compra anterior, no mesmo ano do relatório de Marketing. */
+  getDistribuicaoEstadosNovos: publicProcedure
+    .input(z.object({ ano: z.number().int().min(2020).max(2100) }))
+    .query(async ({ input }) => {
+      const db = await getDb();
+      if (!db) return resumirEstadosNovos([], []);
+
+      const config = await buscarConfig(db);
+      const agora = new Date();
+      const mesLimite = input.ano === agora.getFullYear() ? agora.getMonth() + 1 : input.ano < agora.getFullYear() ? 12 : 0;
+      const [classificadas, osHistoricas, propostasHistoricas, cachesMubiSys, perfisCnpj] = await Promise.all([
+        classificarAno(db, input.ano, config.mesesInatividadeReativacao),
+        db.select({
+          empresa: historicoOs.empresa,
+          clienteId: historicoOs.clienteId,
+          estado: historicoOs.estado,
+          dataAprovacao: historicoOs.dataAprovacao,
+          mes: historicoOs.mes,
+          ano: historicoOs.ano,
+          tipoOs: historicoOs.tipoOs,
+          status: historicoOs.status,
+        }).from(historicoOs),
+        db.select({
+          id: historicoOrcamentos.id,
+          orcNumero: historicoOrcamentos.orcNumero,
+          empresa: historicoOrcamentos.empresa,
+          clienteId: historicoOrcamentos.clienteId,
+          dataCadastro: historicoOrcamentos.dataCadastro,
+          mes: historicoOrcamentos.mes,
+          ano: historicoOrcamentos.ano,
+          status: historicoOrcamentos.status,
+        }).from(historicoOrcamentos).where(eq(historicoOrcamentos.ano, input.ano)),
+        db.select({ cacheKey: mubisysApiCache.cacheKey, mes: mubisysApiCache.mes, orcData: mubisysApiCache.orcData })
+          .from(mubisysApiCache).where(eq(mubisysApiCache.ano, input.ano)),
+        db.select({ empresaKey: clientesPerfilCnpj.empresaKey, uf: clientesPerfilCnpj.uf }).from(clientesPerfilCnpj),
+      ]);
+
+      const compradorPrimeiraCompra = new Map<string, { estado: string | null; data: Date }>();
+      for (const linha of classificadas) {
+        if (linha.categoria !== "novo" || !linha.clienteKey) continue;
+        const data = dataOsMarketing(linha.dataAprovacao, linha.mes, linha.ano);
+        const estado = ufMarketing(linha.estado);
+        const atual = compradorPrimeiraCompra.get(linha.clienteKey);
+        if (!atual || (estado && (!atual.estado || data < atual.data)) || (!atual.estado && data < atual.data)) {
+          compradorPrimeiraCompra.set(linha.clienteKey, { estado: estado ?? atual?.estado ?? null, data });
+        }
+      }
+
+      const primeiraCompraPorCliente = new Map<string, Date>();
+      const estadoHistoricoPorCliente = new Map<string, { estado: string; data: Date }>();
+      const estadoHistoricoPorId = new Map<number, { estado: string; data: Date }>();
+      const guardarMaisRecente = (mapa: Map<string, { estado: string; data: Date }>, chave: string, estado: string | null, data: Date) => {
+        if (!estado) return;
+        const atual = mapa.get(chave);
+        if (!atual || data > atual.data) mapa.set(chave, { estado, data });
+      };
+      const guardarEstadoClienteId = (clienteId: number | null, estado: string | null, data: Date) => {
+        if (clienteId == null || !estado) return;
+        const atual = estadoHistoricoPorId.get(clienteId);
+        if (!atual || data > atual.data) estadoHistoricoPorId.set(clienteId, { estado, data });
+      };
+
+      for (const os of osHistoricas) {
+        if (!isOsNormalDb(os)) continue;
+        const empresaKey = normalizeEmpresaKey(os.empresa ?? "");
+        if (!empresaKey) continue;
+        const data = dataOsMarketing(os.dataAprovacao, os.mes, os.ano);
+        const primeira = primeiraCompraPorCliente.get(empresaKey);
+        if (!primeira || data < primeira) primeiraCompraPorCliente.set(empresaKey, data);
+        const estado = ufMarketing(os.estado);
+        guardarMaisRecente(estadoHistoricoPorCliente, empresaKey, estado, data);
+        guardarEstadoClienteId(os.clienteId, estado, data);
+      }
+      // Inclui OS do mês corrente ainda vindas ao vivo do MubiSys, que podem
+      // não ter entrado no histórico local até a próxima sincronização.
+      for (const linha of classificadas) {
+        if (!linha.clienteKey) continue;
+        const data = dataOsMarketing(linha.dataAprovacao, linha.mes, linha.ano);
+        const primeira = primeiraCompraPorCliente.get(linha.clienteKey);
+        if (!primeira || data < primeira) primeiraCompraPorCliente.set(linha.clienteKey, data);
+      }
+
+      const estadoCachePorOrcamento = new Map<string, { estado: string; id: number }>();
+      const estadoCachePorClienteId = new Map<number, { estado: string; id: number }>();
+      for (const cache of cachesMubiSys) {
+        if (cache.cacheKey !== `raw_${cache.mes}_${input.ano}` || !cache.orcData) continue;
+        let orcamentosApi: any[];
+        try {
+          const parsed: unknown = JSON.parse(cache.orcData);
+          if (!Array.isArray(parsed)) continue;
+          orcamentosApi = parsed;
+        } catch {
+          continue;
+        }
+        for (const orc of orcamentosApi) {
+          const estado = estadoDoOrcamentoApi(orc);
+          if (!estado) continue;
+          const id = Number(orc?.id) || 0;
+          const numero = String(orc?.sequencial_orcamento ?? orc?.id ?? "").trim();
+          const clienteId = Number(orc?.cliente_id ?? orc?.cliente?.id) || null;
+          if (numero) {
+            const atual = estadoCachePorOrcamento.get(numero);
+            if (!atual || id >= atual.id) estadoCachePorOrcamento.set(numero, { estado, id });
+          }
+          if (clienteId != null) {
+            const atual = estadoCachePorClienteId.get(clienteId);
+            if (!atual || id >= atual.id) estadoCachePorClienteId.set(clienteId, { estado, id });
+          }
+        }
+      }
+
+      const estadoPerfilPorCliente = new Map<string, string>();
+      for (const perfil of perfisCnpj) {
+        const estado = ufMarketing(perfil.uf);
+        if (estado) estadoPerfilPorCliente.set(perfil.empresaKey, estado);
+      }
+
+      const propostasNovas: Array<{ id: number; orcNumero: string | null; clienteKey: string; estado: string | null }> = [];
+      const statusExcluidos = new Set(["cancelada", "cancelado", "excluída", "excluído", "excluida", "excluido"]);
+      for (const proposta of propostasHistoricas) {
+        if (proposta.mes > mesLimite || statusExcluidos.has((proposta.status ?? "").trim().toLowerCase())) continue;
+        const clienteKey = normalizeEmpresaKey(proposta.empresa ?? "");
+        if (!clienteKey) continue;
+        const primeiraCompra = primeiraCompraPorCliente.get(clienteKey);
+        const dataProposta = parseDataFlexivel(proposta.dataCadastro)
+          ?? new Date(Date.UTC(proposta.ano, proposta.mes - 1, 1));
+        if (primeiraCompra && primeiraCompra < dataProposta) continue;
+
+        const numero = proposta.orcNumero?.trim() ?? "";
+        const estado = (numero ? estadoCachePorOrcamento.get(numero)?.estado : null)
+          ?? (proposta.clienteId != null ? estadoCachePorClienteId.get(proposta.clienteId)?.estado : null)
+          ?? (proposta.clienteId != null ? estadoHistoricoPorId.get(proposta.clienteId)?.estado : null)
+          ?? estadoHistoricoPorCliente.get(clienteKey)?.estado
+          ?? estadoPerfilPorCliente.get(clienteKey)
+          ?? null;
+        propostasNovas.push({ id: proposta.id, orcNumero: proposta.orcNumero, clienteKey, estado });
+      }
+
+      return resumirEstadosNovos(
+        [...compradorPrimeiraCompra.entries()].map(([clienteKey, dados]) => ({ clienteKey, estado: dados.estado })),
+        propostasNovas,
+      );
+    }),
+
+  /** Top 3 UFs por receita de O.S. atribuída a disparos de campanhas WhatsApp
+   * no ano. Mantém a janela de 30 dias e atribui cada venda a um único último
+   * contato elegível para não duplicar o mesmo pedido entre campanhas. */
+  rankingEstadosCampanhas: publicProcedure
+    .input(z.object({ ano: z.number().int().min(2020).max(2100) }))
+    .query(async ({ input }) => {
+      const db = await getDb();
+      if (!db) return resumirEstadosCampanhas([], []);
+
+      const inicioJanela = new Date(Date.UTC(input.ano, 0, 1));
+      inicioJanela.setUTCDate(inicioJanela.getUTCDate() - 30);
+      const inicioIso = inicioJanela.toISOString().slice(0, 10);
+      const fimIso = `${input.ano}-12-31`;
+      const inicioTimestamp = new Date(`${inicioIso}T00:00:00.000Z`);
+      const fimTimestamp = new Date(Date.UTC(input.ano + 1, 0, 2));
+
+      const [historicoEnvios, itensDisparados, enviosCadencia, osRows] = await Promise.all([
+        db.select({ disparoId: campanhasWhatsappContatosHistorico.disparoId, telefone: campanhasWhatsappContatosHistorico.telefone, dataEnvio: campanhasWhatsappContatosHistorico.ultimoEnvioEm })
+          .from(campanhasWhatsappContatosHistorico)
+          .where(and(gte(campanhasWhatsappContatosHistorico.ultimoEnvioEm, inicioIso), lte(campanhasWhatsappContatosHistorico.ultimoEnvioEm, fimIso))),
+        db.select({ disparoId: campanhasWhatsappDisparoItens.disparoId, telefone: campanhasWhatsappDisparoItens.telefone, dataEnvio: campanhasWhatsappDisparos.enviadoEm, status: campanhasWhatsappDisparoItens.status })
+          .from(campanhasWhatsappDisparoItens)
+          .innerJoin(campanhasWhatsappDisparos, eq(campanhasWhatsappDisparoItens.disparoId, campanhasWhatsappDisparos.id))
+          .where(and(gte(campanhasWhatsappDisparos.enviadoEm, inicioIso), lte(campanhasWhatsappDisparos.enviadoEm, fimIso))),
+        db.select({ telefone: campanhasWhatsappCadenciaEnvios.telefoneE164, status: campanhasWhatsappCadenciaEnvios.status, aceitoEm: campanhasWhatsappCadenciaEnvios.aceitoEm, entregueEm: campanhasWhatsappCadenciaEnvios.entregueEm })
+          .from(campanhasWhatsappCadenciaEnvios)
+          .where(and(
+            inArray(campanhasWhatsappCadenciaEnvios.status, ["aceito", "entregue"]),
+            or(
+              and(gte(campanhasWhatsappCadenciaEnvios.aceitoEm, inicioTimestamp), lt(campanhasWhatsappCadenciaEnvios.aceitoEm, fimTimestamp)),
+              and(gte(campanhasWhatsappCadenciaEnvios.entregueEm, inicioTimestamp), lt(campanhasWhatsappCadenciaEnvios.entregueEm, fimTimestamp)),
+            ),
+          )),
+        db.select({
+          osNumero: historicoOs.osNumero,
+          empresa: historicoOs.empresa,
+          telefone: historicoOs.telefone,
+          clienteId: historicoOs.clienteId,
+          estado: historicoOs.estado,
+          dataAprovacao: historicoOs.dataAprovacao,
+          dataFaturamento: historicoOs.dataFaturamento,
+          valorOs: historicoOs.valorOs,
+          valorTotal: historicoOs.valorTotal,
+          tipoOs: historicoOs.tipoOs,
+          status: historicoOs.status,
+        }).from(historicoOs).where(eq(historicoOs.ano, input.ano)),
+      ]);
+
+      const itensFalhos = new Set(itensDisparados.flatMap(item => {
+        if (!item.status || !/FAIL|ERROR|REJECT|UNDELIVER|CANCEL/i.test(item.status)) return [];
+        const telefone = normalizarTelefone(item.telefone);
+        return telefone ? [`${item.disparoId}|${telefone}`] : [];
+      }));
+      const envios = historicoEnvios.flatMap(r => {
+        const telefone = normalizarTelefone(r.telefone);
+        if (r.disparoId != null && telefone && itensFalhos.has(`${r.disparoId}|${telefone}`)) return [];
+        const dataEnvio = dataIsoEnvio(r.dataEnvio);
+        return dataEnvio ? [{ telefone: r.telefone, dataEnvio }] : [];
+      });
+      for (const item of itensDisparados) {
+        if (item.status && /FAIL|ERROR|REJECT|UNDELIVER|CANCEL/i.test(item.status)) continue;
+        const dataEnvio = dataIsoEnvio(item.dataEnvio);
+        if (dataEnvio) envios.push({ telefone: item.telefone, dataEnvio });
+      }
+      for (const envio of enviosCadencia) {
+        const quando = envio.aceitoEm ?? envio.entregueEm;
+        if (quando) envios.push({ telefone: envio.telefone, dataEnvio: hojeCampoGrande(quando) });
+      }
+
+      completarTelefonesPeloCadastro(osRows, await carregarTelefonesClientes());
+      const vendas = osRows.flatMap(os => {
+        if (!isOsNormalDb(os)) return [];
+        const dtAprovacao = parseDataFlexivel(os.dataAprovacao);
+        const dtFaturamento = parseDataFlexivel(os.dataFaturamento);
+        const dataCompra = dtAprovacao ? dataLocalParaIso(dtAprovacao) : dtFaturamento ? dataLocalParaIso(dtFaturamento) : null;
+        if (!dataCompra || dataCompra.slice(0, 4) !== String(input.ano)) return [];
+        return [{
+          osNumero: os.osNumero,
+          telefone: os.telefone,
+          estado: os.estado,
+          dataCompra,
+          valor: Number(os.valorOs || os.valorTotal || 0),
+        }];
+      });
+
+      return resumirEstadosCampanhas(vendas, envios, 30);
     }),
 
   // ─── Opções de filtro (vendedor/cidade disponíveis no ano) ─────────────────

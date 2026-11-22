@@ -24,6 +24,7 @@
 import type { Express, Request, Response } from "express";
 import { z } from "zod";
 import { exigirChaveApi } from "./campanhas-whatsapp-api";
+import { exigirChaveWebhookWts } from "./campanhas-whatsapp-webhook-auth";
 import {
   consolidarBuffersVencidos,
   registrarMensagemInbound,
@@ -253,7 +254,7 @@ export function registrarRotasCampanhasWhatsappInbound(app: Express) {
    * seguro reenviar mensagens que já tenham sido gravadas antes de uma falha parcial. */
   app.post(
     "/api/v1/campaigns/whatsapp-inbound",
-    exigirChaveApi,
+    exigirChaveWebhookWts,
     async (req: Request, res: Response) => {
       try {
         const payload = whatsappInboundWebhookSchema.parse(req.body);

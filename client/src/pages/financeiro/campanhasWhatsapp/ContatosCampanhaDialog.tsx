@@ -12,7 +12,7 @@ import CompletarTelefones from "./CompletarTelefones";
 import PeriodoApuracao from "./PeriodoApuracao";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import {
-  MAX_DISPARO_WTS, formatarTelefone, hojeCampoGrande,
+  MAX_DISPARO_WTS, formatarDataBr, formatarTelefone, hojeCampoGrande, obterJanelaPedidosNps,
   estimarTempoDisparoSegundos, formatarSegundos,
 } from "@shared/campanhas-whatsapp";
 import { rotuloMotivoInvalido, slugArquivo, type CampanhaLinha } from "./comuns";
@@ -38,6 +38,8 @@ const MAX_LISTA_TELA = 500;
 export default function ContatosCampanhaDialog({ campanha, onClose }: Props) {
   const [aba, setAba] = useState<"aprovados" | "ignorados" | "bloqueados" | "semtelefone" | "invalidos">("aprovados");
   const hoje = hojeCampoGrande();
+  const ehNps = campanha?.categoria === "nps";
+  const janelaNps = ehNps ? obterJanelaPedidosNps(hoje) : null;
   const utils = trpc.useUtils();
 
   // Período gravado na campanha (atualizado localmente ao fixar, pois `campanha` vem de uma lista já carregada).
@@ -62,11 +64,12 @@ export default function ContatosCampanhaDialog({ campanha, onClose }: Props) {
   }, [campanha?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const periodo = { inicio: inicio || null, fim: fimAteHoje ? null : fim || null };
+  const periodoLista = ehNps ? undefined : periodo;
   const periodoInvalido = !!periodo.inicio && !!periodo.fim && periodo.inicio > periodo.fim;
   const fixado = (periodo.inicio ?? null) === salvo.inicio && (periodo.fim ?? null) === salvo.fim;
 
   const { data, isFetching, isError, error } = trpc.campanhasWhatsapp.gerarListaDaCampanha.useQuery(
-    { campanhaId: campanha?.id ?? 0, periodo }, { enabled: !!campanha && !periodoInvalido, retry: false },
+    { campanhaId: campanha?.id ?? 0, ...(periodoLista ? { periodo: periodoLista } : {}) }, { enabled: !!campanha && (ehNps || !periodoInvalido), retry: false },
   );
 
   // Busca OS e orçamentos recentes no MubiSys e recalcula: quem acabou de comprar sai de "inativos", etc.
@@ -127,12 +130,12 @@ export default function ContatosCampanhaDialog({ campanha, onClose }: Props) {
   const confirmarEnvioWts = () => {
     if (!campanha || !data || !confirmandoWts) return;
     if (confirmandoWts === "todos") {
-      enviarWts.mutate({ campanhaId: campanha.id, periodo });
+      enviarWts.mutate({ campanhaId: campanha.id, ...(periodoLista ? { periodo: periodoLista } : {}) });
       return;
     }
     const escolhidos = data.aprovados.filter(contato => selecionadosWts.has(contato.telefone));
     if (escolhidos.length === 0) return;
-    enviarWts.mutate({ campanhaId: campanha.id, periodo, contatos: escolhidos });
+    enviarWts.mutate({ campanhaId: campanha.id, ...(periodoLista ? { periodo: periodoLista } : {}), contatos: escolhidos });
   };
 
   // Só campanhas com ID de template cadastrado disparam pelo sistema (pós-venda por gatilho segue manual).
@@ -200,6 +203,13 @@ export default function ContatosCampanhaDialog({ campanha, onClose }: Props) {
           <DialogDescription>{campanha?.nome} — audiência resolvida pelas fontes de dados vinculadas na data de referência abaixo</DialogDescription>
         </DialogHeader>
 
+        {ehNps ? (
+          <div className="space-y-1.5 rounded-lg border border-emerald-200 bg-emerald-50/60 p-3">
+            <div className="flex items-center gap-1.5 text-sm font-medium text-emerald-950"><CalendarRange size={14} className="text-emerald-700" /> Janela fixa de pedidos do NPS</div>
+            <p className="text-sm font-semibold text-emerald-900">{formatarDataBr(janelaNps!.inicio)} a {formatarDataBr(janelaNps!.fim)}</p>
+            <p className="text-[11px] text-emerald-900/80">Data de aprovação do pedido, status explicitamente ENTREGUE e uma mensagem por cliente. A quarentena é ignorada; a lista “Não quer receber” continua valendo.</p>
+          </div>
+        ) : (
         <div className="space-y-2 rounded-lg border p-3">
           <div className="flex items-center gap-1.5 text-sm font-medium"><CalendarRange size={14} className="text-blue-600" /> Período de apuração (data de entrada no grupo)</div>
           <PeriodoApuracao id="contatos" inicio={inicio} onInicio={setInicio} fimAutomatico={fimAteHoje}
@@ -223,6 +233,7 @@ export default function ContatosCampanhaDialog({ campanha, onClose }: Props) {
             "Primeira compra" sem data inicial considera os últimos 60 dias.
           </p>
         </div>
+        )}
 
         <div className="flex flex-wrap items-center gap-2 text-[11px] text-muted-foreground">
           <Button size="sm" variant="outline" className="gap-1.5" disabled={atualizarErp.isPending} onClick={() => atualizarErp.mutate()}>
@@ -260,7 +271,7 @@ export default function ContatosCampanhaDialog({ campanha, onClose }: Props) {
                 Prontos para envio ({fmtNum(data.aprovados.length)})
               </Button>
               <Button size="sm" variant={aba === "ignorados" ? "default" : "outline"} onClick={() => setAba("ignorados")}>
-                Em quarentena ({fmtNum(data.ignoradosQuarentenaGlobal.length + data.ignoradosCadenciaCampanha.length)})
+                {ehNps ? "Em cadência" : "Em quarentena / cadência"} ({fmtNum(data.ignoradosQuarentenaGlobal.length + data.ignoradosCadenciaCampanha.length)})
               </Button>
               <Button size="sm" variant={aba === "bloqueados" ? "default" : "outline"} onClick={() => setAba("bloqueados")}>
                 Não querem receber ({fmtNum(data.ignoradosBloqueados.length)})
@@ -356,8 +367,8 @@ export default function ContatosCampanhaDialog({ campanha, onClose }: Props) {
                   <div className="text-xs text-slate-700">
                     {fmtNum(resultadoWts.enfileirados)} de {fmtNum(resultadoWts.totalSelecionado)} aceitos para processamento pela WTS.Chat.
                     {resultadoWts.erroRegistro
-                      ? <span className="block text-red-700">As mensagens saíram, mas o disparo não foi registrado ({resultadoWts.erroRegistro}). Registre-o à mão para a quarentena valer.</span>
-                      : resultadoWts.enfileirados > 0 && <span className="block text-emerald-700">Disparo registrado: cadência e quarentena já atualizadas.</span>}
+                      ? <span className="block text-red-700">As mensagens saíram, mas o disparo não foi registrado ({resultadoWts.erroRegistro}). {ehNps ? "Registre-o à mão para atualizar a cadência desta campanha." : "Registre-o à mão para a quarentena valer."}</span>
+                      : resultadoWts.enfileirados > 0 && <span className="block text-emerald-700">{ehNps ? "Disparo registrado; a quarentena global não foi alterada." : "Disparo registrado: cadência e quarentena já atualizadas."}</span>}
                     {resultadoWts.restantes > 0 && (
                       <span className="block">Ainda há {fmtNum(resultadoWts.restantes)} contato(s) pronto(s): clique em Disparar de novo para continuar.</span>
                     )}

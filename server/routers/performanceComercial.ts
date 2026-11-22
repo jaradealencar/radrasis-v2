@@ -9,7 +9,7 @@ import { eq, and, desc, gte, lte, sql } from "drizzle-orm";
 import {
   construirBaseClientes, calcularVisaoGeral, analisarCliente, calcularCandidatosAcao,
   calcularFunilOrcamentos, calcularPrevisaoComercial, calcularRecompraNovosReativados, calcularTempoOrcamentoPedido,
-  calcularConversaoPorFaixaTicket, calcularFunilMensal,
+  calcularConversaoPorFaixaTicket, calcularEvolucaoConversaoPorFaixaTicket, calcularFunilMensal,
   montarContextoAssistenteClientes, PROMPT_ASSISTENTE_CLIENTES_V1, VERSAO_PROMPT_ASSISTENTE_CLIENTES,
   DICIONARIO_METRICAS, DIAS_COOLDOWN_ACAO_RESOLVIDA, VERSAO_REGRA_ATUAL,
   type AnaliseCliente,
@@ -27,7 +27,7 @@ import {
   calcularEconomia, calcularMarketing, calcularVendedores, calcularPipeline,
   calcularDistribuicoes, resumirFila, gerarRecomendacoes, resumirSinaisMercado,
 } from "../services/consultoriaMeta";
-import { construirMapaConversaoClientes, calcularProbabilidade, calcularTaxaConversaoCliente } from "../services/probabilidadeCompra";
+import { construirMapaConversaoClientes, calcularProbabilidade, calcularTaxaConversaoCliente, limitarComprasAOrcamentos } from "../services/probabilidadeCompra";
 import { isOsNormalDb } from "../utils/os-valida";
 import { perguntarSobreClientes } from "../integrations/anthropic-client";
 
@@ -3045,9 +3045,22 @@ export const performanceComercialRouter = router({
       return calcularConversaoPorFaixaTicket(rows as any, new Date());
     }),
 
-  /** Tempo entre orçamento aprovado e pedido fechado — aproximação por
-   * pareamento heurístico (ver aviso em calcularTempoOrcamentoPedido), usada
-   * para calibrar o prazo ideal de follow-up. */
+  /** Conversao mensal por faixa, agrupada pela data de emissao do orcamento. */
+  getEvolucaoConversaoPorFaixaTicket: publicProcedure
+    .input(z.object({ meses: z.number().int().min(6).max(36).default(12) }))
+    .query(async ({ input }) => {
+      const db = await getDb();
+      if (!db) throw new Error("DB indisponivel");
+      const rows = await db.select({
+        status: historicoOrcamentos.status,
+        total: historicoOrcamentos.total,
+        dataCadastro: historicoOrcamentos.dataCadastro,
+        validade: historicoOrcamentos.validade,
+      }).from(historicoOrcamentos);
+      return calcularEvolucaoConversaoPorFaixaTicket(rows as any, new Date(), input.meses);
+    }),
+
+  /** Tempo entre orcamento aprovado e fechamento da OS, por pareamento heuristico. */
   getTempoOrcamentoPedido: publicProcedure
     .query(async () => {
       const db = await getDb();
@@ -3664,8 +3677,8 @@ export const performanceComercialRouter = router({
         const orcsSet = chaveCliente ? cotacoesPorCliente.get(chaveCliente) : undefined;
         if (orcsSet && numero) orcsSet.add(numero);
         const conversao = chaveCliente ? mapaConversao?.porCliente.get(chaveCliente) : undefined;
-        const totalCompras = conversao?.qtdCompras ?? 0;
         const totalCotacoes = Math.max(conversao?.totalOrcamentos ?? 0, orcsSet ? orcsSet.size : 1);
+        const totalCompras = limitarComprasAOrcamentos(conversao?.qtdCompras ?? 0, totalCotacoes);
 
         // Conversão = orçamentos fechados ÷ orçamentos, os dois do histórico de orçamentos.
         const orcamentosFechados = Math.min(conversao?.orcamentosFechados ?? 0, totalCotacoes);

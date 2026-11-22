@@ -18,8 +18,10 @@ import GerenciarFontesPopover from "./GerenciarFontesPopover";
  */
 export default function FontesDadosPopover({
   campanhaId,
+  ehNps = false,
 }: {
   campanhaId: number;
+  ehNps?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const [selecionadas, setSelecionadas] = useState<Set<number>>(new Set());
@@ -47,7 +49,9 @@ export default function FontesDadosPopover({
     vincular.mutate({ campanhaId, fonteIds: [...nova] });
   };
 
-  const ativas = (fontes ?? []).filter(f => f.ativo);
+  const ativas = (fontes ?? []).filter(f =>
+    f.ativo && (ehNps || f.chave !== "nps_pedidos_entregues")
+  );
   const carregando = carregandoFontes || carregandoVinculadas;
 
   return (

@@ -57,6 +57,7 @@ import {
 } from "../../drizzle/schema";
 import { resumirDiffTabelaPrecos } from "../integrations/priceTableDiff";
 import { normalizarIdsTabelaPrecos } from "../integrations/priceTableIds";
+import { ajustarTabelaDePintura } from "../../shared/price-table-pintura";
 
 let _db: ReturnType<typeof createAppDatabase> | null = null;
 
@@ -930,18 +931,20 @@ export async function listPriceTableSections(
   const db = await getDb();
   if (!db) return [];
   if (page !== undefined) {
-    return db
+    const secoes = await db
       .select()
       .from(priceTableSections)
       .where(eq(priceTableSections.page, page))
       .orderBy(priceTableSections.page, priceTableSections.sectionOrder)
       .limit(200);
+    return secoes.map(secao => ajustarTabelaDePintura(secao));
   }
-  return db
+  const secoes = await db
     .select()
     .from(priceTableSections)
     .orderBy(priceTableSections.page, priceTableSections.sectionOrder)
     .limit(200);
+  return secoes.map(secao => ajustarTabelaDePintura(secao));
 }
 
 /** Registra automaticamente em Métricas cada alteração na Tabela de Preços,

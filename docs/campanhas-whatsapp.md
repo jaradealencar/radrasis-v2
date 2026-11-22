@@ -110,6 +110,15 @@ aprovação da OS (`DIAS_UTEIS_MINIMOS_POS_VENDA`).
 `atualizarDadosErp` (`sincronizarHistoricoRecente(1)`: mês atual e anterior, trava de 2 minutos), e a lista é
 recalculada — quem acabou de comprar sai de "inativos"; quem pediu para sair está na lista "Não quer receber".
 
+**Campanha NPS pós-entrega.** O botão "Campanha NPS" cria ou abre uma campanha única e sua fonte ERP fixa. Cada ciclo
+considera pedidos com data de aprovação do dia 16 do mês anterior ao dia 15 do mês atual (até hoje, quando o dia 15
+ainda não chegou). Só o status explícito `ENTREGUE` do MubiSys confirma elegibilidade; `CONCLUIDO`, faturamento e
+`data_entrega` não comprovam recebimento, pois essa data pode ser apenas uma previsão. A lista agrupa OS pelo ID do
+cliente e documento fiscal e usa a razão social como fallback quando faltam identificadores, sem unir empresas
+homônimas com IDs/documentos diferentes. A higienização final continua limitando um envio por telefone. A campanha
+tem cadência fixa de 30 dias, ignora a quarentena global e mantém o bloqueio de opt-out. A categoria e a fonte são
+protegidas contra uso em campanhas comuns; o template aprovado da WTS.Chat é configurado na campanha antes do envio.
+
 **Telefones: "sem telefone" x "inválido" e preenchimento do histórico** (03/10/2026). Investigado a pedido do usuário
 ("muitos inválidos, mas o cadastro tem ~98% de números"): o MubiSys tem telefone válido em 98–100% das OS (amostras de
 2023, 2024, 2025 e 2026), mas `historico_os.telefone` só estava preenchido nos meses em que o backfill rodou. A lista
@@ -403,6 +412,24 @@ O upload de lista (Registrar disparo e fontes por arquivo) aceita `.csv`, `.xlsx
   dia de cada mês (28/29 fev, 30 abr/jun/set/nov, 31 demais) ou para um dia fixo (ex: todo dia 5), sem depender
   de agendamento manual no Planner nem de aproximação imprecisa de 30 dias corridos.
 
+## Fila programada em lotes (migration `0141`)
+
+A opção é ativada por campanha em **Editar campanha**. Ela cria 4, 5 ou 6 datas a partir da data inicial e do intervalo em dias. Cada etapa continua exigindo template aprovado na versão de cadência configurada; o calendário fixo não liga o motor legado. Campanhas sem essa opção seguem usando o botão de disparo atual.
+
+Em cada data, **Revisar envio** recalcula a lista apta, respeitando fontes, bloqueios, opt-out e quarentena. A revisão mostra o canal, os templates e os totais por etapa de contato. Um único clique em **Iniciar envio** grava uma execução e os itens individuais em `campanhas_whatsapp_envios_programados` / `campanhas_whatsapp_fila_itens`; inscrições persistentes em `campanhas_whatsapp_fila_inscricoes` avançam somente pela ordem das etapas. Contatos novos começam na primeira etapa em que forem elegíveis.
+
+`server/services/campanhaFilaWorker.ts` processa um contato por invocação com a rotina segura `enviarTemplateWtsSeguro`, agrupando os itens em lotes de até 100. O worker usa o lease global do motor WTS e mantém pelo menos 3 segundos entre contatos; após concluir cada lote, aguarda os minutos configurados (5 por padrão). A continuação é publicada no QStash configurado para a rota existente `/api/v1/campaigns/process-cadence`, então o trabalho não depende da tela aberta. O intervalo em dias só calcula as datas do calendário.
+
+O status individual separa aceite da WTS.Chat de entrega confirmada. Pausar e retomar preserva os estados dos contatos aceitos, pendentes, falhos e incertos. Timeout, erro de rede e resposta 5xx ficam pausados para conciliação, sem reenvio automático; erros 401/403 também pausam e mostram o motivo. A migration é estrutural e deve ser aplicada pelo fluxo protegido usual; não foi aplicada ao banco durante esta implementação.
+
+## Follow-up automático por proposta do CRM (migrations `0143`/`0144`)
+
+A migration `0143` adiciona o tipo de fonte e a proteção contra repetir a inscrição da mesma proposta; `0144` cadastra a fonte **CRM - propostas abertas**. Ela é exclusiva para inscrições feitas pelo botão **Programar follow-up** em cada proposta e não importa a carteira inteira para a campanha. Configure uma campanha ativa com somente essa fonte, exatamente três IDs de templates aprovados e o motor legado de cadência habilitado. O worker continua usando WTS.Chat e QStash, sem depender de o CRM permanecer aberto.
+
+Ao programar uma proposta, o vendedor confirma o opt-in daquele cliente individualmente. A inscrição guarda o ID bruto da proposta e um snapshot dos três templates e das datas calculadas a partir das faixas que o CRM mostra (D+1–2, D+3–5 e D+6–10 por padrão). Como a tela usa segunda a sexta sem descontar feriados, o agendador segue o mesmo calendário; os envios são normalizados para a janela comercial de 08:30–17:30 em Campo Grande.
+
+Antes de cada envio, o worker verifica se a proposta continua aberta no cache recente do CRM, se não houve contato humano registrado depois da inscrição, se o telefone não pediu opt-out e se a campanha ainda está ativa. Resposta inbound pausa a cadência pelo mecanismo existente. Uma faixa vencida é ignorada, sem deslocar sua mensagem para fora da janela. O CRM mostra o estágio atual da inscrição.
+
 ## Script de seed das campanhas iniciais
 
 `scripts/seed-campanhas-whatsapp-iniciais.mjs` cria (idempotente, por nome) as campanhas pedidas pelo usuário em
@@ -417,6 +444,16 @@ do ambiente (`node scripts/seed-campanhas-whatsapp-iniciais.mjs`) — validado c
 revertido em seguida; para existir em produção precisa rodar de novo com a `DATABASE_URL` de produção (o
 agente não tem essa credencial) ou, mais simples, criar cada campanha pela própria tela.
 
+### Controles adicionais da fila (migration `0142`)
+
+O painel de acompanhamento detecta a transição de uma etapa em andamento para concluída e pausa por erro de autorização. Com permissão, envia notificação do navegador enquanto a aplicação permanece aberta em segundo plano; ao voltar ao sistema, o estado final continua visível no painel. A estimativa da revisão usa o intervalo de 3 segundos entre contatos e a pausa entre lotes, e informa que o provedor pode estender o prazo.
+
+Cada fila pode opcionalmente restringir envios a dias e horários definidos, no fuso de Cuiabá. A configuração inicia desativada para manter o comportamento atual. O worker ajusta o próximo contato para a janela permitida quando uma pausa, limitação do provedor ou intervalo atravessar o fim do horário. É permitido alterar pausa e janela após o calendário começar, sem mudar as datas das etapas.
+
+Erros `429` recebem backoff progressivo, respeitando o `Retry-After`, com cinco tentativas totais; depois disso o contato aparece como falha confirmada e pode ser reprocessado manualmente. Timeout, falha de rede e `5xx` permanecem incertos e pausam a fila para conciliação; o sistema não os reenviará automaticamente. Erros `401`/`403` pausam a fila. A ação de reprocessamento só opera em falhas confirmadas e bloqueia se houver resultado incerto.
+
+Um opt-out manual ou recebido no webhook grava o bloqueio global existente, encerra a inscrição na fila fixa e cancela os itens ainda pendentes, exibindo-os como cancelados. Um item cuja chamada ao provedor já esteja em andamento não pode ser cancelado remotamente; o worker consulta novamente o bloqueio imediatamente antes do envio.
+
 ## Testes
 
 `server/__tests__/campanhas-whatsapp.test.ts` (regras puras, incl. `filtrarPorCadenciaCampanha`, + autenticação/
@@ -424,7 +461,7 @@ validação dos webhooks), `server/__tests__/campanhas-whatsapp-db.test.ts` (ban
 modo webhook, gatilho, role, categorias, scripts, arquivos, Fontes de Dados de ponta a ponta, `duplicarCampanha`,
 Planner/agendamentos + `relatorioPeriodo`), `server/__tests__/fontes-erp-campanhas.test.ts` (as 9 resoluções ERP,
 puro, incl. teto de 24 meses em Inativos, Novos/Reativados do mês e Redução de volume) e
-`client/src/lib/listaContatos.test.ts` (leitura de CSV/XLSX).
+`client/src/lib/listaContatos.test.ts` (leitura de CSV/XLSX). `server/__tests__/campanhas-whatsapp-fila.test.ts` cobre seis datas em intervalo de 30 dias, 1.700 contatos em 17 lotes, pausa lógica após três lotes com retomada no quarto sem recontar aceitos e a diferença entre aceite e entrega.
 
 ## Telefones pelo cadastro de clientes do MubiSys (04/10/2026)
 

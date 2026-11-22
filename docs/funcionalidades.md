@@ -251,9 +251,14 @@ página 5 são exibidas como página 6, sem alterar os registros do banco. O PDF
 também inclui a página 5 com custos atuais do catálogo.
 
 ### Performance Comercial
-- Visão mensal, multi-mês e anual (`getMes`, `getMultiMes`, `getAno`).
-- **Evolução diária** do mês por vendedor (`getEvolucaoDiariaMes`,
-  `EvolucaoDiariaVendedor.tsx`, `EvolucaoVendedor.tsx`).
+- Visão mensal, multi-mês e anual (`getMes`, `getMultiMes`, `getAno`); o
+  comparativo anual mostra cada métrica do ano selecionado junto ao mesmo mês
+  do ano anterior.
+- **Evolução por vendedor** (`EvolucaoVendedor.tsx`). A antiga aba separada
+  “Mês Vigente” foi removida; a análise diária permanece em sua própria aba.
+- **Conversão por faixa de tíquete** com evolução mensal e comparação dos
+  últimos três meses fechados contra os três anteriores
+  (`getEvolucaoConversaoPorFaixaTicket`, `EvolucaoFaixaTicket.tsx`).
 - **Clientes novos** por mês/ano, com marcação de contato
   (`cliente_novos_contato`, `getContatados` / `setContatado`).
 - **Overrides de cliente** — correção manual de atribuição/classificação

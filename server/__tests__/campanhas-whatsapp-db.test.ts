@@ -12,6 +12,7 @@ import {
   campanhasWhatsappCategorias,
   campanhasWhatsappFontes,
   campanhasWhatsappLeadsQualificados,
+  campanhasWhatsappOptout,
   campanhasWhatsappQuarentena,
   historicoOs,
 } from "../../drizzle/schema";
@@ -45,6 +46,7 @@ const criadas: number[] = [];
 const categoriasCriadas: number[] = [];
 const fontesCriadas: number[] = [];
 const arquivosCriados: number[] = [];
+const optoutsCriados: string[] = [];
 let recorrenteId: number;
 let gatilhoId: number;
 
@@ -128,6 +130,8 @@ afterAll(async () => {
   await db
     .delete(campanhasWhatsappQuarentena)
     .where(like(campanhasWhatsappQuarentena.telefone, "5567990009%"));
+  if (optoutsCriados.length)
+    await db.delete(campanhasWhatsappOptout).where(inArray(campanhasWhatsappOptout.telefone, optoutsCriados));
   await db
     .delete(historicoOs)
     .where(like(historicoOs.empresa, "TESTE FONTE ERP%"));
@@ -199,6 +203,49 @@ describe("registrarDisparoNoBanco", () => {
       violacoesQuarentena: 1,
     });
     expect(await ultimoContato(TEL.A)).toBe(dia(-5)); // a quarentena avança: quem recebeu de fato fica registrado
+  });
+
+  it("NPS ignora a quarentena global no envio, preserva o opt-out e não atualiza a quarentena", async () => {
+    const db = await getDb();
+    if (!db) throw new Error("DB indisponível");
+    const [campanhaNps] = await db.insert(campanhasWhatsapp).values({
+      nome: "TESTE NPS pós-entrega",
+      categoria: "nps",
+      tipo: "recorrente",
+      regraCadencia: "dias_corridos",
+      frequenciaDias: 30,
+      quarentenaDias: 30,
+      status: "ativa",
+    }).returning();
+    criadas.push(campanhaNps.id);
+
+    await db.insert(campanhasWhatsappQuarentena).values({
+      telefone: norm(TEL.M),
+      ultimaCampanhaId: recorrenteId,
+      ultimoContatoEm: dia(-5),
+    });
+    await db.insert(campanhasWhatsappOptout).values({
+      telefone: norm(TEL.N),
+      nome: "Cliente opt-out NPS",
+      registradoPor: "Teste",
+      origem: "manual",
+    });
+    optoutsCriados.push(norm(TEL.N));
+
+    const r = await disparo(campanhaNps.id, hoje, [
+      { telefone: TEL.M, nome: "Em quarentena" },
+      { telefone: TEL.N, nome: "Opt-out" },
+    ]);
+
+    expect(r).toMatchObject({
+      registrado: true,
+      enviados: 1,
+      ignorados: 0,
+      bloqueados: 1,
+      violacoesQuarentena: 0,
+    });
+    expect(r.enviar.map(c => c.telefone)).toEqual([norm(TEL.M)]);
+    expect(await ultimoContato(TEL.M)).toBe(dia(-5));
   });
 
   it("se ninguém pode ser enviado, nada é gravado (o próximo envio não é adiado à toa)", async () => {

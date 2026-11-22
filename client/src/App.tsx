@@ -36,6 +36,7 @@ import PopRelatorio from "./pages/operacoes/PopRelatorio";
 // Comercial
 import TabelaPrecos from "./pages/comercial/TabelaPrecos";
 import Produtos from "./pages/comercial/Produtos";
+import NfCompraAuditoria from "./pages/comercial/NfCompraAuditoria";
 import Propostas from "./pages/comercial/Propostas";
 import PerformanceComercial from "./pages/comercial/PerformanceComercial";
 import QualificacaoLeadsCnpj from "./pages/comercial/QualificacaoLeadsCnpj";
@@ -43,6 +44,7 @@ import RadarMercado from "./pages/comercial/RadarMercado";
 import AnaliseGeografica from "./pages/comercial/AnaliseGeografica";
 import MetasComerciais from "./pages/comercial/MetasComerciais";
 import CRM from "./pages/comercial/CRM";
+import CrmScripts from "./pages/comercial/CrmScripts";
 import GuiaFornecedores from "./pages/comercial/GuiaFornecedores";
 import PlanosAcaoComercial from "./pages/comercial/PlanosAcaoComercial";
 import DiagnosticoApi from "./pages/comercial/DiagnosticoApi";
@@ -79,6 +81,7 @@ import LocalLogin from "./pages/LocalLogin";
 import PropostaPublica from "./pages/PropostaPublica";
 import QuestionarioFornecedorPublico from "./pages/QuestionarioFornecedorPublico";
 import CargoseFuncoes from "./pages/operacoes/CargoseFuncoes";
+import Treinamento from "./pages/operacoes/Treinamento";
 import ProtectedRoute from "./components/ProtectedRoute";
 import IdleTimeoutWarning from "./components/IdleTimeoutWarning";
 // Qualidade
@@ -124,6 +127,11 @@ function Router() {
           <L><CargoseFuncoes /></L>
         </ProtectedRoute>
       </Route>
+      <Route path="/treinamento">
+        <ProtectedRoute pageKey="treinamento">
+          <L><Treinamento /></L>
+        </ProtectedRoute>
+      </Route>
       {/* Financeiro */}
       <Route path="/financeiro"><L><Financeiro /></L></Route>
       <Route path="/cargos"><L><Cargos /></L></Route>
@@ -132,11 +140,17 @@ function Router() {
       {/* Comercial */}
       <Route path="/tabela-precos"><L><TabelaPrecos /></L></Route>
       <Route path="/comercial/produtos"><L><Produtos /></L></Route>
+      <Route path="/comercial/nf-compra"><L><NfCompraAuditoria /></L></Route>
       <Route path="/comercial/propostas"><L><Propostas /></L></Route>
       <Route path="/comercial/performance"><L><PerformanceComercial /></L></Route>
       <Route path="/comercial/geografia"><L><AnaliseGeografica /></L></Route>
       <Route path="/comercial/metas"><L><MetasComerciais /></L></Route>
       <Route path="/comercial/crm"><L><CRM /></L></Route>
+      <Route path="/comercial/crm/scripts">
+        <ProtectedRoute pageKey="comercial-crm">
+          <L><CrmScripts /></L>
+        </ProtectedRoute>
+      </Route>
       <Route path="/comercial/guia-fornecedores"><L><GuiaFornecedores /></L></Route>
       <Route path="/comercial/leads-cnpj"><L><QualificacaoLeadsCnpj /></L></Route>
       <Route path="/comercial/radar-mercado"><L><RadarMercado /></L></Route>

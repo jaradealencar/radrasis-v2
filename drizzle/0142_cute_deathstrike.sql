@@ -1,0 +1,5 @@
+ALTER TABLE "campanhas_whatsapp_filas" ADD COLUMN "janela_envio_ativa" boolean DEFAULT false NOT NULL;--> statement-breakpoint
+ALTER TABLE "campanhas_whatsapp_filas" ADD COLUMN "janela_hora_inicio" varchar(5) DEFAULT '09:00' NOT NULL;--> statement-breakpoint
+ALTER TABLE "campanhas_whatsapp_filas" ADD COLUMN "janela_hora_fim" varchar(5) DEFAULT '18:00' NOT NULL;--> statement-breakpoint
+ALTER TABLE "campanhas_whatsapp_filas" ADD COLUMN "janela_dias_semana" integer[] DEFAULT '{1,2,3,4,5}' NOT NULL;--> statement-breakpoint
+ALTER TABLE "campanhas_whatsapp_filas" ADD CONSTRAINT "campanhas_whatsapp_filas_janela_valida" CHECK (NOT "campanhas_whatsapp_filas"."janela_envio_ativa" OR ("campanhas_whatsapp_filas"."janela_hora_inicio" < "campanhas_whatsapp_filas"."janela_hora_fim" AND cardinality("campanhas_whatsapp_filas"."janela_dias_semana") > 0));

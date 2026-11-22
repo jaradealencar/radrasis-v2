@@ -1,7 +1,6 @@
 import { trpc } from "@/lib/trpc";
 import type { MetaComercial } from "../../../../drizzle/schema";
 import EvolucaoVendedor from "./EvolucaoVendedor";
-import EvolucaoDiariaVendedor from "./EvolucaoDiariaVendedor";
 import DesempenhoDiario from "./DesempenhoDiario";
 import InteligenteClientes from "./InteligenteClientes";
 import PropostasAltoValor from "./PropostasAltoValor";
@@ -40,6 +39,29 @@ import {
 
 const MESES_NOMES = ["Janeiro","Fevereiro","Março","Abril","Maio","Junho",
   "Julho","Agosto","Setembro","Outubro","Novembro","Dezembro"];
+
+function CelulaComparativaAno({ atual, anterior, anoAnterior, formatar, estadoAnterior, className = "" }: {
+  atual: number;
+  anterior?: number;
+  anoAnterior: number;
+  formatar: (valor: number) => string;
+  estadoAnterior: "carregando" | "indisponivel" | "pronto";
+  className?: string;
+}) {
+  const referencia = estadoAnterior === "carregando"
+    ? "carregando..."
+    : estadoAnterior === "indisponivel"
+      ? `${anoAnterior}: indisponível`
+      : anterior == null
+        ? `${anoAnterior}: —`
+        : `${anoAnterior}: ${formatar(anterior)}`;
+  return (
+    <div className={`flex flex-col items-end gap-0.5 leading-tight ${className}`}>
+      <span>{formatar(atual)}</span>
+      <span className="text-[10px] font-normal text-slate-400">{referencia}</span>
+    </div>
+  );
+}
 
 const ANO_ATUAL = new Date().getFullYear();
 const MES_ATUAL = new Date().getMonth() + 1;
@@ -359,7 +381,7 @@ type MesAno = { mes: number; ano: number };
 export default function PerformanceComercial() {
   const [mesSelecionado, setMesSelecionado] = useState(MES_ATUAL);
   const [anoSelecionado, setAnoSelecionado] = useState(ANO_ATUAL);
-  const [abaAtiva, setAbaAtiva] = useState<"visao-geral" | "diaria" | "mes-vigente" | "evolucao" | "inteligente">("visao-geral");
+  const [abaAtiva, setAbaAtiva] = useState<"visao-geral" | "diaria" | "evolucao" | "inteligente">("visao-geral");
   const [showComparativo, setShowComparativo] = useState(true);
   const [showClientesNovos, setShowClientesNovos] = useState(true);
   const [showClientesReativados, setShowClientesReativados] = useState(true);
@@ -477,6 +499,11 @@ export default function PerformanceComercial() {
     trpc.performanceComercial.getMetas.useQuery({ mes: mesSelecionado, ano: anoSelecionado }, RETRY_1);
   const { data: dadosAno, isLoading: loadingAno, isError: errorAno } =
     trpc.performanceComercial.getAno.useQuery({ ano: anoSelecionado }, RETRY_1);
+  const { data: dadosAnoAnterior, isLoading: loadingAnoAnterior, isError: errorAnoAnterior } =
+    trpc.performanceComercial.getAno.useQuery(
+      { ano: anoSelecionado - 1 },
+      { ...RETRY_1, enabled: showComparativo && anoSelecionado > 2020 },
+    );
   // Mesmo forceRefreshMes do getMes acima: os dois compartilham o cache de OS/orçamentos
   // brutos no servidor (chaves mes_/os_raw_/orc_raw_/raw_${mes}_${ano}), então precisam
   // ser recalibrados juntos — senão "Vendas Realizadas" e "Clientes Novos/Reativados"
@@ -534,6 +561,14 @@ export default function PerformanceComercial() {
   const comparativoAnual = (dadosAno ?? []).filter((r: any) =>
     r != null && (anoSelecionado < ANO_ATUAL || (anoSelecionado === ANO_ATUAL && r.mes <= MES_ATUAL))
   );
+  const comparativoAnualAnoAnterior = new Map<number, any>(
+    (dadosAnoAnterior ?? []).map((r: any) => [r.mes, r]),
+  );
+  const estadoAnoAnterior: "carregando" | "indisponivel" | "pronto" = loadingAnoAnterior
+    ? "carregando"
+    : errorAnoAnterior || anoSelecionado <= 2020
+      ? "indisponivel"
+      : "pronto";
 
   const upsertMeta = trpc.performanceComercial.upsertMeta.useMutation({
     onSuccess: () => {
@@ -817,7 +852,6 @@ export default function PerformanceComercial() {
           {([
             { id: "visao-geral" as const, label: "Visão Geral", icon: "📊" },
             { id: "diaria" as const, label: "Análise Diária", icon: "⚡" },
-            { id: "mes-vigente" as const, label: "Mês Vigente", icon: "📅" },
             { id: "evolucao" as const, label: "Evolução por Vendedor", icon: "📈" },
             { id: "inteligente" as const, label: "Inteligência de Clientes", icon: "🧠" },
           ]).map(aba => (
@@ -838,11 +872,6 @@ export default function PerformanceComercial() {
 
         {/* ─── Aba: Análise Diária (ao vivo, independe do mês/ano selecionados) ──── */}
         {abaAtiva === "diaria" && <DesempenhoDiario />}
-
-        {/* ─── Aba: Mês Vigente ─────────────────────────────────────────────────── */}
-        {abaAtiva === "mes-vigente" && (
-          <EvolucaoDiariaVendedor mes={mesSelecionado} ano={anoSelecionado} />
-        )}
 
         {/* ─── Aba: Evolução por Vendedor ───────────────────────────────────────── */}
         {abaAtiva === "evolucao" && (
@@ -1659,6 +1688,9 @@ export default function PerformanceComercial() {
                 </div>
               ) : (
                 <>
+                  <p className="mb-2 text-[11px] text-slate-500">
+                    Valor principal: {anoSelecionado} · referência abaixo: {anoSelecionado - 1} no mesmo mês
+                  </p>
                   <div className="mb-4">
                     <Table className="text-xs">
                       <TableHeader>
@@ -1676,32 +1708,55 @@ export default function PerformanceComercial() {
                       <TableBody>
                         {comparativoAnual.map((r: any, i: number) => {
                           const isAtual = r.mes === mesSelecionado && r.ano === anoSelecionado;
+                          const rAnterior = comparativoAnualAnoAnterior.get(r.mes);
                           return (
                             <TableRow key={i} className={isAtual ? "bg-blue-50 font-semibold" : ""}>
                               <TableCell className="text-slate-700">
                                 {r.label}
                                 {isAtual && <Badge variant="secondary" className="ml-2 text-[10px] py-0">atual</Badge>}
                               </TableCell>
-                              <TableCell className="text-right font-mono text-blue-700">{r.cotacoes}</TableCell>
-                              <TableCell className="text-right font-mono text-purple-700">{r.osGeradas}</TableCell>
+                              <TableCell className="text-right font-mono text-blue-700">
+                                <CelulaComparativaAno atual={Number(r.cotacoes ?? 0)} anterior={rAnterior?.cotacoes} anoAnterior={anoSelecionado - 1} estadoAnterior={estadoAnoAnterior} formatar={valor => fmtNum(valor)} />
+                              </TableCell>
+                              <TableCell className="text-right font-mono text-purple-700">
+                                <CelulaComparativaAno atual={Number(r.osGeradas ?? 0)} anterior={rAnterior?.osGeradas} anoAnterior={anoSelecionado - 1} estadoAnterior={estadoAnoAnterior} formatar={valor => fmtNum(valor)} />
+                              </TableCell>
                               <TableCell className="text-right">
-                                <span className={`font-bold ${r.taxaConversao >= 30 ? "text-green-600" : r.taxaConversao >= 15 ? "text-amber-600" : "text-red-600"}`}>
-                                  {r.taxaConversao}%
-                                </span>
+                                <CelulaComparativaAno
+                                  atual={Number(r.taxaConversao ?? 0)} anterior={rAnterior?.taxaConversao}
+                                  anoAnterior={anoSelecionado - 1} estadoAnterior={estadoAnoAnterior}
+                                  formatar={valor => `${valor}%`}
+                                  className={`font-bold ${r.taxaConversao >= 30 ? "text-green-600" : r.taxaConversao >= 15 ? "text-amber-600" : "text-red-600"}`}
+                                />
                               </TableCell>
                               <TableCell className="text-right font-mono text-slate-600">
-                                R$ {Number(r.valorOrcado).toLocaleString("pt-BR", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
+                                <CelulaComparativaAno
+                                  atual={Number(r.valorOrcado ?? 0)} anterior={rAnterior?.valorOrcado}
+                                  anoAnterior={anoSelecionado - 1} estadoAnterior={estadoAnoAnterior}
+                                  formatar={valor => `R$ ${Number(valor).toLocaleString("pt-BR", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`}
+                                />
                               </TableCell>
                               <TableCell className="text-right font-mono text-green-700 font-semibold">
-                                R$ {Number(r.faturamento).toLocaleString("pt-BR", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
+                                <CelulaComparativaAno
+                                  atual={Number(r.faturamento ?? 0)} anterior={rAnterior?.faturamento}
+                                  anoAnterior={anoSelecionado - 1} estadoAnterior={estadoAnoAnterior}
+                                  formatar={valor => `R$ ${Number(valor).toLocaleString("pt-BR", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`}
+                                />
                               </TableCell>
                               <TableCell className="text-right">
-                                <span className={`font-bold ${r.taxaFaturamento >= 30 ? "text-green-600" : r.taxaFaturamento >= 15 ? "text-amber-600" : "text-red-600"}`}>
-                                  {r.taxaFaturamento}%
-                                </span>
+                                <CelulaComparativaAno
+                                  atual={Number(r.taxaFaturamento ?? 0)} anterior={rAnterior?.taxaFaturamento}
+                                  anoAnterior={anoSelecionado - 1} estadoAnterior={estadoAnoAnterior}
+                                  formatar={valor => `${valor}%`}
+                                  className={`font-bold ${r.taxaFaturamento >= 30 ? "text-green-600" : r.taxaFaturamento >= 15 ? "text-amber-600" : "text-red-600"}`}
+                                />
                               </TableCell>
                               <TableCell className="text-right font-mono text-slate-600">
-                                R$ {Number(r.ticketMedio).toLocaleString("pt-BR", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
+                                <CelulaComparativaAno
+                                  atual={Number(r.ticketMedio ?? 0)} anterior={rAnterior?.ticketMedio}
+                                  anoAnterior={anoSelecionado - 1} estadoAnterior={estadoAnoAnterior}
+                                  formatar={valor => `R$ ${Number(valor).toLocaleString("pt-BR", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`}
+                                />
                               </TableCell>
                             </TableRow>
                           );

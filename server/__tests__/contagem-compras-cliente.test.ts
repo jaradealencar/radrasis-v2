@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   contarComprasPorCliente,
+  limitarComprasAOrcamentos,
   calcularTaxaConversaoCliente,
   primeiroMesDoHistorico,
   type OsParaContagem,
@@ -72,6 +73,21 @@ describe("contarComprasPorCliente", () => {
   it("ignora linhas sem nome de cliente", () => {
     const compras = contarComprasPorCliente([os("", 2, 2026), os("   ", 2, 2026)], [ganho("", 2, 2026)]);
     expect(compras.size).toBe(0);
+  });
+});
+
+describe("limitarComprasAOrcamentos", () => {
+  it("limita compras ao total de cotações conhecidas", () => {
+    expect(limitarComprasAOrcamentos(38, 21)).toBe(21);
+  });
+
+  it("preserva a contagem quando ela não excede as cotações", () => {
+    expect(limitarComprasAOrcamentos(7, 21)).toBe(7);
+  });
+
+  it("normaliza contagens inválidas e valores negativos", () => {
+    expect(limitarComprasAOrcamentos(-2, 21)).toBe(0);
+    expect(limitarComprasAOrcamentos(Number.NaN, 21)).toBe(0);
   });
 });
 

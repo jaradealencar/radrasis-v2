@@ -2,6 +2,7 @@ import { useState } from "react";
 import { toast } from "sonner";
 import { BanIcon, Plus, Trash2 } from "lucide-react";
 import { trpc } from "@/lib/trpc";
+import { useAuth } from "@/hooks/useAuth";
 import { fmtNum } from "@/lib/format";
 import { Button } from "@/components/ui/button";
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
@@ -19,6 +20,8 @@ import { formatarDataBr, formatarTelefone, hojeCampoGrande } from "@shared/campa
  */
 export default function NaoReceberMensagens() {
   const utils = trpc.useUtils();
+  const { user } = useAuth();
+  const podeDesbloquear = user?.role === "admin" || user?.role === "master";
   const [numeros, setNumeros] = useState("");
   const [nome, setNome] = useState("");
   const [motivo, setMotivo] = useState("");
@@ -97,7 +100,7 @@ export default function NaoReceberMensagens() {
                 <TableHead>Nome</TableHead>
                 <TableHead>Motivo</TableHead>
                 <TableHead>Registrado</TableHead>
-                <TableHead className="w-12" />
+                {podeDesbloquear && <TableHead className="w-12" />}
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -109,12 +112,12 @@ export default function NaoReceberMensagens() {
                   <TableCell className="whitespace-nowrap text-xs text-muted-foreground">
                     {formatarDataBr(hojeCampoGrande(new Date(r.createdAt)))}{r.registradoPor ? ` · ${r.registradoPor}` : ""}
                   </TableCell>
-                  <TableCell>
-                    <Button size="icon" variant="ghost" className="text-red-500 hover:text-red-600" title="Remover da lista"
+                  {podeDesbloquear && <TableCell>
+                    <Button size="icon" variant="ghost" className="text-red-500 hover:text-red-600" title="Desbloqueio manual de administrador"
                       disabled={remover.isPending} onClick={() => remover.mutate({ id: r.id })}>
                       <Trash2 size={14} />
                     </Button>
-                  </TableCell>
+                  </TableCell>}
                 </TableRow>
               ))}
             </TableBody>

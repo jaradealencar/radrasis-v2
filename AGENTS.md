@@ -2,6 +2,16 @@
 
 Guia para agentes de IA (e humanos) trabalhando neste repositório.
 
+## Delegação de tarefas
+
+Ao trabalhar neste repositório, o agente principal deve sempre delegar a
+execução das tarefas a subagentes usando o modelo `gpt-6-luna` com
+`reasoning_effort: max`. Divida o trabalho em tarefas independentes e delegue-as
+em paralelo, respeitando os slots disponíveis; delegue tarefas dependentes na
+ordem necessária. O agente principal coordena a delegação, recebe e avalia
+os resultados e pode corrigi-los quando necessário, sem assumir a
+implementação de rotina.
+
 ## O que é este projeto
 
 Radrasys — sistema interno de gestão (logística, qualidade, comercial,
@@ -110,6 +120,7 @@ yarn run check   # tsc --noEmit (app) + tsc -p tsconfig.cpq3d.json (client/src/c
                  # não o script do package.json, e retorna resultado errado
 yarn test        # wrapper seguro; exige TEST_DATABASE_URL local de teste
 yarn test:safety # testes unitários de guardas; não acessa banco
+yarn test:e2e    # Playwright em tests/e2e; usa o Vite isolado definido em playwright.config.ts
 yarn format      # prettier --write .
 yarn db:generate # drizzle-kit generate, sem alterar banco
 yarn db:migrate  # migration protegida por alvo, identidade e confirmação
@@ -242,6 +253,10 @@ periodicamente, precisa ser reconfigurado com o novo header/segredo.
 
 ## Commits ao final de sprint/tarefa/fix
 
+Antes de criar o commit ou fazer push de um PR, sprint ou funcionalidade,
+execute com sucesso os testes E2E exigidos na seção Testes. Corrija todas as
+falhas e repita a execução antes de prosseguir.
+
 **Toda sprint, tarefa ou fix concluído termina com um commit** — não deixe
 trabalho pronto (e validado: typecheck/testes relevantes rodados) parado
 sem commitar, e não acumule várias tarefas/fixes não relacionados num
@@ -278,6 +293,8 @@ assumir que continua certo.
 ```
 client/src/          frontend (Vite root = client/)
   pages/              uma pasta por módulo (logistica/, admin/, comercial/, ...)
+                       operacoes/Treinamento.tsx é a Escola Corporativa em /treinamento
+                       comercial/NfCompraAuditoria.tsx é a Auditoria de NF de Compra em /comercial/nf-compra
   components/         componentes compartilhados entre páginas
   hooks/               hooks do app, incluindo useAuth.ts (identidade/permissões)
   lib/                 trpc.ts, auth-client.ts (client do Better Auth)
@@ -287,6 +304,9 @@ server/
   routers.ts          appRouter raiz do tRPC — registra todos os sub-routers
                        `price.listModelCatalog`/`price.saveModelMapping` mantêm produtividade de solda e IDs de faixa por modelo nas tabelas antiga/nova (`price_table_model_mappings`).
   routers/             sub-routers por domínio (logistica.ts, admin.ts, ...)
+                       nfCompra.ts (auditoria de NF de compra: upload de XML modelo 55, rateio por kg/valor, cálculo de ICMS 10%, sugestão com memória contínua, detecção de defasagem vs Mubisys e painel de auditoria com texto de cálculo congelado);
+                       treinamento.ts controla catálogo, matérias, matrículas, aplicação de provas, materiais de apoio, geração de rascunhos a partir de POPs, os 11 perfis de questão, tentativas, resultados e ranking da Escola Corporativa; notas finais são normalizadas de 0 a 10, independentemente da quantidade de questões; avaliações são divididas em módulos sequenciais de até 10 questões, com retomada da tentativa aberta; a avaliação Closer cobre as 14 seções e os anexos A–F do POP, com matriz em `docs/escola-corporativa.md` e questões adicionais na migration `0127_closer_full_coverage`;
+                       o simulacro do painel de alunos é somente client-side e nunca grava tentativas fictícias
   db/                  acesso a dados (Drizzle + pg puro via getPool()): db.ts, db-connection.ts,
                        db-helpers*.ts, storage.ts
   integrations/        clientes de APIs externas: mubisys-client.ts, mubisys-frete.ts,
@@ -297,13 +317,21 @@ server/
                        puras quando não precisarem de I/O:
                        inteligenciaClientes.ts (RFM/classificação/funil/previsão
                        comercial), qualificacaoLeadCnpj.ts (score de lead por CNPJ),
-                       campanhasWhatsappIa.ts (qualificação e resumo de leads) e
-                       campanhasWhatsappInboundBuffer.ts (filtro de bot e debounce de respostas)
+                       campanhasWhatsappIa.ts (qualificação e resumo de leads),
+                       campanhasWhatsappInboundBuffer.ts (filtro/debounce inbound),
+                       crmFollowupCadencia.ts (datas úteis do CRM para a fonte CRM - propostas abertas),
+                       marketingFinanceiroCampanhas.ts (atribuição de receita e ranking por UF das campanhas) e
+                       marketingFinanceiroEstados.ts (distribuição estadual de primeira compra e propostas de clientes novos)
+                       treinamentoPop.ts (leitura de PDFs, DOCX e TXT e OCR de PDFs escaneados sob demanda para criar rascunhos de treinamento)
                        (telefones das campanhas: `server/sync/clientes-mubisys.ts` espelha o cadastro
                        de clientes do MubiSys em `mubisys_clientes_cache`, atualizado sozinho ao abrir
                        o painel de Campanhas; 429 da API tem retentativa e o lote tem orçamento de 40s),
                        cpqPrecoAssistente.ts (sugestões GPT e recibos assinados
                        de aprovação humana de preço),
+                       nfXmlParser.ts (parser puro de NF-e SEFAZ modelo 55, extrai itens/totais),
+                       nfCalculo.ts (cálculo puro de custo real: rateio por kg/valor, ICMS 10% item a item, conversão e defasagem vs Mubisys),
+                       nfSugestaoVinculo.ts (sugestão de MP com aprendizado contínuo por fornecedor+cProd e memória em nf_mp_vinculos),
+                       cpqFactibilidadeFabricacao.ts (fit-to-sheet, emendas e áreas SVG)
                        cpqFactibilidadeFabricacao.ts (fit-to-sheet, emendas e áreas SVG)
                        e cpqCoresMateriais.ts (CIEDE2000 e custeio por região de cor),
                        cpqRender3d.ts (resolve o spec 3D assinado a partir do orçamento) e
@@ -342,7 +370,8 @@ server/
   utils/               helpers puros: date-utils.ts, transportadoras-completude.ts, os-valida.ts
                        (`isOsNormalDb`: regra única de "compra válida"; o número de compras do CRM e
                        das Propostas de Alto Valor conta só essas OS, e orçamento ganho só entra nos meses
-                       sem OS sincronizada — `contarComprasPorCliente` em services/probabilidadeCompra.ts)
+                       sem OS sincronizada — `contarComprasPorCliente` em services/probabilidadeCompra.ts;
+                       a contagem exibida nunca pode superar as cotações conhecidas do cliente)
   scripts/             scripts de seed do server (seed.mjs, seed-operacoes.mjs)
   __tests__/           testes do server (*.test.ts)
   _core/               infra do server: auth.ts (Better Auth), context.ts/trpc.ts
@@ -378,11 +407,31 @@ em vez de reescrever o padrão:
 - Tabela de Preços > Pág. 4 (Fontes Chaveadas), compartilhada pelas abas Clientes Antigos e Novo Cliente, tem a **Calculadora de fontes**: o vendedor escolhe até dois LEDs (fitas 12/24 V e módulos) e suas quantidades, usando as mesmas tabelas da página, com os nomes editados. Cargas da mesma tensão são somadas; tensões diferentes geram circuitos e resultados separados, e cada LED usa exclusivamente fontes da própria tensão. Os módulos IP68 24 V e 7025 12 V usam 1,7 W por módulo. As tabelas de fontes blindadas 24 V para módulos e para a Fita LED 3030s de 17 W/m têm modelos de 2,5/5/6/15/25/30 A, sem preços visíveis e sem observações de kit. Para módulos e fitas 24 V, a calculadora mostra numa única janela as opções chaveada e blindada para a mesma carga e compara o total pelos preços de venda direta (`valor_preco_final`) sincronizados do MubiSys. A lógica pura de `shared/led-fontes-calculo.ts` (testes em
   `server/__tests__/led-fontes-calculo.test.ts`) enumera as combinações de até dez fontes, escolhe primeiro o menor valor de venda direta e desempata por menos fontes e menor potência instalada; todas trabalham até 85%, com uma única fonte autorizada a chegar a 92%. Preço ausente impede afirmar que a combinação é a mais barata e aciona o fallback operacional por menos fontes. As chaveadas 24 V de 30/50 A usam as faixas por demanda registradas em `server/services/ledPowerSources.ts`; as chaveadas 12 V (IDs 1015/1017/1018/1020) também retornam preço final zero na API, mas suas faixas ainda precisam ser transcritas do MubiSys. O consumo vem de
   `LedModuleTable.wattsPerModule` ou `LedTapeTable.wattsPerMeter` (`server/services/ledPowerSources.ts`), não do texto do subtítulo.
+- Tabela de Preços > Pág. 3 e 13: as tabelas de **Serviço de Pintura Galvanizado** e **Serviço de Pintura PVC** recebem o ajuste de -3,5 pontos percentuais por `shared/price-table-pintura.ts`, de forma idempotente, compartilhada pela tela, exportação e dados de margem do CPQ. Galvanizado também mostra `Branco + Colorido` como Tinta Branca -3 p.p.; se não houver coluna Tinta Branca, usa 1 cor -8 p.p. (1 cor -5 p.p. para branco e mais -3 p.p.). Salvar a seção pelo editor persiste o conteúdo ajustado no histórico normal da Tabela de Preços.
 - Resultado que o vendedor mostra ao cliente (simuladores de cartão e de boletos, Tabela de Preços > Pág. 6) ganha
   `@/components/BotaoCopiarImagem`: desenha um PNG em canvas (`@/lib/imagemCopia`) e o coloca na área de transferência (sem
   permissão do navegador, baixa o arquivo). Não use `html2canvas` para isso — ele não lê as cores `oklch()` do Tailwind 4.
 
+## Autoria de provas da Escola Corporativa
+
+Ao criar ou revisar provas, use a skill global `$escola-corporativa-provas`. As alternativas devem ser próprias de cada questão, claras e plausíveis; não deixe o gabarito óbvio por repetição de palavras, opções absurdas ou eliminação simples. Em `multiple_select`, misture corretas e erradas e inclua distratores plausíveis para exigir atenção a cada afirmação. Em questões `matching`, o servidor exige pelo menos duas opções extras além de uma resposta para cada item da esquerda, e rejeita textos genéricos ou repetidos na mesma questão ou entre questões de associação da prova. Crie distratores específicos do conteúdo e mantenha uma única associação correta por item.
+
+O editor de avaliações permite alterar perguntas e seus gabaritos visualmente, além da edição avançada em JSON. Cada pergunta pode ser refeita com IA mantendo seu tipo; a resposta da IA é uma prévia não persistida e precisa ser revisada antes de salvar uma nova versão da avaliação. Ao mudar o tipo ou a estrutura de uma questão, valide o gabarito pelo formato correspondente antes de salvar.
+
+Quando a questão trouxer várias afirmações para o aluno julgar uma a uma, use `yes_no_matrix`: cada frase recebe uma resposta Sim/Não e cada acerto soma uma parte igual dos pontos. Reserve `multiple_select` para tarefas em que o aluno escolhe várias opções como um conjunto, sem julgar cada frase com Sim/Não.
+
 ## Testes
+
+Cada PR, sprint ou funcionalidade entregue deve criar testes E2E ou ampliar
+os existentes com cenários novos que cubram os fluxos entregues e as regressões
+pertinentes. Execute-os antes de commit e push; corrija falhas e repita até
+passar. Registre os comandos reais executados e os resultados no registro da
+tarefa, PR ou sprint. Use a ferramenta e o comando E2E configurados no
+repositório; não presuma nem invente comandos ou frameworks. Se não houver
+infraestrutura E2E adequada aos fluxos alterados, configure-a como parte da
+entrega antes do commit e do push. Execute em ambiente isolado e,
+quando houver acesso ao banco, siga as proteções existentes e use somente um
+banco descartável de teste, nunca produção.
 
 `yarn test:safety` roda os testes unitários das proteções sem conexão ao banco.
 `yarn test` roda a suíte completa em `server/**/*.test.ts`, mas exige
@@ -396,9 +445,13 @@ descartável isolado, como o serviço Postgres do workflow de qualidade.
 
 ## docs/ — quais valem como fonte de verdade
 
+- **Fila programada de campanhas WhatsApp (migrations `0141`/`0142`):** `campanhasWhatsappFilas` guarda o calendário opt-in e `campanhasWhatsappEnviosProgramados`/`campanhasWhatsappFilaItens` persistem execução e progresso por contato; `campanhaFilaWorker.ts` reaproveita `enviarTemplateWtsSeguro` e usa o QStash já configurado para continuar em segundo plano. Pausa em minutos é por lote; intervalo em dias é só calendário. A migration `0142` adiciona janela opcional de envio, contagem estimada, alertas, espera progressiva para `429`, reprocessamento apenas de falhas confirmadas e cancelamento por opt-out. Campanhas sem fila continuam no fluxo atual. Detalhes em `docs/campanhas-whatsapp.md`.
+- **Motor de cadencias WhatsApp:** `server/services/campanhaCadenciaRules.ts` contem regras puras de segmentos e horario comercial; `campanhaCadenciaErp.ts` consolida fatos do ERP por telefone e interrompe envios quando o polling esta desatualizado; `campanhaCadenciaEngine.ts` administra inscricoes versionadas, exclusividade, prioridade, leases e conciliacao WTS. O endpoint e os callbacks ficam em `server/routes/campanhas-whatsapp-cadencia.ts` e `campanhas-whatsapp-webhook-auth.ts`; o polling fica em `server/sync/scheduled-sync-campanhas-whatsapp-erp.ts`. Migrations `0119`/`0120` sao aplicadas somente pelo pipeline protegido. Campanhas legadas permanecem com o motor desligado; validar com Ceci.Chat o payload e a chave antes de habilitar callbacks em producao. Detalhes: `docs/campanhas-whatsapp-cadencias.md`.
+
 - **Vendas/ABC do MubiSys na Tabela de Preços (07/10/2026):** `server/services/mubisysVendas.ts` sincroniza OS faturadas por mês ao abrir a calculadora, com TTL de 6 h, grava as linhas em `mubisys_vendas_itens`, status em `mubisys_vendas_sync_status` e ABC em `abc_cache`; `server/services/priceTableImpact.ts` cruza snapshots do histórico com vendas pelos IDs de produtos e modelos afiliados. Migrações `0099_precos_vendas_mubisys` e `0100_afiliacao_blocos_tabela_preco` criam tabelas de vendas, pareamento, afiliações e histórico; `0101_afiliacao_modelos_faixa_preco` permite afiliar o produto inteiro ou modelos específicos (`null` significa todos). A edição pode começar em qualquer uma das tabelas e é espelhada no bloco pareado. Sincronização externa de setembro e outubro/2026 foi validada; token MubiSys ainda é renovação manual. Detalhes em `docs/integracao-mubisys.md`.
 - **Painéis de preço e metas (07/10/2026):** `server/services/priceTableRevenueAnalysis.ts` fornece `price.getRevenueAnalysis` (protegido por login) para o dashboard da Tabela de Preços e o painel Previsões. Reutiliza metas comerciais (fallback explícito à meta operacional), vendas/ABC MubiSys, pareamento e afiliações cadastradas e snapshots de cotação com OS; o detalhe de faixa exibe margem atual e preço/margem observados quando o snapshot vincula a OS àquela faixa. Receita de venda sem faixa permanece no nível produto/modelo; o painel expõe cobertura, lacunas de afiliação, categorias e limitações de previsão/causalidade. Componente compartilhado: `client/src/components/PriceRevenueDashboard.tsx`.
 - **Campanhas WhatsApp via WTS.Chat / Ceci.Chat (atualizado 20/10/2026):** cada campanha guarda o **ID do template aprovado pela Meta** (`campanhas_whatsapp.wts_template_id`, migration `0105`, campo em Editar campanha); em Ver contatos, `campanhasWhatsapp.dispararWts` envia o template aos contatos prontos (até 100 por clique) diretamente pelo canal oficial do WhatsApp e registra o disparo no Radrasis (cadência, quarentena e histórico centralizados no Radrasys, usando a Ceci apenas para envio). **Envio é sequencial, 1 contato por vez com intervalo de 1,2 s** (`INTERVALO_DISPARO_WTS_MS`), não em paralelo: achado em teste real (16/10/2026) — disparo com 8 chamadas simultâneas era aceito pela Ceci (HTTP 200/`QUEUED`/`READ`) mas **não chegava** ao WhatsApp do destinatário (confirmado com número novo, sem conversa prévia); o mesmo número recebeu na hora quando enviado isolado pela API ou manualmente pela tela da Ceci. Durante o disparo, as telas de envio exibem cronômetro em tempo real (segundos decorridos), tempo estimado e barra de progresso suave, orientando o usuário sobre o ritmo seguro. **O status HTTP 200/`QUEUED`/`READ` do endpoint não garante entrega** — só a confirmação no aparelho do destinatário prova. As respostas dos clientes chegam normalmente no atendimento da Ceci.Chat. A janela também permite testar o template em um telefone digitado (`campanhasWhatsapp.testarNumeroWts`): envia só para esse número e não registra disparo nem altera cadência/quarentena/histórico. Gatilho de venda ainda é manual. O upload de listas aceita CSV/XLSX/XLS/XML e se ajusta sozinho (`shared/lista-contatos.ts`), e `normalizarTelefone` insere o 9º dígito em celulares de 8 dígitos para compatibilidade com a Meta/WhatsApp. `server/integrations/wts-chat-client.ts` envia um objeto `PublicReqSendTemplateSingleDTO` na raiz do JSON para `POST /chat/v1/send/template` em `api.app.ceci.chat`, com `to`, `from` (telefone canal `5511942666377`), `templateId`, `parameters` como objeto quando o template tiver variáveis, `senderId` UUID novo por mensagem (identificador de rastreamento do sistema chamador) e `channelId` fixo do canal físico da Ceci (`b13d2257-af6d-4cbb-a4fd-fa73069ae863`). Para consultar até dez mensagens aceitas, prioriza o `statusUrl` devolvido no aceite (`/v1/send/message/{id}`) e usa `GET /chat/v1/message/{id}/status` como alternativa. Configure `WTS_CHAT_AUTHORIZATION` como segredo no servidor (`WTS_CHAT_TEMPLATE_ID` não é mais lido). **"Ver envios" no Histórico (migration `0115`, tabela `campanhas_whatsapp_disparo_itens`):** cada disparo pode ter a lista detalhada de contatos com status individual — `dispararWts` grava sozinho (origem "auto", com o `wts_mensagem_id` do aceite); disparos antigos/upload/webhook recuperam a lista automaticamente de `campanhas_whatsapp_contatos_historico` cruzada com o cadastro de clientes/OS, ou preenchida pela **lista manual** (`salvarItensDisparoManual`, dentro do próprio diálogo "Ver envios": cola `telefone`, `telefone, nome` ou `telefone, nome, idDaMensagem`). Status é consultado **só sob demanda** (botão "Atualizar status", nunca ao abrir a lista) por `atualizarStatusItensDisparo`, que tenta `GET /chat/v1/send/message/{id}` (WTS e Ceci) além da `statusUrl`/rota documentada já existentes. `classificarStatusWts` (`shared/campanhas-whatsapp.ts`) resume READ/DELIVERED/SENT/QUEUED/.../FAILED em 5 classes (lido/entregue/na_fila/falha/sem_consulta), reaproveitada no resumo em badges e na amostra pós-disparo. Detalhes em `docs/campanhas-whatsapp.md`.
+- **Campanha NPS pós-entrega:** `campanhasWhatsapp.criarCampanhaNps` cria/abre uma campanha única com fonte ERP fixa. O ciclo usa data de aprovação do dia 16 do mês anterior ao dia 15 atual, status MubiSys `ENTREGUE` explícito e deduplicação por ID/documento com razão social como fallback; a data prevista de entrega não prova recebimento. NPS ignora quarentena global, mas mantém opt-out, cadência própria de 30 dias e histórico de campanha. Regras e limitações em `docs/campanhas-whatsapp.md`.
 - **Respostas e qualificação de leads de campanhas:** `POST /api/v1/campaigns/whatsapp-inbound` recebe eventos da Helena/Ceci ou Meta; os eventos são deduplicados, mensagens enviadas pelo próprio hub são ignoradas e respostas humanas passam pelo filtro de bot e buffer com debounce antes da qualificação por IA. `POST /api/v1/campaigns/process-buffers` consolida o buffer e atualiza `campanhas_whatsapp_leads_qualificados`; a interface mostra qualificação, resumo, intenção, objeção e métricas. O polling Helena é somente leitura, usa `WTS_CHAT_AUTHORIZATION`, importa apenas mensagens inbound e persiste cursor por canal. `CAMPANHAS_CECI_POLLING_ENABLED` deve permanecer `false` até a migration `0118` do cursor estar aplicada no ambiente isolado e o token de leitura ser validado. Detalhes em `docs/campanhas-whatsapp-ia.md`.
 - `docs/migracao-postgres-better-auth.md` — plano ativo da migração
   MySQL→Postgres/Better Auth (ver aviso no topo deste arquivo). **O doc mais
@@ -408,6 +461,8 @@ descartável isolado, como o serviço Postgres do workflow de qualidade.
 - `docs/campanhas-whatsapp-ia.md` — respostas inbound, filtro de bot, debounce, qualificação Gemini, métricas e polling de leitura da Helena.
 - `docs/protecao-ambientes-banco-publicacao.md` — separação entre build,
   migrations e testes; confirmações locais e configurações externas de Vercel/GitHub pendentes.
+- `docs/escola-corporativa.md` — modelo de conteúdo, modos de avaliação,
+  pontuação, permissões e formato de questões da Escola Corporativa.
 - `docs/cpq-cores-materiais-pre-nesting.md` — análise, aprovação e custo de cores do CPQ antes do nesting.
 - `docs/webdev-template-guide.md` — guia original do template Manus
   webdev fullstack. Descreve o template genérico (MySQL, só OAuth) — várias
@@ -563,8 +618,11 @@ precisar investigar uma decisão antiga, é aí que está, mas o código ativo
   `shared/price-table.ts`) só por número — não há resolução automática de
   qual coluna/faixa de valor usar ainda.
 - **Aparência de matérias-primas para renderização 3D (pedido de 06/10/2026; migration `0094`):** em Administração > Produtos > Matérias-primas, cada item pode informar cor (HEX/descrição), textura (imagem de referência enviada ao UploadThing e descrição para IA) ou deixar a aparência sem informação, além de opacidade/translucidez/transparência e transmissão de luz. A foto é referência visual, não mapa PBR calibrado. A rota autenticada `POST /api/letra-caixa/materias-aparencia` aceita `{ materiaPrimaIds }` (até 300) e devolve um registro por ID, inclusive sem cadastro local (`cadastroDisponivel: false`), com aparência e cores/transparências de formatos de chapa; não retorna custos. `GET /api/letra-caixa/materias-cadastro` também inclui `aparencia`. O servidor aceita URLs de imagem apenas do UploadThing.
-- **Módulo Proposta (cotação) é diferente de `crm_propostas`.** A tabela
-  `crm_propostas` no schema é órfã — nenhum router lê/escreve nela; o "CRM
+- **Módulo Proposta (cotação) é diferente da tabela `crm_propostas`.** A tabela
+  `crm_propostas` no schema é órfã — nenhum router lê/escreve nela; o tipo de
+  fonte `crm_propostas` em Campanhas é outra estrutura e guarda inscrições
+  explícitas por proposta, usando o motor de cadência e confirmação individual
+  de opt-in (migrations `0143`/`0144`). O "CRM
   de Propostas" (`client/src/pages/comercial/CRM.tsx`,
   `server/routers/crm.ts`) na verdade lê orçamentos ao vivo do MubiSys (sem
   lista de itens, só um `valor` total). O módulo **Propostas** novo

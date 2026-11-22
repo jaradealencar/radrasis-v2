@@ -11,6 +11,8 @@
 
 import { Request, Response } from 'express';
 import { sincronizarHistoricoDoMubiSys, sincronizarHistoricoRecente } from './scheduled-sync-historico';
+import { recalcularFatosContatoErp, registrarTentativaSyncErp } from '../services/campanhaCadenciaErp';
+import { invalidarCacheContextoErp } from '../services/fontesErpCampanhas';
 
 function clampParam(valor: unknown, min: number, max: number, padrao: number): number {
   const n = Number(valor);
@@ -31,10 +33,28 @@ export async function handleSincronizarHistorico(req: Request, res: Response) {
     }
 
     const mesesAtras = clampParam(req.query.mesesAtras, 0, 6, 1);
+    if (mesesAtras >= 1) {
+      await registrarTentativaSyncErp('historico', 'Sincronização do histórico MubiSys em andamento.', false);
+      await registrarTentativaSyncErp('fatos', 'Aguardando conclusão da sincronização do histórico MubiSys.', false);
+    }
     const resultados = await sincronizarHistoricoRecente(mesesAtras);
     const ok = resultados.every(r => r.status === 'SUCESSO');
+    if (mesesAtras >= 1) {
+      const detalhe = ok ? null : resultados.filter(r => r.status !== 'SUCESSO').map(r => `${r.mes}/${r.ano}: ${r.mensagemErro ?? 'falha'}`).join('; ');
+      if (ok) {
+        invalidarCacheContextoErp();
+        await recalcularFatosContatoErp();
+        await registrarTentativaSyncErp('fatos');
+        await registrarTentativaSyncErp('historico');
+      } else {
+        await registrarTentativaSyncErp('historico', detalhe, false);
+        await registrarTentativaSyncErp('fatos', `Histórico incompleto: ${detalhe ?? 'falha sem detalhe'}`, false);
+      }
+    }
     return res.status(ok ? 200 : 207).json({ ok, resultados, timestamp: new Date().toISOString() });
   } catch (erro: any) {
+    await registrarTentativaSyncErp('historico', erro?.message ?? 'Falha inesperada na sincronização do histórico.', false).catch(() => undefined);
+    await registrarTentativaSyncErp('fatos', erro?.message ?? 'Falha ao atualizar fatos após sincronização do histórico.', false).catch(() => undefined);
     console.error(`❌ [CRON] Erro na sincronização de histórico:`, erro);
     return res.status(500).json({
       error: erro?.message || 'Erro desconhecido',
