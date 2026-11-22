@@ -23,6 +23,8 @@ import {
 import { getDb } from "../db/db";
 import { campanhasWhatsapp } from "../../drizzle/schema";
 import { eq } from "drizzle-orm";
+import { acordarFilaProgramada } from "../services/campanhaFilaAgendamento";
+import { processarUmaEtapaFilaProgramada } from "../services/campanhaFilaWorker";
 
 function chaveConfere(recebida: string, esperada: string): boolean {
   const a = Buffer.from(recebida);
@@ -78,6 +80,16 @@ export const checkQuarantineBodySchema = z.object({
 });
 
 export function registrarRotasCampanhasWhatsappApi(app: Express) {
+  app.post("/api/v1/campaigns/process-cadence", exigirChaveApi, async (_req, res) => {
+    try {
+      const resultado = await processarUmaEtapaFilaProgramada();
+      if (resultado.proximoDelaySegundos) await acordarFilaProgramada(resultado.proximoDelaySegundos);
+      res.json(resultado);
+    } catch (erro) {
+      responderErro(res, erro, "process-cadence");
+    }
+  });
+
   app.post("/api/v1/campaigns/:id/log-send", exigirChaveApi, async (req, res) => {
     try {
       const campanhaId = z.coerce.number().int().positive().parse(req.params.id);

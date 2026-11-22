@@ -319,7 +319,9 @@ server/
                        crm_probabilidade_previsoes),
                        qualificacaoLeadCnpj.ts (score de lead por CNPJ),
                        campanhasWhatsappIa.ts (qualificação e resumo de leads) e
-                       campanhasWhatsappInboundBuffer.ts (filtro de bot e debounce de respostas)
+                       campanhasWhatsappInboundBuffer.ts (filtro de bot e debounce de respostas) e
+                       campanhaFilaWorker.ts (fila WhatsApp persistente por contato, controle de lotes,
+                       reconciliação de status e pausa/retomada por QStash)
                        treinamentoPop.ts (leitura de PDFs, DOCX e TXT e OCR de PDFs escaneados sob demanda para criar rascunhos de treinamento)
                        (telefones das campanhas: `server/sync/clientes-mubisys.ts` espelha o cadastro
                        de clientes do MubiSys em `mubisys_clientes_cache`, atualizado sozinho ao abrir
@@ -339,7 +341,7 @@ server/
   routes/              rotas REST fora do tRPC: publico-guia-fornecedores.ts (CORS aberto, site
                        espelho: listagem pública, busca por CEP em raio de 300km com cálculo Haversine e fallback dos 2 mais próximos,
                        questionário público de enriquecimento de parceiros por token com logo, cidades vizinhas e produtos fabricados;
-                       tabela `guia_fornecedores_questionarios` na migration 0116), campanhas-whatsapp-api.ts (webhooks com chave CAMPANHAS_API_KEY)
+                       tabela `guia_fornecedores_questionarios` na migration 0116), campanhas-whatsapp-api.ts (webhooks e worker da fila com chave CAMPANHAS_API_KEY)
                        e price-table-api.ts (export somente-leitura da Tabela de Preços com chave
                        PRICE_TABLE_API_KEY, para o precificador automatizado externo),
                        estudio-cotacoes.ts (cotações do HTML estático do CPQ, snapshots comerciais imutáveis e vínculo posterior com OS MubiSys),
@@ -430,6 +432,8 @@ local; `yarn e2e:seed` também exige que `DATABASE_URL` seja o mesmo banco
 descartável. O workflow `Quality` executa essa suíte em um serviço Postgres CI.
 `yarn test:e2e:marketing` valida os indicadores separados de Novos e Reativados
 com dados sintéticos servidos por uma fixture Vite local, sem conexão ao banco.
+`yarn test:e2e:campanhas` valida revisão, calendário e pausa/retomada da fila WhatsApp
+com dados fictícios servidos por uma fixture Vite local, sem conexão ao banco ou à WTS.Chat.
 
 ## docs/ — quais valem como fonte de verdade
 

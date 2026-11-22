@@ -8,6 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Spinner } from "@/components/ui/spinner";
+import ProgramacaoCadenciaPanel from "./ProgramacaoCadenciaPanel";
 import PeriodoApuracao from "./PeriodoApuracao";
 import {
   STATUS_CAMPANHA, STATUS_CAMPANHA_LABEL, TIPO_CAMPANHA_LABEL, TIPOS_CAMPANHA, hojeCampoGrande,
@@ -267,6 +268,8 @@ export default function CampanhaFormDialog({ open, onOpenChange, campanha }: Pro
               No modo automático não há data final: a lista é permanente e se retroalimenta, com quem for entrando.
             </p>
           </div>
+
+          {editando && <ProgramacaoCadenciaPanel campanhaId={campanha.id} aberto={open} />}
 
           {editando && (
             <div className="space-y-1.5">
