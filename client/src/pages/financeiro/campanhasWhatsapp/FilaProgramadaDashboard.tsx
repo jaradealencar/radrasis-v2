@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Bell, CalendarDays, CircleCheck, Clock3, Pause, Play, RefreshCw, Send } from "lucide-react";
+import { Bell, CalendarDays, CircleCheck, Clock3, LayoutDashboard, List, Pause, Play, RefreshCw, Send } from "lucide-react";
 import { toast } from "sonner";
 import { trpc } from "@/lib/trpc";
 import { fmtDateTime, fmtNum } from "@/lib/format";
@@ -18,11 +18,13 @@ const situacoes: Record<string, string> = {
   pausado: "Pausado",
   agendado: "Agendado",
   concluido: "Concluído",
+  falha: "Falha / atenção",
 };
 
 function classeSituacao(status: string) {
   if (status === "em_andamento" || status === "concluido") return "bg-emerald-100 text-emerald-800";
   if (status === "pausado") return "bg-amber-100 text-amber-900";
+  if (status === "falha") return "bg-red-100 text-red-800";
   if (status === "pendente_revisao") return "bg-slate-100 text-slate-700";
   return "bg-blue-100 text-blue-800";
 }
@@ -34,6 +36,7 @@ export default function FilaProgramadaDashboard() {
   const [notificacoesAtivas, setNotificacoesAtivas] = useState(() => typeof Notification !== "undefined" && Notification.permission === "granted");
   const [selecionado, setSelecionado] = useState<Selecionado>(null);
   const [calendarioCampanha, setCalendarioCampanha] = useState<number | null>(null);
+  const [visualizacao, setVisualizacao] = useState<"kanban" | "lista">("kanban");
   const detalhes = trpc.campanhasWhatsapp.revisarEnvioProgramado.useQuery(
     { envioProgramadoId: selecionado?.id ?? 0 },
     { enabled: !!selecionado, refetchInterval: selecionado?.modo === "acompanhar" ? 5_000 : false, retry: false },
@@ -64,6 +67,65 @@ export default function FilaProgramadaDashboard() {
 
   const revisar = (id: number) => setSelecionado({ id, modo: "revisar" });
   const acompanhar = (id: number) => setSelecionado({ id, modo: "acompanhar" });
+  const linhas = campanhas ?? [];
+  const situacaoKanban = (c: (typeof linhas)[number]) => {
+    if (c.status === "pausado" || c.status === "falha" || c.incertos > 0) return "atencao";
+    if (c.status === "em_andamento") return "andamento";
+    if (c.situacao === "pendente_revisao") return "revisar";
+    if (c.falhas > 0) return "atencao";
+    if (c.status === "concluido") return "concluido";
+    return "agendado";
+  };
+  const colunasKanban = [
+    { id: "revisar", titulo: "Para revisar", subtitulo: "Confirme antes de iniciar", cor: "border-t-blue-500", itens: linhas.filter(c => situacaoKanban(c) === "revisar") },
+    { id: "andamento", titulo: "Em andamento", subtitulo: "Fila processando lotes", cor: "border-t-emerald-500", itens: linhas.filter(c => situacaoKanban(c) === "andamento") },
+    { id: "atencao", titulo: "Pausadas / atenção", subtitulo: "Verifique o motivo ou as falhas", cor: "border-t-amber-500", itens: linhas.filter(c => situacaoKanban(c) === "atencao") },
+    { id: "agendado", titulo: "Próximas datas", subtitulo: "Aguardando a data prevista", cor: "border-t-violet-500", itens: linhas.filter(c => situacaoKanban(c) === "agendado") },
+    { id: "concluido", titulo: "Concluídas", subtitulo: "Etapa finalizada", cor: "border-t-slate-400", itens: linhas.filter(c => situacaoKanban(c) === "concluido") },
+  ];
+
+  const renderCartao = (c: (typeof linhas)[number]) => {
+    const busy = c.status === "em_andamento";
+    const temProgresso = busy || c.status === "pausado" || c.status === "falha" || c.status === "concluido" || c.falhas > 0 || c.incertos > 0;
+    const processados = Math.max(0, c.totalContatos - c.pendentes - c.incertos);
+    const progress = c.totalContatos ? Math.round((processados / c.totalContatos) * 100) : 0;
+    const temFalhaOuIncerto = c.falhas > 0 || c.incertos > 0 || c.status === "falha";
+    return (
+      <article key={c.campanhaId} data-testid={`campanha-card-${c.campanhaId}`} className="space-y-3 rounded-lg border bg-white p-3 shadow-sm">
+        <div className="flex items-start justify-between gap-2">
+          <div className="min-w-0">
+            <h5 className="truncate text-sm font-semibold text-slate-900" title={c.campanhaNome}>{c.campanhaNome}</h5>
+            <p className="mt-1 text-xs text-muted-foreground">{c.etapa}º de {c.totalEtapas} envios · {formatarDataBr(String(c.data).slice(0, 10))}</p>
+          </div>
+          <span className={`shrink-0 rounded-full px-2 py-1 text-[11px] font-medium ${temFalhaOuIncerto ? "bg-red-100 text-red-800" : classeSituacao(c.situacao)}`}>
+            {c.status === "concluido" && c.falhas > 0 ? "Concluído com falhas" : situacoes[c.situacao] ?? c.situacao}
+          </span>
+        </div>
+
+        {temProgresso ? <div className="space-y-2">
+          <div className="flex justify-between gap-2 text-xs"><span>{c.lotesConcluidos} de {c.lotes} lotes concluídos</span><span>{progress}%</span></div>
+          <div className="h-2 overflow-hidden rounded-full bg-slate-200"><div className="h-full rounded-full bg-emerald-500" style={{ width: `${progress}%` }} /></div>
+          <div className="grid grid-cols-2 gap-x-2 gap-y-1 text-[11px] text-muted-foreground">
+            <span>{fmtNum(c.aceitos)} aceitos pela WTS.Chat</span><span>{fmtNum(c.entregues)} entregues</span>
+            <span>{fmtNum(c.pendentes)} pendentes</span><span>{fmtNum(c.falhas)} falhas · {fmtNum(c.incertos)} incertos</span>
+          </div>
+          {c.proximoProcessamentoEm && busy && <p className="text-xs font-medium text-slate-600">Próximo lote {fmtDateTime(c.proximoProcessamentoEm)}</p>}
+          {c.motivoPausa && <p className="rounded-md bg-amber-50 p-2 text-xs text-amber-900">{c.motivoPausa}</p>}
+        </div> : <p className="text-xs text-muted-foreground">{c.totalContatos ? `${fmtNum(c.totalContatos)} contatos · ${c.lotes} lotes` : "Contatos aptos serão calculados na revisão"}</p>}
+
+        <div className="flex flex-wrap gap-1.5 border-t pt-2">
+          {c.situacao === "pendente_revisao" && <Button size="sm" onClick={() => revisar(c.envioProgramadoId)}><Send size={13} className="mr-1" />Revisar envio</Button>}
+          {(busy || c.status === "concluido" && c.falhas > 0 || c.status === "falha") && <Button size="sm" variant="outline" onClick={() => acompanhar(c.envioProgramadoId)}>Acompanhar</Button>}
+          {busy && <Button size="sm" variant="outline" disabled={pausar.isPending} onClick={() => pausar.mutate({ envioProgramadoId: c.envioProgramadoId })}><Pause size={13} className="mr-1" />Pausar fila</Button>}
+          {c.status === "pausado" && <>
+            <Button size="sm" variant="outline" onClick={() => acompanhar(c.envioProgramadoId)}>Ver motivo</Button>
+            <Button size="sm" disabled={retomar.isPending} onClick={() => retomar.mutate({ envioProgramadoId: c.envioProgramadoId })}><Play size={13} className="mr-1" />Retomar</Button>
+          </>}
+          <Button size="sm" variant="ghost" onClick={() => setCalendarioCampanha(c.campanhaId)}><CalendarDays size={13} className="mr-1" />Calendário</Button>
+        </div>
+      </article>
+    );
+  };
 
   useEffect(() => {
     if (!campanhas) return;
@@ -109,9 +171,13 @@ export default function FilaProgramadaDashboard() {
     <div className="space-y-3">
       <div>
         <h3 className="text-base font-semibold text-slate-800">Fila de envios programados</h3>
-        <p className="text-xs text-muted-foreground">Uma linha por campanha. O worker continua no servidor depois que você fecha a tela.</p>
+        <p className="text-xs text-muted-foreground">Cada cartão mostra a etapa atual ou a próxima de cada campanha. O worker continua no servidor depois que você fecha a tela.</p>
       </div>
-      <div className="flex justify-end">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="flex gap-1 rounded-lg border bg-slate-50 p-1" role="group" aria-label="Visualização da fila">
+          <Button type="button" size="sm" variant={visualizacao === "kanban" ? "default" : "ghost"} aria-pressed={visualizacao === "kanban"} onClick={() => setVisualizacao("kanban")}><LayoutDashboard size={14} className="mr-1" />Kanban</Button>
+          <Button type="button" size="sm" variant={visualizacao === "lista" ? "default" : "ghost"} aria-pressed={visualizacao === "lista"} onClick={() => setVisualizacao("lista")}><List size={14} className="mr-1" />Lista</Button>
+        </div>
         <Button type="button" size="sm" variant="outline" onClick={ativarNotificacoes} disabled={notificacoesAtivas}>
           <Bell size={14} className="mr-1" />{notificacoesAtivas ? "Alertas ativados" : "Ativar alertas do navegador"}
         </Button>
@@ -121,7 +187,19 @@ export default function FilaProgramadaDashboard() {
       ) : !campanhas?.length ? (
         <div className="rounded-lg border border-dashed p-8 text-center text-sm text-muted-foreground">Nenhuma campanha tem programação ativa. Ative o calendário em “Editar campanha”.</div>
       ) : (
-        <div className="overflow-x-auto rounded-lg border bg-white">
+        visualizacao === "kanban" ? <div className="-mx-1 overflow-x-auto pb-2" role="region" aria-label="Quadro Kanban das campanhas">
+          <div className="flex min-w-max items-start gap-3 px-1">
+            {colunasKanban.map(coluna => <section key={coluna.id} data-testid={`kanban-coluna-${coluna.id}`} aria-label={coluna.titulo} className={`w-[280px] shrink-0 rounded-lg border border-t-4 bg-slate-50/80 p-2.5 ${coluna.cor}`}>
+              <header className="mb-2 flex items-start justify-between gap-2 px-0.5">
+                <div><h4 className="text-sm font-semibold text-slate-800">{coluna.titulo}</h4><p className="mt-0.5 text-[11px] text-muted-foreground">{coluna.subtitulo}</p></div>
+                <span className="rounded-full bg-white px-2 py-0.5 text-xs font-semibold text-slate-600" aria-label={`${coluna.itens.length} campanhas`}>{coluna.itens.length}</span>
+              </header>
+              <div className="max-h-[min(65vh,720px)] space-y-2 overflow-y-auto pr-0.5">
+                {coluna.itens.length ? coluna.itens.map(renderCartao) : <p className="rounded-md border border-dashed bg-white/70 p-3 text-center text-xs text-muted-foreground">Nenhuma campanha nesta etapa.</p>}
+              </div>
+            </section>)}
+          </div>
+        </div> : <div className="overflow-x-auto rounded-lg border bg-white">
           <Table>
             <TableHeader><TableRow>
               <TableHead>Campanha</TableHead><TableHead>Etapa</TableHead><TableHead>Data</TableHead><TableHead>Situação</TableHead><TableHead>Progresso</TableHead><TableHead className="text-right">Ação</TableHead>

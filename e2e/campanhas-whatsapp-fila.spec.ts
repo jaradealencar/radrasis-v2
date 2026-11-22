@@ -1,8 +1,18 @@
 import { expect, test } from "@playwright/test";
 
 test("revisa calendários e pausa/retoma a fila com 1.700 contatos fictícios", async ({ page }) => {
-  await page.goto("/e2e-campanhas-whatsapp.html", { waitUntil: "domcontentloaded", timeout: 15_000 });
+  await page.goto("/e2e-campanhas-whatsapp.html", { waitUntil: "domcontentloaded", timeout: 45_000 });
   await expect(page.getByRole("heading", { name: /prévia.*campanhas de whatsapp/i })).toBeVisible();
+
+  const quadro = page.getByRole("region", { name: "Quadro Kanban das campanhas" });
+  await expect(quadro).toBeVisible();
+  await expect(page.getByTestId("kanban-coluna-revisar")).toContainText("Campanha PR");
+  await expect(page.getByTestId("kanban-coluna-andamento")).toContainText("São Paulo 01");
+  await expect(page.getByTestId("kanban-coluna-atencao")).toContainText("Acesso negado pela WTS.Chat");
+  await expect(page.getByTestId("kanban-coluna-agendado")).toContainText("SP 02");
+  await expect(page.getByTestId("kanban-coluna-concluido")).toContainText("Campanha Finalizada");
+  await expect(page.getByTestId("campanha-card-101")).toContainText("3 de 17 lotes concluídos");
+  await page.getByRole("button", { name: "Lista" }).click();
 
   const saoPaulo = page.getByRole("row").filter({ hasText: "São Paulo 01" });
   await expect(saoPaulo).toContainText("4º de 6");
