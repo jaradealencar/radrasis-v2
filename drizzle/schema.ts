@@ -161,7 +161,19 @@ export const suppliers = pgTable("suppliers", {
   updatedByNome: varchar("updatedByNome", { length: 128 }), // nome do último editor
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().notNull(),
-});
+  nfeCnpj: varchar("nfe_cnpj", { length: 32 }),
+  nfeRazaoSocial: varchar("nfe_razao_social", { length: 256 }),
+  nfeNomeFantasia: varchar("nfe_nome_fantasia", { length: 256 }),
+  nfeNumero: varchar("nfe_numero", { length: 64 }),
+  nfeSerie: varchar("nfe_serie", { length: 32 }),
+  nfeChaveAcesso: varchar("nfe_chave_acesso", { length: 64 }),
+  nfeArquivoNome: varchar("nfe_arquivo_nome", { length: 256 }),
+  nfeArquivoKey: varchar("nfe_arquivo_key", { length: 256 }),
+  nfeArquivoUrl: varchar("nfe_arquivo_url", { length: 512 }),
+  nfeUltimaAtualizacao: timestamp("nfe_ultima_atualizacao"),
+}, table => ({
+  nfeCnpjIdx: index("suppliers_nfe_cnpj_idx").on(table.nfeCnpj),
+}));
 export type Supplier = typeof suppliers.$inferSelect;
 export type InsertSupplier = typeof suppliers.$inferInsert;
 

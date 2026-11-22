@@ -40,6 +40,7 @@ import { auth } from "./_core/auth";
 import { fromNodeHeaders } from "better-auth/node";
 import { invokeLLM } from "./_core/llm";
 import { TRPCError } from "@trpc/server";
+import { extrairDadosNfePdf } from "./services/nfeParser";
 import { obterImpactoHistoricoTabela } from "./services/priceTableImpact";
 import { obterAnaliseReceitaTabela } from "./services/priceTableRevenueAnalysis";
 import { listarMateriasPrimasEspelhadas, listarProdutosEspelhados } from "./services/mubisysEspelho";
@@ -72,6 +73,7 @@ import {
   deleteErrorLibraryItem,
   listKnowledge, getKnowledgeById, createKnowledge, updateKnowledge, deleteKnowledge,
   listSuppliers, getSupplierById, createSupplier, updateSupplier, deleteSupplier,
+  updateSupplierNfe,
   listRoutines, createRoutine, updateRoutine, deleteRoutine, listPendingRoutines, markRoutineDone,
   listRegulations, getRegulationById, createRegulation, updateRegulation, deleteRegulation,
   listPops, getPopById, createPop, updatePop, deletePop,
@@ -119,6 +121,146 @@ const filterSchema = z.object({
   dataFim: z.date().optional(),
   search: z.string().optional(),
   tipoRegistro: z.enum(["retrabalho", "cnq"]).optional(),
+});
+
+const MAX_NFE_PDF_BYTES = 32 * 1024 * 1024;
+const UPLOADTHING_DOMAINS = ["ufs.sh", "utfs.io", "uploadthing.com"];
+const NFE_REDIRECT_DOMAINS = [...UPLOADTHING_DOMAINS, "amazonaws.com", "cloudfront.net"];
+
+function hostInDomains(host: string, domains: string[]) {
+  const normalizedHost = host.toLowerCase();
+  return domains.some(domain => normalizedHost === domain || normalizedHost.endsWith("." + domain));
+}
+
+function uploadThingUrlMatchesKey(rawUrl: string, key: string) {
+  try {
+    const url = new URL(rawUrl);
+    const parts = url.pathname.split("/").filter(Boolean);
+    return (
+      url.protocol === "https:" &&
+      !url.username &&
+      !url.password &&
+      !url.port &&
+      hostInDomains(url.hostname, UPLOADTHING_DOMAINS) &&
+      parts.length === 2 &&
+      parts[0] === "f" &&
+      decodeURIComponent(parts[1]) === key
+    );
+  } catch {
+    return false;
+  }
+}
+
+async function baixarPdfNfe(arquivoUrl: string, arquivoKey: string): Promise<Buffer> {
+  if (!uploadThingUrlMatchesKey(arquivoUrl, arquivoKey)) {
+    throw new TRPCError({
+      code: "BAD_REQUEST",
+      message: "O arquivo precisa ser um PDF do UploadThing válido.",
+    });
+  }
+
+  try {
+    let url = new URL(arquivoUrl);
+    let response: Response;
+    for (let redirects = 0; ; redirects++) {
+      response = await fetch(url, {
+        redirect: "manual",
+        signal: AbortSignal.timeout(30_000),
+      });
+      if (response.status < 300 || response.status >= 400) break;
+
+      const location = response.headers.get("location");
+      if (!location || redirects >= 4) {
+        throw new TRPCError({
+          code: "BAD_GATEWAY",
+          message: "Não foi possível baixar o PDF da NF-e.",
+        });
+      }
+      const nextUrl = new URL(location, url);
+      if (
+        nextUrl.protocol !== "https:" ||
+        nextUrl.username ||
+        nextUrl.password ||
+        nextUrl.port ||
+        !hostInDomains(nextUrl.hostname, NFE_REDIRECT_DOMAINS)
+      ) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "O link do PDF da NF-e não é válido.",
+        });
+      }
+      url = nextUrl;
+    }
+
+    if (!response.ok || !response.body) {
+      throw new TRPCError({
+        code: "BAD_GATEWAY",
+        message: "Não foi possível baixar o PDF da NF-e.",
+      });
+    }
+
+    const declaredSize = Number(response.headers.get("content-length"));
+    if (Number.isFinite(declaredSize) && declaredSize > MAX_NFE_PDF_BYTES) {
+      throw new TRPCError({
+        code: "BAD_REQUEST",
+        message: "O PDF da NF-e não pode ultrapassar 32 MB.",
+      });
+    }
+
+    const reader = response.body.getReader();
+    const chunks: Uint8Array[] = [];
+    let total = 0;
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      total += value.byteLength;
+      if (total > MAX_NFE_PDF_BYTES) {
+        await reader.cancel().catch(() => undefined);
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "O PDF da NF-e não pode ultrapassar 32 MB.",
+        });
+      }
+      chunks.push(value);
+    }
+
+    const buffer = Buffer.concat(chunks);
+    if (!buffer.subarray(0, 1024).toString("latin1").includes("%PDF-")) {
+      throw new TRPCError({
+        code: "BAD_REQUEST",
+        message: "O arquivo enviado não é um PDF válido.",
+      });
+    }
+    return buffer;
+  } catch (error) {
+    if (error instanceof TRPCError) throw error;
+    throw new TRPCError({
+      code: "BAD_GATEWAY",
+      message: "Não foi possível baixar o PDF da NF-e.",
+    });
+  }
+}
+
+const fornecedorNfeUploadSchema = z.object({
+  id: z.number().int().positive(),
+  nfeCnpj: z.string().trim().max(32).nullable(),
+  nfeRazaoSocial: z.string().trim().max(256).nullable(),
+  nfeNomeFantasia: z.string().trim().max(256).nullable(),
+  nfeNumero: z.string().trim().max(64).nullable(),
+  nfeSerie: z.string().trim().max(32).nullable(),
+  nfeChaveAcesso: z.string().trim().max(64).nullable(),
+  nfeArquivoNome: z.string().trim().min(1).max(256),
+  nfeArquivoKey: z.string().trim().min(1).max(256),
+  nfeArquivoUrl: z.string().url().max(512),
+  nfeUltimaAtualizacao: z.string().datetime({ offset: true }).nullable().optional(),
+}).superRefine((input, ctx) => {
+  if (!uploadThingUrlMatchesKey(input.nfeArquivoUrl, input.nfeArquivoKey)) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["nfeArquivoUrl"],
+      message: "O arquivo precisa estar armazenado no UploadThing.",
+    });
+  }
 });
 
 export const appRouter = router({
@@ -647,6 +789,56 @@ Seja direto, técnico e prático. Use dados específicos dos números fornecidos
   }),
 
   // ─── OPERAÇÕES: Rotinas ──────────────────────────────────────────────────────────────────
+  fornecedorNfe: router({
+    upload: protectedProcedure
+      .input(fornecedorNfeUploadSchema)
+      .mutation(async ({ input }) => {
+        if (!(await getSupplierById(input.id))) {
+          throw new TRPCError({
+            code: "NOT_FOUND",
+            message: "Fornecedor não encontrado.",
+          });
+        }
+        return updateSupplierNfe(input.id, {
+          nfeCnpj: input.nfeCnpj,
+          nfeRazaoSocial: input.nfeRazaoSocial,
+          nfeNomeFantasia: input.nfeNomeFantasia,
+          nfeNumero: input.nfeNumero,
+          nfeSerie: input.nfeSerie,
+          nfeChaveAcesso: input.nfeChaveAcesso,
+          nfeArquivoNome: input.nfeArquivoNome,
+          nfeArquivoKey: input.nfeArquivoKey,
+          nfeArquivoUrl: input.nfeArquivoUrl,
+          nfeUltimaAtualizacao: input.nfeUltimaAtualizacao
+            ? new Date(input.nfeUltimaAtualizacao)
+            : new Date(),
+        });
+      }),
+    extrair: protectedProcedure
+      .input(z.object({
+        id: z.number().int().positive(),
+        arquivoUrl: z.string().url().max(512),
+        arquivoKey: z.string().trim().min(1).max(256),
+      }))
+      .mutation(async ({ input }) => {
+        if (!(await getSupplierById(input.id))) {
+          throw new TRPCError({
+            code: "NOT_FOUND",
+            message: "Fornecedor não encontrado.",
+          });
+        }
+        const buffer = await baixarPdfNfe(input.arquivoUrl, input.arquivoKey);
+        try {
+          return await extrairDadosNfePdf(buffer);
+        } catch {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: "Não foi possível ler o texto do PDF da NF-e.",
+          });
+        }
+      }),
+  }),
+
   routines: router({
     list: publicProcedure.query(() => listRoutines()),
     pending: publicProcedure.query(() => listPendingRoutines()),

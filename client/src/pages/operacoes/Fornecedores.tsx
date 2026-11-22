@@ -1,27 +1,60 @@
 import { trpc } from "@/lib/trpc";
-import { Building2, Mail, MessageCircle, Phone, Plus, Search, Trash2, X } from "lucide-react";
-import { useState } from "react";
+import { useAuth } from "@/hooks/useAuth";
+import { Building2, FileText, Loader2, Mail, MessageCircle, Phone, Plus, Save, Search, Trash2, Upload, X } from "lucide-react";
+import { useRef, useState } from "react";
 import { toast } from "sonner";
 import { Empty, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
+import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { enviarArquivo, type ArquivoEnviado } from "@/lib/upload";
 
 const CATEGORIES = ["Matéria-Prima", "Embalagem", "Serviços", "Tecnologia", "Logística", "Manutenção", "Outros"];
 
 const EMPTY_FORM = { name: "", company: "", category: "Matéria-Prima", supplies: "", contact: "", phone: "", email: "", paymentTerms: "", notes: "" };
+const EMPTY_NFE = {
+  nfeCnpj: "",
+  nfeRazaoSocial: "",
+  nfeNomeFantasia: "",
+  nfeNumero: "",
+  nfeSerie: "",
+  nfeChaveAcesso: "",
+};
+const NFE_MAX_BYTES = 32 * 1024 * 1024;
 
 export default function Fornecedores() {
+  const { user } = useAuth();
   const [search, setSearch] = useState("");
   const [category, setCategory] = useState("");
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState({ ...EMPTY_FORM });
   const [editId, setEditId] = useState<number | null>(null);
+  const [nfeDialogId, setNfeDialogId] = useState<number | null>(null);
+  const [nfeFile, setNfeFile] = useState<File | null>(null);
+  const [nfeUploadedFile, setNfeUploadedFile] = useState<ArquivoEnviado | null>(null);
+  const [nfeForm, setNfeForm] = useState({ ...EMPTY_NFE });
+  const [nfeDragging, setNfeDragging] = useState(false);
+  const [nfeUploading, setNfeUploading] = useState(false);
+  const [nfeExtracting, setNfeExtracting] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const utils = trpc.useUtils();
   const { data, isLoading } = trpc.suppliers.list.useQuery({ search, category });
   const createMut = trpc.suppliers.create.useMutation({ onSuccess: () => { utils.suppliers.list.invalidate(); setShowForm(false); setForm({ ...EMPTY_FORM }); toast.success("Fornecedor cadastrado!"); } });
   const updateMut = trpc.suppliers.update.useMutation({ onSuccess: () => { utils.suppliers.list.invalidate(); setEditId(null); setShowForm(false); setForm({ ...EMPTY_FORM }); toast.success("Fornecedor atualizado!"); } });
   const deleteMut = trpc.suppliers.delete.useMutation({ onSuccess: () => { utils.suppliers.list.invalidate(); toast.success("Fornecedor removido."); } });
+  const uploadNfeMut = trpc.fornecedorNfe.upload.useMutation({
+    onSuccess: () => {
+      utils.suppliers.list.invalidate();
+      fecharNfeDialog();
+      toast.success("NF-e anexada ao fornecedor!");
+    },
+  });
+  const extractNfeMut = trpc.fornecedorNfe.extrair.useMutation();
 
   const items = data ?? [];
+  const nfeReady = nfeFile !== null || nfeUploadedFile !== null;
 
   function openEdit(item: typeof items[0]) {
     setForm({ name: item.name, company: item.company ?? "", category: item.category, supplies: item.supplies ?? "", contact: item.contact ?? "", phone: item.phone ?? "", email: item.email ?? "", paymentTerms: item.paymentTerms ?? "", notes: item.notes ?? "" });
@@ -35,6 +68,121 @@ export default function Fornecedores() {
     } else {
       createMut.mutate(form);
     }
+  }
+
+  function abrirNfeDialog(item: typeof items[number]) {
+    setNfeDialogId(item.id);
+    setNfeFile(null);
+    setNfeForm({
+      nfeCnpj: item.nfeCnpj ?? "",
+      nfeRazaoSocial: item.nfeRazaoSocial ?? "",
+      nfeNomeFantasia: item.nfeNomeFantasia ?? "",
+      nfeNumero: item.nfeNumero ?? "",
+      nfeSerie: item.nfeSerie ?? "",
+      nfeChaveAcesso: item.nfeChaveAcesso ?? "",
+    });
+    setNfeUploadedFile(
+      item.nfeArquivoUrl && item.nfeArquivoKey
+        ? {
+            url: item.nfeArquivoUrl,
+            key: item.nfeArquivoKey,
+            fileName: item.nfeArquivoNome ?? "NF-e.pdf",
+            mimeType: "application/pdf",
+            fileSize: 0,
+          }
+        : null
+    );
+    setShowForm(false);
+  }
+
+  function fecharNfeDialog() {
+    setNfeDialogId(null);
+    setNfeFile(null);
+    setNfeUploadedFile(null);
+    setNfeForm({ ...EMPTY_NFE });
+    setNfeDragging(false);
+    setNfeUploading(false);
+    setNfeExtracting(false);
+    if (fileInputRef.current) fileInputRef.current.value = "";
+  }
+
+  function selecionarNfe(file: File | undefined) {
+    if (!file) return;
+    if (!file.name.toLowerCase().endsWith(".pdf") || (file.type && file.type !== "application/pdf")) {
+      toast.error("Selecione um arquivo PDF.");
+      return;
+    }
+    if (file.size > NFE_MAX_BYTES) {
+      toast.error("O PDF da NF-e não pode ultrapassar 32 MB.");
+      return;
+    }
+    setNfeFile(file);
+    setNfeUploadedFile(null);
+  }
+
+  async function enviarNfeSeNecessario() {
+    if (nfeUploadedFile) return nfeUploadedFile;
+    if (!nfeFile) throw new Error("Selecione um PDF da NF-e.");
+    const enviado = await enviarArquivo("documento", nfeFile);
+    setNfeUploadedFile(enviado);
+    return enviado;
+  }
+
+  async function extrairDadosNfe() {
+    if (!nfeDialogId) return;
+    setNfeExtracting(true);
+    try {
+      const arquivo = await enviarNfeSeNecessario();
+      const dados = await extractNfeMut.mutateAsync({
+        id: nfeDialogId,
+        arquivoUrl: arquivo.url,
+        arquivoKey: arquivo.key,
+      });
+      setNfeForm({
+        nfeCnpj: dados.nfeCnpj ?? "",
+        nfeRazaoSocial: dados.nfeRazaoSocial ?? "",
+        nfeNomeFantasia: dados.nfeNomeFantasia ?? "",
+        nfeNumero: dados.nfeNumero ?? "",
+        nfeSerie: dados.nfeSerie ?? "",
+        nfeChaveAcesso: dados.nfeChaveAcesso ?? "",
+      });
+      toast.success("Dados extraídos. Revise os campos antes de salvar.");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Não foi possível extrair os dados da NF-e.");
+    } finally {
+      setNfeExtracting(false);
+    }
+  }
+
+  async function salvarNfe() {
+    if (!nfeDialogId) return;
+    setNfeUploading(true);
+    try {
+      const arquivo = await enviarNfeSeNecessario();
+      await uploadNfeMut.mutateAsync({
+        id: nfeDialogId,
+        nfeCnpj: nfeForm.nfeCnpj.trim() || null,
+        nfeRazaoSocial: nfeForm.nfeRazaoSocial.trim() || null,
+        nfeNomeFantasia: nfeForm.nfeNomeFantasia.trim() || null,
+        nfeNumero: nfeForm.nfeNumero.trim() || null,
+        nfeSerie: nfeForm.nfeSerie.trim() || null,
+        nfeChaveAcesso: nfeForm.nfeChaveAcesso.trim() || null,
+        nfeArquivoNome: arquivo.fileName,
+        nfeArquivoKey: arquivo.key,
+        nfeArquivoUrl: arquivo.url,
+        nfeUltimaAtualizacao: new Date().toISOString(),
+      });
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Não foi possível salvar o anexo da NF-e.");
+    } finally {
+      setNfeUploading(false);
+    }
+  }
+
+  function formatarCnpj(cnpj: string) {
+    const digits = cnpj.replace(/\D/g, "");
+    if (digits.length !== 14) return cnpj;
+    return digits.replace(/^(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})$/, "$1.$2.$3/$4-$5");
   }
 
   return (
@@ -161,6 +309,28 @@ export default function Fornecedores() {
                   <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${item.active === "sim" ? "bg-green-50 text-green-700" : "bg-red-50 text-red-600"}`}>{item.active === "sim" ? "Ativo" : "Inativo"}</span>
                 </div>
                 {item.supplies && <p className="text-xs text-gray-500 mt-0.5">Insumos: {item.supplies}</p>}
+                {(item.nfeCnpj || item.nfeNumero || item.nfeChaveAcesso || item.nfeArquivoUrl) && (
+                  <div className="mt-1 flex items-center gap-1.5 text-xs text-gray-600">
+                    <FileText size={12} className="text-amber-600" />
+                    <span>
+                      {item.nfeCnpj || item.nfeNumero || item.nfeChaveAcesso
+                        ? "NF-e" + (item.nfeNumero ? " nº " + item.nfeNumero : "")
+                        : "NF-e anexada"}
+                      {item.nfeSerie ? " · série " + item.nfeSerie : ""}
+                      {item.nfeCnpj ? " · CNPJ " + formatarCnpj(item.nfeCnpj) : ""}
+                    </span>
+                    {item.nfeArquivoUrl && (
+                      <a
+                        href={item.nfeArquivoUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="ml-1 font-medium text-amber-700 hover:underline"
+                      >
+                        Abrir PDF
+                      </a>
+                    )}
+                  </div>
+                )}
                 {/* Auditoria: quem cadastrou / editou */}
                 <div className="flex items-center gap-3 mt-0.5 flex-wrap">
                   {item.createdByNome && (
@@ -206,6 +376,17 @@ export default function Fornecedores() {
                     </a>
                   );
                 })()}
+                {user && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="gap-1.5"
+                    onClick={() => abrirNfeDialog(item)}
+                  >
+                    <FileText size={14} />
+                    Anexar / editar NF-e
+                  </Button>
+                )}
                 <button onClick={() => openEdit(item)} className="p-1.5 rounded hover:bg-gray-100 text-gray-400 hover:text-gray-700 transition-colors text-xs font-medium px-2">Editar</button>
                 <button onClick={() => { if (confirm("Remover fornecedor?")) deleteMut.mutate({ id: item.id }); }} className="p-1.5 rounded hover:bg-red-50 text-gray-400 hover:text-red-500 transition-colors">
                   <Trash2 size={13} />
@@ -215,6 +396,151 @@ export default function Fornecedores() {
           ))}
         </div>
       )}
+
+      <Dialog
+        open={nfeDialogId !== null}
+        onOpenChange={open => {
+          if (!open) fecharNfeDialog();
+        }}
+      >
+        <DialogContent className="max-w-xl">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <FileText size={18} className="text-amber-600" />
+              NF-e do fornecedor
+            </DialogTitle>
+            <DialogDescription>
+              Anexe o PDF para extrair os dados automaticamente. Revise e ajuste os campos antes de salvar.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4">
+            <div
+              role="button"
+              tabIndex={0}
+              onClick={() => fileInputRef.current?.click()}
+              onKeyDown={event => {
+                if (event.key === "Enter" || event.key === " ") fileInputRef.current?.click();
+              }}
+              onDragOver={event => {
+                event.preventDefault();
+                setNfeDragging(true);
+              }}
+              onDragLeave={() => setNfeDragging(false)}
+              onDrop={event => {
+                event.preventDefault();
+                setNfeDragging(false);
+                selecionarNfe(event.dataTransfer.files[0]);
+              }}
+              className={"cursor-pointer rounded-xl border-2 border-dashed p-5 text-center transition-colors " + (
+                nfeDragging ? "border-amber-500 bg-amber-50" : "border-gray-300 hover:border-amber-400 hover:bg-amber-50/50"
+              )}
+            >
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="application/pdf,.pdf"
+                className="hidden"
+                onClick={event => event.stopPropagation()}
+                onChange={event => selecionarNfe(event.target.files?.[0])}
+              />
+              {nfeFile || nfeUploadedFile ? (
+                <div className="flex items-center justify-center gap-3">
+                  <FileText size={24} className="shrink-0 text-amber-600" />
+                  <div className="min-w-0 text-left">
+                    <p className="truncate text-sm font-medium text-slate-700">
+                      {nfeFile?.name ?? nfeUploadedFile?.fileName}
+                    </p>
+                    <p className="text-xs text-slate-500">
+                      {nfeFile
+                        ? (nfeFile.size / 1024 / 1024).toFixed(2) + " MB"
+                        : "PDF anexado · clique para substituir"}
+                    </p>
+                  </div>
+                  {(nfeFile || nfeUploadedFile) && (
+                    <button
+                      type="button"
+                      className="ml-2 shrink-0 text-slate-400 hover:text-red-500"
+                      aria-label="Remover PDF selecionado"
+                      onClick={event => {
+                        event.stopPropagation();
+                        setNfeFile(null);
+                        setNfeUploadedFile(null);
+                        if (fileInputRef.current) fileInputRef.current.value = "";
+                      }}
+                    >
+                      <X size={16} />
+                    </button>
+                  )}
+                </div>
+              ) : (
+                <>
+                  <Upload size={30} className="mx-auto mb-2 text-slate-400" />
+                  <p className="text-sm font-medium text-slate-700">Arraste um PDF ou clique para selecionar</p>
+                  <p className="mt-1 text-xs text-slate-500">Tamanho máximo: 32 MB</p>
+                </>
+              )}
+            </div>
+
+            {nfeReady && (
+              <>
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="flex-1 gap-2"
+                    disabled={nfeExtracting || nfeUploading}
+                    onClick={extrairDadosNfe}
+                  >
+                    {nfeExtracting ? <Loader2 size={15} className="animate-spin" /> : <FileText size={15} />}
+                    {nfeExtracting ? "Extraindo..." : "Extrair dados da NF-e"}
+                  </Button>
+                  <Button
+                    type="button"
+                    className="flex-1 gap-2 bg-amber-600 hover:bg-amber-700"
+                    disabled={nfeUploading || nfeExtracting}
+                    onClick={salvarNfe}
+                  >
+                    {nfeUploading ? <Loader2 size={15} className="animate-spin" /> : <Save size={15} />}
+                    {nfeUploading ? "Salvando..." : "Salvar anexo"}
+                  </Button>
+                </div>
+
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  <div>
+                    <Label htmlFor="nfe-cnpj">CNPJ</Label>
+                    <Input id="nfe-cnpj" value={nfeForm.nfeCnpj} onChange={event => setNfeForm(prev => ({ ...prev, nfeCnpj: event.target.value }))} />
+                  </div>
+                  <div>
+                    <Label htmlFor="nfe-razao-social">Razão social</Label>
+                    <Input id="nfe-razao-social" value={nfeForm.nfeRazaoSocial} onChange={event => setNfeForm(prev => ({ ...prev, nfeRazaoSocial: event.target.value }))} />
+                  </div>
+                  <div>
+                    <Label htmlFor="nfe-nome-fantasia">Nome fantasia</Label>
+                    <Input id="nfe-nome-fantasia" value={nfeForm.nfeNomeFantasia} onChange={event => setNfeForm(prev => ({ ...prev, nfeNomeFantasia: event.target.value }))} />
+                  </div>
+                  <div>
+                    <Label htmlFor="nfe-numero">Número</Label>
+                    <Input id="nfe-numero" value={nfeForm.nfeNumero} onChange={event => setNfeForm(prev => ({ ...prev, nfeNumero: event.target.value }))} />
+                  </div>
+                  <div>
+                    <Label htmlFor="nfe-serie">Série</Label>
+                    <Input id="nfe-serie" value={nfeForm.nfeSerie} onChange={event => setNfeForm(prev => ({ ...prev, nfeSerie: event.target.value }))} />
+                  </div>
+                  <div>
+                    <Label htmlFor="nfe-chave-acesso">Chave de acesso</Label>
+                    <Input id="nfe-chave-acesso" value={nfeForm.nfeChaveAcesso} onChange={event => setNfeForm(prev => ({ ...prev, nfeChaveAcesso: event.target.value }))} />
+                  </div>
+                </div>
+              </>
+            )}
+          </div>
+
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={fecharNfeDialog}>Fechar</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </>
   );
 }

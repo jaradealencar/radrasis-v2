@@ -332,6 +332,7 @@ server/
                        e cpqCoresMateriais.ts (CIEDE2000 e custeio por região de cor),
                        cpqRender3d.ts (resolve o spec 3D assinado a partir do orçamento) e
                        cpqRender3dImagem.ts (valida imagens de textura/preview pelos bytes),
+                       nfeParser.ts (extração heurística dos campos da NF-e na primeira página do PDF, com validação do CNPJ e campos ausentes como nulos),
                        perfilEstoque.ts (ledger de estoque de perfis, sugestão em metros/kg,
                        horizonte de compra configurável por perfil, níveis mínimo/médio/ideal
                        (ponto médio = estoque mínimo + demanda do prazo de 1 mês do slitter), filtro
