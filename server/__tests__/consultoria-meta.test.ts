@@ -5,7 +5,7 @@ import {
   type EntradaRecomendacoes,
 } from "../services/consultoriaMeta";
 import { calcularBandas, calcularPainelMeta } from "../services/painelMeta";
-import { calcularConversaoPorFaixaTicket, type ClienteBase, type OrcamentoRow } from "../services/inteligenciaClientes";
+import { calcularConversaoPorFaixaTicket, calcularEvolucaoConversaoPorFaixaTicket, type ClienteBase, type OrcamentoRow } from "../services/inteligenciaClientes";
 import {
   rankearAlavancas, dividirFunil, compararCaminhos, type Cenario,
 } from "../../shared/meta-faturamento";
@@ -130,6 +130,25 @@ describe("calcularPipeline", () => {
     expect(p.valorEsperado).toBeCloseTo(1000, 6);
     expect(p.vencendoEm3Dias.quantidade).toBe(1);
     expect(p.top[0].empresa).toBeDefined();
+  });
+});
+
+describe("calcularEvolucaoConversaoPorFaixaTicket", () => {
+  it("agrupa por mês de emissão e mantém os orçamentos abertos fora da conversão", () => {
+    const evolucao = calcularEvolucaoConversaoPorFaixaTicket([
+      { status: "Aprovado", total: "15000", dataCadastro: "02/03/2026", validade: "15" },
+      { status: "Reprovado", total: "15000", dataCadastro: "05/03/2026", validade: "15" },
+      { status: "Em aberto", total: "15000", dataCadastro: "10/09/2026", validade: "30" },
+      { status: "Aprovado", total: "15000", dataCadastro: "02/01/2025", validade: "15" },
+    ], HOJE, 12);
+
+    expect(evolucao).toHaveLength(12);
+    expect(evolucao[0].mes).toBe("Out/25");
+    expect(evolucao[evolucao.length - 1].mes).toBe("Set/26");
+    const faixaAlta = evolucao.find(mes => mes.mes === "Mar/26")?.faixas.find(faixa => faixa.faixa === "R$12k+");
+    expect(faixaAlta).toMatchObject({ ganhos: 1, perdidos: 1, emAberto: 0, decididos: 2, taxaConversaoPct: 50 });
+    const faixaSetembro = evolucao.find(mes => mes.mes === "Set/26")?.faixas.find(faixa => faixa.faixa === "R$12k+");
+    expect(faixaSetembro).toMatchObject({ ganhos: 0, perdidos: 0, emAberto: 1, decididos: 0, taxaConversaoPct: null });
   });
 });
 
