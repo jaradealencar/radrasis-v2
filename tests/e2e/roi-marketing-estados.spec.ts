@@ -17,17 +17,31 @@ const campanhas = {
 
 const novos = {
   clientesPrimeiraCompra: [
-    { uf: "MT", clientes: 7 },
-    { uf: "GO", clientes: 4 },
+    { uf: "MT", clientes: 7, os: 10, faturamento: 42000, ticketMedioPorCliente: 6000, clientesComPropostaAntesDaCompra: 4, propostasAntesDaCompra: 5, valorPropostasAntesDaCompra: 14200 },
+    { uf: "GO", clientes: 4, os: 6, faturamento: 22000.2, ticketMedioPorCliente: 5500.05, clientesComPropostaAntesDaCompra: 2, propostasAntesDaCompra: 3, valorPropostasAntesDaCompra: 8200 },
   ],
   totalClientesPrimeiraCompra: 12,
   clientesPrimeiraCompraSemUf: 1,
+  totalOsPrimeiraCompra: 17,
+  faturamentoPrimeiraCompra: 66200.2,
+  osPrimeiraCompraSemUf: 1,
+  faturamentoPrimeiraCompraSemUf: 1200,
+  clientesComPropostaAntesDaCompraSemUf: 0,
+  propostasAntesDaCompraSemUf: 0,
+  valorPropostasAntesDaCompraSemUf: 0,
+  clientesComPropostaAntesDaCompra: 6,
+  totalPropostasAntesDaCompra: 8,
+  valorPropostasAntesDaCompra: 22400,
   propostasNovosClientes: [
-    { uf: "MT", propostas: 5, clientes: 4 },
-    { uf: "SP", propostas: 3, clientes: 3 },
+    { uf: "MT", propostas: 5, clientes: 4, valorPropostas: 9000, propostasSemValor: 0 },
+    { uf: "SP", propostas: 3, clientes: 3, valorPropostas: 22000, propostasSemValor: 0 },
   ],
   totalPropostasNovosClientes: 10,
+  valorPropostasNovosClientes: 33000,
   propostasNovosClientesSemUf: 2,
+  valorPropostasNovosClientesSemUf: 1500,
+  propostasNovosClientesSemValor: 1,
+  propostasNovosClientesComUfSemValor: 1,
   fontesIndisponiveis: [],
 };
 
@@ -41,12 +55,26 @@ const campanhas2025 = {
 };
 
 const novos2025 = {
-  clientesPrimeiraCompra: [{ uf: "RS", clientes: 3 }],
+  clientesPrimeiraCompra: [{ uf: "RS", clientes: 3, os: 4, faturamento: 4500, ticketMedioPorCliente: 1500, clientesComPropostaAntesDaCompra: 1, propostasAntesDaCompra: 2, valorPropostasAntesDaCompra: 2400 }],
   totalClientesPrimeiraCompra: 3,
   clientesPrimeiraCompraSemUf: 0,
-  propostasNovosClientes: [{ uf: "GO", propostas: 2, clientes: 2 }],
+  totalOsPrimeiraCompra: 4,
+  faturamentoPrimeiraCompra: 4500,
+  osPrimeiraCompraSemUf: 0,
+  faturamentoPrimeiraCompraSemUf: 0,
+  clientesComPropostaAntesDaCompraSemUf: 0,
+  propostasAntesDaCompraSemUf: 0,
+  valorPropostasAntesDaCompraSemUf: 0,
+  clientesComPropostaAntesDaCompra: 1,
+  totalPropostasAntesDaCompra: 2,
+  valorPropostasAntesDaCompra: 2400,
+  propostasNovosClientes: [{ uf: "GO", propostas: 2, clientes: 2, valorPropostas: 7200, propostasSemValor: 0 }],
   totalPropostasNovosClientes: 2,
+  valorPropostasNovosClientes: 7200,
   propostasNovosClientesSemUf: 0,
+  valorPropostasNovosClientesSemUf: 0,
+  propostasNovosClientesSemValor: 0,
+  propostasNovosClientesComUfSemValor: 0,
   fontesIndisponiveis: ["cache de enderecos do ERP"],
 };
 
@@ -109,13 +137,24 @@ test("filtra todo o ROI pelos controles de Performance e pelo intervalo de anál
   await expect(page.getByText(/12\.500,75/)).toBeVisible();
   await expect(page.getByText(/17 O\.S\. atribuídas no total/)).toBeVisible();
 
-  await expect(page.getByText("Clientes de primeira compra por Estado")).toBeVisible();
-  await expect(page.getByRole("row", { name: /Mato Grosso \(MT\) 7/ })).toBeVisible();
-  await expect(page.getByText("Propostas de clientes novos por Estado")).toBeVisible();
+  await expect(page.getByText("Desempenho dos novos clientes por Estado")).toBeVisible();
+  const vendasPorEstado = roi.locator('[data-slot="card"]').filter({ hasText: "Desempenho dos novos clientes por Estado" });
+  const linhaMtNovos = vendasPorEstado.getByRole("row", { name: /Mato Grosso \(MT\)/ });
+  await expect(linhaMtNovos).toContainText("42.000,00");
+  await expect(linhaMtNovos).toContainText("6.000,00");
+  const linhaTotalNovos = vendasPorEstado.getByRole("row", { name: /^Total/ });
+  await expect(linhaTotalNovos).toContainText("66.200,20");
+  await expect(linhaTotalNovos).toContainText("22.400,00");
+  await expect(page.getByText("Pipeline de propostas para prospects por Estado")).toBeVisible();
   await expect(page.getByRole("cell", { name: "São Paulo (SP)" })).toBeVisible();
-  await expect(page.getByRole("row", { name: /Mato Grosso \(MT\) 5 4/ })).toBeVisible();
-  await expect(page.getByText(/10 propostas no total/)).toBeVisible();
-  await expect(page.getByText(/2 propostas sem UF confiável/)).toBeVisible();
+  const propostasPorEstado = roi.locator('[data-slot="card"]').filter({ hasText: "Pipeline de propostas para prospects por Estado" });
+  await expect(propostasPorEstado.getByRole("row", { name: /Mato Grosso \(MT\)/ })).toContainText("5");
+  await expect(propostasPorEstado.getByRole("row", { name: /São Paulo \(SP\)/ })).toContainText("22.000,00");
+  const resumoPipeline = propostasPorEstado.locator("p").last();
+  await expect(resumoPipeline).toContainText("10 propostas");
+  await expect(resumoPipeline).toContainText("33.000,00");
+  await expect(resumoPipeline).toContainText("2 propostas");
+  await expect(resumoPipeline).toContainText("1 proposta sem valor disponível");
 
   await page.getByRole("combobox", { name: "Mês da Performance Comercial" }).click();
   await page.getByRole("option", { name: "Outubro", exact: true }).click();
@@ -123,15 +162,17 @@ test("filtra todo o ROI pelos controles de Performance e pelo intervalo de anál
   await expect(page.getByLabel("Mês final do período de análise")).toHaveValue("10");
   await expect(competencia).toHaveValue("2026-10");
   await expect(roi.getByText(/Top 3 por receita.*01\/10\/2026 a 31\/10\/2026/)).toBeVisible();
-  await expect(roi.getByText(/Distribuição comercial.*01\/10\/2026 a 31\/10\/2026/)).toBeVisible();
+  await expect(roi.getByText(/Desempenho de clientes.*01\/10\/2026 a 31\/10\/2026/)).toBeVisible();
   const aquisicaoOutubro = roi.locator('[data-slot="card"]').filter({ hasText: "Aquisição — Outubro/2026" });
   await expect(aquisicaoOutubro.getByRole("row", { name: /Outubro \/ 2026.*1\.000,00/ })).toBeVisible();
   await expect(roi.getByRole("row", { name: /Novembro \/ 2026/ })).toHaveCount(0);
-  await expect(page.getByText(/4\.500,00/)).toBeVisible();
-  await expect(page.getByRole("row", { name: /Rio Grande do Sul \(RS\) 3/ })).toBeVisible();
-  await expect(page.getByRole("row", { name: /\(GO\) 2 2/ })).toBeVisible();
+  const vendasOutubroPorEstado = roi.locator('[data-slot="card"]').filter({ hasText: "Desempenho dos novos clientes por Estado" });
+  await expect(vendasOutubroPorEstado.getByRole("row", { name: /Rio Grande do Sul \(RS\)/ })).toContainText("4.500,00");
+  await expect(page.getByRole("row", { name: /\(GO\)/ })).toContainText("7.200,00");
   await expect(page.getByText(/Fontes indispon/)).toBeVisible();
-  await expect(page.getByText(/2 propostas no total/)).toBeVisible();
+  const resumoPipeline2025 = propostasPorEstado.locator("p").last();
+  await expect(resumoPipeline2025).toContainText("2 propostas");
+  await expect(resumoPipeline2025).toContainText("7.200,00");
 
   await page.getByRole("button", { name: "2025", exact: true }).click();
   await expect(roi.getByText(/Top 3 por receita.*01\/01\/2025 a 31\/12\/2025/)).toBeVisible();
@@ -140,7 +181,7 @@ test("filtra todo o ROI pelos controles de Performance e pelo intervalo de anál
   await page.getByLabel("Ano final do período de análise").selectOption("2026");
   await page.getByLabel("Mês final do período de análise").selectOption("1");
   await expect(roi.getByText(/Top 3 por receita.*01\/12\/2025 a 31\/01\/2026/)).toBeVisible();
-  await expect(roi.getByText(/Distribuição comercial.*01\/12\/2025 a 31\/01\/2026/)).toBeVisible();
+  await expect(roi.getByText(/Desempenho de clientes.*01\/12\/2025 a 31\/01\/2026/)).toBeVisible();
   await expect(roi.getByText("Aquisição — Dezembro/2025 a Janeiro/2026")).toBeVisible();
   await expect(roi.getByRole("row", { name: /Dezembro \/ 2025/ })).toHaveCount(3);
   await expect(roi.getByRole("row", { name: /Janeiro \/ 2026/ })).toHaveCount(3);
