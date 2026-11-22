@@ -49,7 +49,7 @@ import {
   Store,
   GraduationCap,
 } from "lucide-react";
-import { ReactNode, useState, useEffect, useMemo } from "react";
+import { ReactNode, useState, useEffect, useMemo, useLayoutEffect, useRef } from "react";
 import { Link, useLocation } from "wouter";
 import { DashboardLayoutSkeleton } from "./DashboardLayoutSkeleton";
 import { trpc } from "@/lib/trpc";
@@ -67,6 +67,26 @@ interface NavSection {
 }
 
 const navSections: NavSection[] = [
+  {
+    label: "Comercial",
+    items: [
+      { label: "Produtos", href: "/comercial/produtos", icon: <Package size={15} />, pageKey: "comercial-produtos" },
+      { label: "Propostas", href: "/comercial/propostas", icon: <FileText size={15} />, pageKey: "comercial-propostas" },
+      { label: "Tabela de Preços", href: "/tabela-precos", icon: <Tag size={15} />, pageKey: "tabela-preco" },
+      { label: "Performance Comercial", href: "/comercial/performance", icon: <TrendingUp size={15} />, pageKey: "comercial-performance" },
+      { label: "Análise Geográfica", href: "/comercial/geografia", icon: <MapPin size={15} />, pageKey: "comercial-geografia" },
+      { label: "Metas Comerciais", href: "/comercial/metas", icon: <Target size={15} />, pageKey: "comercial-metas" },
+      { label: "CRM de Propostas", href: "/comercial/crm", icon: <Handshake size={15} />, pageKey: "comercial-crm" },
+      { label: "Guia de Fornecedores", href: "/comercial/guia-fornecedores", icon: <Store size={15} />, pageKey: "comercial-guia-fornecedores" },
+      { label: "Qualificação de Leads (CNPJ)", href: "/comercial/leads-cnpj", icon: <Building2 size={15} />, pageKey: "comercial-leads-cnpj" },
+      { label: "Radar de Mercado", href: "/comercial/radar-mercado", icon: <Radar size={15} />, pageKey: "comercial-radar-mercado" },
+      { label: "Planos de Ação Comercial", href: "/comercial/planos-acao", icon: <Lightbulb size={15} />, pageKey: "comercial-planos-acao" },
+      { label: "Diagnóstico de Dados", href: "/comercial/diagnostico-api", icon: <FlaskConical size={15} />, pageKey: "comercial-performance" },
+      { label: "Auditoria do CRM", href: "/comercial/crm-auditoria", icon: <Activity size={15} />, pageKey: "crm-auditoria" },
+      { label: "Monitoramento de Uso do CRM", href: "/comercial/crm-monitoramento", icon: <Activity size={15} />, pageKey: "crm-monitoramento" },
+      { label: "Insights de IA", href: "/comercial/insights-ia", icon: <Brain size={15} />, pageKey: "comercial-insights-ia" },
+    ],
+  },
   {
     label: "Métricas",
     items: [
@@ -119,26 +139,6 @@ const navSections: NavSection[] = [
     ],
   },
   {
-    label: "Comercial",
-    items: [
-      { label: "Produtos", href: "/comercial/produtos", icon: <Package size={15} />, pageKey: "comercial-produtos" },
-      { label: "Propostas", href: "/comercial/propostas", icon: <FileText size={15} />, pageKey: "comercial-propostas" },
-      { label: "Tabela de Preços", href: "/tabela-precos", icon: <Tag size={15} />, pageKey: "tabela-preco" },
-      { label: "Performance Comercial", href: "/comercial/performance", icon: <TrendingUp size={15} />, pageKey: "comercial-performance" },
-      { label: "Análise Geográfica", href: "/comercial/geografia", icon: <MapPin size={15} />, pageKey: "comercial-geografia" },
-      { label: "Metas Comerciais", href: "/comercial/metas", icon: <Target size={15} />, pageKey: "comercial-metas" },
-      { label: "CRM de Propostas", href: "/comercial/crm", icon: <Handshake size={15} />, pageKey: "comercial-crm" },
-      { label: "Guia de Fornecedores", href: "/comercial/guia-fornecedores", icon: <Store size={15} />, pageKey: "comercial-guia-fornecedores" },
-      { label: "Qualificação de Leads (CNPJ)", href: "/comercial/leads-cnpj", icon: <Building2 size={15} />, pageKey: "comercial-leads-cnpj" },
-      { label: "Radar de Mercado", href: "/comercial/radar-mercado", icon: <Radar size={15} />, pageKey: "comercial-radar-mercado" },
-      { label: "Planos de Ação Comercial", href: "/comercial/planos-acao", icon: <Lightbulb size={15} />, pageKey: "comercial-planos-acao" },
-      { label: "Diagnóstico de Dados", href: "/comercial/diagnostico-api", icon: <FlaskConical size={15} />, pageKey: "comercial-performance" },
-      { label: "Auditoria do CRM", href: "/comercial/crm-auditoria", icon: <Activity size={15} />, pageKey: "crm-auditoria" },
-      { label: "Monitoramento de Uso do CRM", href: "/comercial/crm-monitoramento", icon: <Activity size={15} />, pageKey: "crm-monitoramento" },
-      { label: "Insights de IA", href: "/comercial/insights-ia", icon: <Brain size={15} />, pageKey: "comercial-insights-ia" },
-    ],
-  },
-  {
     label: "Qualidade",
     items: [
       { label: "Planos de Ação", href: "/qualidade/planos-acao", icon: <GitBranch size={15} />, pageKey: "qualidade-planos" },
@@ -188,6 +188,12 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
   const [location] = useLocation();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
+  const navRef = useRef<HTMLElementTagNameMap["nav"]>(null);
+
+  // Começar pelo topo deixa a primeira seção do menu (Comercial) visível.
+  useLayoutEffect(() => {
+    navRef.current?.scrollTo({ top: 0 });
+  }, [loading]);
 
   // Fechar sidebar ao navegar
   useEffect(() => { setSidebarOpen(false); setSearchQuery(""); }, [location]);
@@ -307,7 +313,7 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
       </div>
 
       {/* Nav sections */}
-      <nav className="sidebar-nav flex-1 py-2 overflow-y-auto">
+      <nav ref={navRef} className="sidebar-nav flex-1 py-2 overflow-y-auto">
         {filteredSections !== null ? (
           // Modo busca: mostrar resultados flat
           <div className="mb-2">

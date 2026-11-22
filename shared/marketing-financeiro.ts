@@ -193,6 +193,16 @@ export function calcularResultadoGrupo(investimento: number | null, margemContri
   return { investimento, margemContribuicao, faturamento, resultado, roiPct, roas };
 }
 
+/** Faturamento bruto menos o investimento em campanha. Retorna null quando o
+ * investimento não foi preenchido; não confundir com margem/lucro após custos. */
+export function calcularFaturamentoLiquidoAposMarketing(
+  faturamentoBruto: number,
+  investimentoMarketing: number | null,
+): number | null {
+  if (!Number.isFinite(faturamentoBruto) || investimentoMarketing == null || !Number.isFinite(investimentoMarketing)) return null;
+  return round2(faturamentoBruto - investimentoMarketing);
+}
+
 /** Resultado consolidado = margem de todos os grupos somada, menos o
  * investimento total. ROI consolidado = resultado consolidado ÷ investimento
  * total × 100. Aceita quantos grupos forem passados (ex.: novos + reativados,

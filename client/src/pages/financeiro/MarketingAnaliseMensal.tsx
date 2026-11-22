@@ -13,6 +13,7 @@ import MarketingInvestimentoInput from "./MarketingInvestimentoInput";
 import {
   calcularResultadoGrupo,
   calcularResultadoConsolidado,
+  calcularFaturamentoLiquidoAposMarketing,
   cacPonderado,
   custoReativacaoPonderado,
   parseInvestimentoMarketing,
@@ -29,6 +30,10 @@ interface Props {
 
 function celulaValor(v: number | null | undefined, cor: string): React.ReactNode {
   return v != null ? <span className={cor}>{fmtBrl(v)}</span> : <span className="text-muted-foreground">—</span>;
+}
+
+function celulaFaturamentoLiquido(v: number | null): React.ReactNode {
+  return celulaValor(v, v != null && v < 0 ? "text-red-600" : "text-teal-700");
 }
 
 function celulaRoi(v: number | null | undefined): React.ReactNode {
@@ -90,6 +95,7 @@ export default function MarketingAnaliseMensal({ meses, periodoTexto, nomeArquiv
   const faturamentoNovosCobertos = mesesAquisicaoCobertos.reduce((s, m) => s + m.novo.faturamento, 0);
   const margemNovosCobertos = mesesAquisicaoCobertos.reduce((s, m) => s + m.novo.margem.margemTotal, 0);
   const resultadoAquisicaoTotal = calcularResultadoGrupo(investimentoAquisicaoTotal, margemNovosCobertos, faturamentoNovosCobertos);
+  const faturamentoLiquidoNovosCobertos = calcularFaturamentoLiquidoAposMarketing(faturamentoNovosCobertos, investimentoAquisicaoTotal);
   const cacTotal = cacPonderado(investimentoAquisicaoTotal, clientesNovosCobertos);
 
   const investimentoReativacaoTotal = somarOuNull(mesesReativacaoCobertos.map(m => m.investimentoReativacao));
@@ -97,6 +103,7 @@ export default function MarketingAnaliseMensal({ meses, periodoTexto, nomeArquiv
   const faturamentoReativacaoCoberto = mesesReativacaoCobertos.reduce((s, m) => s + m.reativado.faturamento, 0);
   const margemReativacaoCoberta = mesesReativacaoCobertos.reduce((s, m) => s + m.reativado.margem.margemTotal, 0);
   const resultadoReativacaoTotal = calcularResultadoGrupo(investimentoReativacaoTotal, margemReativacaoCoberta, faturamentoReativacaoCoberto);
+  const faturamentoLiquidoReativacaoCoberto = calcularFaturamentoLiquidoAposMarketing(faturamentoReativacaoCoberto, investimentoReativacaoTotal);
   const custoReativacaoTotal = custoReativacaoPonderado(investimentoReativacaoTotal, eventosReativacaoCobertos);
 
   const investimentoConsolidadoTotal = somarOuNull(mesesConsolidadosCobertos.map(m => m.investimentoAquisicao! + m.investimentoReativacao!));
@@ -115,14 +122,16 @@ export default function MarketingAnaliseMensal({ meses, periodoTexto, nomeArquiv
         { header: "Invest. Aquisição", valor: m => m.investimentoAquisicao ?? "", largura: 16 },
         { header: "Clientes Novos", valor: m => m.novo.qtdClientesUnicos, largura: 14 },
         { header: "CAC", valor: m => m.novo.cacPonderado ?? "", largura: 12 },
-        { header: "Fat. Novos", valor: m => m.novo.faturamento, largura: 14 },
+        { header: "Fat. Bruto Novos", valor: m => m.novo.faturamento, largura: 16 },
+        { header: "Fat. Líquido Novos", valor: m => calcularFaturamentoLiquidoAposMarketing(m.novo.faturamento, m.investimentoAquisicao) ?? "", largura: 18 },
         { header: "Margem Novos", valor: m => m.novo.margem.margemTotal, largura: 14 },
         { header: "Resultado Novos", valor: m => m.novo.resultado ?? "", largura: 14 },
         { header: "ROI Novos (%)", valor: m => m.novo.roiPct ?? "", largura: 12 },
         { header: "Invest. Reativação", valor: m => m.investimentoReativacao ?? "", largura: 16 },
         { header: "Reativados", valor: m => m.reativado.qtdClientesUnicos, largura: 12 },
         { header: "Custo/Reativado", valor: m => m.reativado.custoReativacaoPonderado ?? "", largura: 14 },
-        { header: "Fat. Reativados", valor: m => m.reativado.faturamento, largura: 14 },
+        { header: "Fat. Bruto Reativados", valor: m => m.reativado.faturamento, largura: 19 },
+        { header: "Fat. Líquido Reativados", valor: m => calcularFaturamentoLiquidoAposMarketing(m.reativado.faturamento, m.investimentoReativacao) ?? "", largura: 22 },
         { header: "Margem Reativados", valor: m => m.reativado.margem.margemTotal, largura: 16 },
         { header: "Resultado Reativados", valor: m => m.reativado.resultado ?? "", largura: 16 },
         { header: "ROI Reativados (%)", valor: m => m.reativado.roiPct ?? "", largura: 14 },
@@ -143,7 +152,7 @@ export default function MarketingAnaliseMensal({ meses, periodoTexto, nomeArquiv
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <p className="text-xs text-muted-foreground max-w-xl">
-          Preencha o investimento mensal em cada bloco (vazio = pendente; use 0 quando não houve gasto). Os totais usam valores lançados em meses fechados, calculados pelos totais e não pela média dos meses. Aquisição e Reativação são independentes.
+          Preencha o investimento mensal em cada bloco (vazio = pendente; use 0 quando não houve gasto). Faturamento líquido = faturamento bruto menos o investimento em campanha; sem investimento informado, o líquido fica pendente. Os totais usam valores lançados em meses fechados, calculados pelos totais e não pela média dos meses. Aquisição e Reativação são independentes.
         </p>
         <Button size="sm" variant="outline" className="gap-1.5 shrink-0" onClick={exportar}>
           <Download size={14} /> Exportar Excel do período
@@ -164,7 +173,8 @@ export default function MarketingAnaliseMensal({ meses, periodoTexto, nomeArquiv
                   <TableHead className="text-right">Invest.</TableHead>
                   <TableHead className="text-right">Novos</TableHead>
                   <TableHead className="text-right">CAC</TableHead>
-                  <TableHead className="text-right">Faturamento</TableHead>
+                  <TableHead className="text-right">Fat. Bruto</TableHead>
+                  <TableHead className="text-right">Fat. Líquido após campanha</TableHead>
                   <TableHead className="text-right">Margem</TableHead>
                   <TableHead className="text-right">ROI</TableHead>
                   <TableHead className="w-10">Ação</TableHead>
@@ -196,6 +206,7 @@ export default function MarketingAnaliseMensal({ meses, periodoTexto, nomeArquiv
                       <TableCell className="text-right">{fmtNum(m.novo.qtdClientesUnicos)}</TableCell>
                       <TableCell className="text-right">{m.novo.cacPonderado != null ? fmtBrl(m.novo.cacPonderado) : "—"}</TableCell>
                       <TableCell className="text-right text-emerald-700">{fmtBrl(m.novo.faturamento)}</TableCell>
+                      <TableCell className="text-right">{celulaFaturamentoLiquido(calcularFaturamentoLiquidoAposMarketing(m.novo.faturamento, m.investimentoAquisicao))}</TableCell>
                       <TableCell className="text-right">{fmtBrl(m.novo.margem.margemTotal)}</TableCell>
                       <TableCell className="text-right">{celulaRoi(m.novo.roiPct)}</TableCell>
                       <TableCell>
@@ -219,6 +230,7 @@ export default function MarketingAnaliseMensal({ meses, periodoTexto, nomeArquiv
                   <TableCell className="text-right">{fmtNum(clientesNovosCobertos)}</TableCell>
                   <TableCell className="text-right">{cacTotal != null ? fmtBrl(cacTotal) : "—"}</TableCell>
                   <TableCell className="text-right text-emerald-700">{fmtBrl(faturamentoNovosCobertos)}</TableCell>
+                  <TableCell className="text-right">{celulaFaturamentoLiquido(faturamentoLiquidoNovosCobertos)}</TableCell>
                   <TableCell className="text-right">{fmtBrl(margemNovosCobertos)}</TableCell>
                   <TableCell className="text-right">{celulaRoi(resultadoAquisicaoTotal.roiPct)}</TableCell>
                   <TableCell />
@@ -243,7 +255,8 @@ export default function MarketingAnaliseMensal({ meses, periodoTexto, nomeArquiv
                   <TableHead className="text-right">Invest.</TableHead>
                   <TableHead className="text-right">Reativados</TableHead>
                   <TableHead className="text-right">Custo/Reat.</TableHead>
-                  <TableHead className="text-right">Faturamento</TableHead>
+                  <TableHead className="text-right">Fat. Bruto</TableHead>
+                  <TableHead className="text-right">Fat. Líquido após campanha</TableHead>
                   <TableHead className="text-right">Margem</TableHead>
                   <TableHead className="text-right">ROI</TableHead>
                   <TableHead className="w-10">Ação</TableHead>
@@ -275,6 +288,7 @@ export default function MarketingAnaliseMensal({ meses, periodoTexto, nomeArquiv
                       <TableCell className="text-right">{fmtNum(m.reativado.qtdClientesUnicos)}</TableCell>
                       <TableCell className="text-right">{m.reativado.custoReativacaoPonderado != null ? fmtBrl(m.reativado.custoReativacaoPonderado) : "—"}</TableCell>
                       <TableCell className="text-right text-emerald-700">{fmtBrl(m.reativado.faturamento)}</TableCell>
+                      <TableCell className="text-right">{celulaFaturamentoLiquido(calcularFaturamentoLiquidoAposMarketing(m.reativado.faturamento, m.investimentoReativacao))}</TableCell>
                       <TableCell className="text-right">{fmtBrl(m.reativado.margem.margemTotal)}</TableCell>
                       <TableCell className="text-right">{celulaRoi(m.reativado.roiPct)}</TableCell>
                       <TableCell>
@@ -298,6 +312,7 @@ export default function MarketingAnaliseMensal({ meses, periodoTexto, nomeArquiv
                   <TableCell className="text-right">{fmtNum(eventosReativacaoCobertos)}</TableCell>
                   <TableCell className="text-right">{custoReativacaoTotal != null ? fmtBrl(custoReativacaoTotal) : "—"}</TableCell>
                   <TableCell className="text-right text-emerald-700">{fmtBrl(faturamentoReativacaoCoberto)}</TableCell>
+                  <TableCell className="text-right">{celulaFaturamentoLiquido(faturamentoLiquidoReativacaoCoberto)}</TableCell>
                   <TableCell className="text-right">{fmtBrl(margemReativacaoCoberta)}</TableCell>
                   <TableCell className="text-right">{celulaRoi(resultadoReativacaoTotal.roiPct)}</TableCell>
                   <TableCell />
