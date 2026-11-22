@@ -298,6 +298,7 @@ export const marketingFinanceiroRouter = router({
       const [osHistoricas, propostasHistoricas, cachesMubiSys, perfisCnpj] = await Promise.all([
         db.select({
           id: historicoOs.id,
+          osNumero: historicoOs.osNumero,
           empresa: historicoOs.empresa,
           estado: historicoOs.estado,
           dataAprovacao: historicoOs.dataAprovacao,
@@ -305,6 +306,8 @@ export const marketingFinanceiroRouter = router({
           ano: historicoOs.ano,
           tipoOs: historicoOs.tipoOs,
           status: historicoOs.status,
+          valorOs: historicoOs.valorOs,
+          valorTotal: historicoOs.valorTotal,
         }).from(historicoOs).catch(error => {
           marcarFonteIndisponivel("histórico de O.S.", error);
           return [];
@@ -314,6 +317,7 @@ export const marketingFinanceiroRouter = router({
           orcNumero: historicoOrcamentos.orcNumero,
           empresa: historicoOrcamentos.empresa,
           dataCadastro: historicoOrcamentos.dataCadastro,
+          total: historicoOrcamentos.total,
           mes: historicoOrcamentos.mes,
           ano: historicoOrcamentos.ano,
           status: historicoOrcamentos.status,
@@ -427,7 +431,43 @@ export const marketingFinanceiroRouter = router({
         if (estado) estadoPerfilPorCliente.set(perfil.empresaKey, estado);
       }
 
-      const propostasNovas: Array<{ id: number; orcNumero: string | null; clienteKey: string; estado: string | null }> = [];
+      const ordensPorCliente = new Map<string, Map<string, number>>();
+      for (const os of osHistoricas) {
+        if (!isOsNormalDb(os)) continue;
+        const clienteKey = normalizeEmpresaKey(os.empresa ?? "");
+        if (!clienteKey || !compradorPrimeiraCompra.has(clienteKey)) continue;
+        const data = dataOsMarketing(os.dataAprovacao, os.mes, os.ano);
+        if (!dataDentroPeriodoMarketing(data, input.dataInicial, input.dataFinal)) continue;
+        const chaveOs = os.osNumero?.trim() ? `os:${os.osNumero.trim()}` : `historico:${os.id}`;
+        const ordens = ordensPorCliente.get(clienteKey) ?? new Map<string, number>();
+        ordens.set(chaveOs, Number(os.valorOs ?? os.valorTotal ?? 0) || 0);
+        ordensPorCliente.set(clienteKey, ordens);
+      }
+      for (const [indice, linha] of linhasAoVivoNoPeriodo.entries()) {
+        if (!linha.clienteKey || !compradorPrimeiraCompra.has(linha.clienteKey)) continue;
+        const chaveOs = linha.osNumero?.trim()
+          ? `os:${linha.osNumero.trim()}`
+          : `ao-vivo:${linha.clienteKey}:${dataOsMarketing(linha.dataAprovacao, linha.mes, linha.ano).getTime()}:${indice}`;
+        const ordens = ordensPorCliente.get(linha.clienteKey) ?? new Map<string, number>();
+        ordens.set(chaveOs, linha.valorOs);
+        ordensPorCliente.set(linha.clienteKey, ordens);
+      }
+
+      const compradoresNovos = [...compradorPrimeiraCompra.entries()].map(([clienteKey, dados]) => ({
+        clienteKey,
+        estado: dados.estado,
+        dataPrimeiraCompra: dados.data,
+        ordens: [...(ordensPorCliente.get(clienteKey)?.entries() ?? [])].map(([chave, valor]) => ({ chave, valor })),
+      }));
+
+      const propostasNovas: Array<{
+        id: number;
+        orcNumero: string | null;
+        clienteKey: string;
+        estado: string | null;
+        dataProposta: Date;
+        valor: number | null;
+      }> = [];
       const statusExcluidos = new Set(["cancelada", "cancelado", "excluída", "excluído", "excluida", "excluido"]);
       for (const proposta of propostasHistoricas) {
         if (statusExcluidos.has((proposta.status ?? "").trim().toLowerCase())) continue;
@@ -437,20 +477,27 @@ export const marketingFinanceiroRouter = router({
         const dataProposta = parseDataFlexivel(proposta.dataCadastro)
           ?? new Date(proposta.ano, proposta.mes - 1, 1);
         if (!dataDentroPeriodoMarketing(dataProposta, input.dataInicial, input.dataFinal)) continue;
-        if (primeiraCompra && primeiraCompra < dataProposta) continue;
+        if (primeiraCompra && primeiraCompra <= dataProposta) continue;
 
         const numero = proposta.orcNumero?.trim() ?? "";
         const estado = (numero ? estadoCachePorOrcamento.get(numero)?.estado : null)
           ?? estadoHistoricoPorCliente.get(clienteKey)?.estado
           ?? estadoPerfilPorCliente.get(clienteKey)
           ?? null;
-        propostasNovas.push({ id: proposta.id, orcNumero: proposta.orcNumero, clienteKey, estado });
+        propostasNovas.push({
+          id: proposta.id,
+          orcNumero: proposta.orcNumero,
+          clienteKey,
+          estado,
+          dataProposta,
+          valor: proposta.total == null || !Number.isFinite(Number(proposta.total)) ? null : Number(proposta.total),
+        });
       }
 
       return {
         ...resumirEstadosNovos(
-        [...compradorPrimeiraCompra.entries()].map(([clienteKey, dados]) => ({ clienteKey, estado: dados.estado })),
-        propostasNovas,
+          compradoresNovos,
+          propostasNovas,
         ),
         fontesIndisponiveis,
       };
