@@ -14,6 +14,7 @@ import { formatarDataBr } from "@shared/campanhas-whatsapp";
 import AtualizarClientesAuto from "./campanhasWhatsapp/AtualizarClientesAuto";
 import CalendarioCampanhas from "./campanhasWhatsapp/CalendarioCampanhas";
 import CampanhaFormDialog from "./campanhasWhatsapp/CampanhaFormDialog";
+import FilaProgramadaDashboard from "./campanhasWhatsapp/FilaProgramadaDashboard";
 import ContatosCampanhaDialog from "./campanhasWhatsapp/ContatosCampanhaDialog";
 import DispararCampanhaDialog from "./campanhasWhatsapp/DispararCampanhaDialog";
 import DuplicarCampanhaDialog from "./campanhasWhatsapp/DuplicarCampanhaDialog";
@@ -93,6 +94,7 @@ export default function MarketingCampanhasWhatsapp() {
       <Tabs defaultValue="painel">
         <TabsList>
           <TabsTrigger value="painel" className="gap-1.5"><LayoutList size={14} /> Painel</TabsTrigger>
+          <TabsTrigger value="fila" className="gap-1.5"><ListChecks size={14} /> Fila programada</TabsTrigger>
           <TabsTrigger value="calendario" className="gap-1.5"><CalendarDays size={14} /> Calendário</TabsTrigger>
           <TabsTrigger value="relatorios" className="gap-1.5"><BarChart3 size={14} /> Relatórios</TabsTrigger>
           <TabsTrigger value="nao-receber" className="gap-1.5"><BanIcon size={14} /> Não quer receber</TabsTrigger>
@@ -234,6 +236,10 @@ export default function MarketingCampanhasWhatsapp() {
               </Table>
             </div>
           )}
+        </TabsContent>
+
+        <TabsContent value="fila" className="pt-3">
+          <FilaProgramadaDashboard />
         </TabsContent>
 
         <TabsContent value="calendario" className="pt-3">

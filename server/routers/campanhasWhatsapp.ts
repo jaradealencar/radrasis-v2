@@ -13,15 +13,17 @@
 
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
-import { and, count, desc, eq, gte, inArray, isNotNull, lte, max, sql } from "drizzle-orm";
+import { and, asc, count, desc, eq, gt, gte, inArray, isNotNull, isNull, lte, max, or, sql } from "drizzle-orm";
 import { protectedProcedure, requireRole, router } from "../_core/trpc";
 import { invokeLLM } from "../_core/llm";
 import { getDb } from "../db/db";
 import { queryDatabase } from "../db/db-connection";
 import {
   consultarDiagnosticoCeci, consultarEstadoMensagemWts, criarCampanhaWts, enviarTemplateWts, idMensagemWts,
-  urlStatusMensagemWts, wtsChatConfigurado,
+  obterCanalId, obterCanalTelefone, urlStatusMensagemWts, wtsChatConfigurado,
 } from "../integrations/wts-chat-client";
+import { acordarFilaProgramada } from "../services/campanhaFilaAgendamento";
+import { registrarStatusFilaProgramada } from "../services/campanhaFilaWorker";
 import { sincronizarHistoricoRecente } from "../sync/scheduled-sync-historico";
 import {
   completarTelefonesClientesOrcamentos, completarTelefonesJanela, ErroConsultaMubiSysBackfill,
@@ -32,6 +34,7 @@ import {
 import {
   campanhasWhatsapp, campanhasWhatsappAgendamentos, campanhasWhatsappArquivos, campanhasWhatsappCampanhaFontes,
   campanhasWhatsappCategorias, campanhasWhatsappContatosHistorico, campanhasWhatsappDisparoItens, campanhasWhatsappDisparos,
+  campanhasWhatsappEnviosProgramados, campanhasWhatsappFilas, campanhasWhatsappFilaInscricoes, campanhasWhatsappFilaItens,
   campanhasWhatsappFontes, campanhasWhatsappGatilhos, campanhasWhatsappOptout, campanhasWhatsappScripts, historicoOs,
   type CampanhaWhatsapp,
 } from "../../drizzle/schema";
@@ -40,6 +43,7 @@ import {
   calcularProximoEnvio, classificarSemaforo, classificarStatusWts, dataIsoValida, diasEntre, gerarChaveCategoria,
   hojeCampoGrande, normalizarTelefone, somarDias, INTERVALO_DISPARO_WTS_MS,
 } from "../../shared/campanhas-whatsapp";
+import { contarLotes, gerarDatasProgramadas, numeroLote, resumirFilaProgramada } from "../../shared/campanhas-whatsapp-fila";
 import {
   agruparPorCliente, expandirPrevistos, filtrarPorCadenciaCampanha, higienizarLista, listarVendasPosVenda, montarStatusCampanha,
   resumirCampanhas, resumirVendas,
@@ -408,7 +412,7 @@ const MESES_COMPLETAR_TELEFONES = 48;
 async function montarListaCampanha(
   db: Db,
   campanha: CampanhaWhatsapp,
-  input: { dataEnvio?: string; periodo?: { inicio: string | null; fim: string | null } },
+  input: { dataEnvio?: string; periodo?: { inicio: string | null; fim: string | null }; ignorarCadenciaCampanha?: boolean },
   ctxCompartilhado?: ContextoErp | null,
 ) {
   const dataEnvio = input.dataEnvio ?? hojeCampoGrande();
@@ -479,7 +483,9 @@ async function montarListaCampanha(
       )
     : { rows: [] as Array<{ telefone: string; ultimo: string }> };
   const historicoCampanha = new Map(historicoRows.rows.map(r => [r.telefone, r.ultimo]));
-  const { aprovados, descartadosCadencia } = filtrarPorCadenciaCampanha(higienizado.enviar, historicoCampanha, dataEnvio, campanha.frequenciaDias);
+  const { aprovados, descartadosCadencia } = input.ignorarCadenciaCampanha
+    ? { aprovados: higienizado.enviar, descartadosCadencia: [] as ReturnType<typeof filtrarPorCadenciaCampanha>["descartadosCadencia"] }
+    : filtrarPorCadenciaCampanha(higienizado.enviar, historicoCampanha, dataEnvio, campanha.frequenciaDias);
 
   return {
     dataEnvio,
@@ -496,7 +502,503 @@ async function montarListaCampanha(
   };
 }
 
+type ContatoFilaApto = { telefone: string; nome: string; inscricaoId?: number; etapa: number; templateId: string };
+
+async function gruposAptosParaEnvioProgramado(
+  db: Db,
+  campanha: CampanhaWhatsapp,
+  envio: typeof campanhasWhatsappEnviosProgramados.$inferSelect,
+) {
+  const dataEnvio = hojeCampoGrande();
+  const templateId = envio.templateId.trim();
+  if (!templateId) throw new TRPCError({ code: "PRECONDITION_FAILED", message: "Configure o template WTS.Chat da campanha antes de ativar a fila." });
+  const lista = await montarListaCampanha(db, campanha, { dataEnvio, ignorarCadenciaCampanha: true });
+  const telefones = lista.aprovados
+    .map(c => normalizarTelefone(c.telefone))
+    .filter((v): v is string => !!v);
+  const inscricoes = telefones.length
+    ? await db.select().from(campanhasWhatsappFilaInscricoes).where(and(
+        eq(campanhasWhatsappFilaInscricoes.campanhaId, campanha.id),
+        inArray(campanhasWhatsappFilaInscricoes.telefone, telefones),
+      ))
+    : [];
+  const porTelefone = new Map(inscricoes.map(i => [i.telefone, i] as const));
+  const historico = telefones.length
+    ? await db.select({ telefone: campanhasWhatsappContatosHistorico.telefone, ultimoEnvioEm: campanhasWhatsappContatosHistorico.ultimoEnvioEm })
+        .from(campanhasWhatsappContatosHistorico)
+        .where(and(eq(campanhasWhatsappContatosHistorico.campanhaId, campanha.id), inArray(campanhasWhatsappContatosHistorico.telefone, telefones)))
+    : [];
+  const historicoPorTelefone = new Map(historico.map(h => [h.telefone, String(h.ultimoEnvioEm).slice(0, 10)] as const));
+  const aptos: ContatoFilaApto[] = [];
+  for (const contato of lista.aprovados) {
+    const telefone = normalizarTelefone(contato.telefone);
+    if (!telefone) continue;
+    const inscricao = porTelefone.get(telefone);
+    if (inscricao && inscricao.status !== "ativa") continue;
+    if (!inscricao) {
+      const ultimo = historicoPorTelefone.get(telefone);
+      if (ultimo && Math.abs(diasEntre(ultimo, dataEnvio)) < campanha.frequenciaDias) continue;
+    }
+    const etapa = inscricao?.etapaAtual ?? 1;
+    // Um contato que entrou recentemente começa pela etapa 1. Ninguém recebe uma etapa fora de ordem.
+    if (etapa > envio.etapa) continue;
+    aptos.push({ telefone, nome: contato.nome || inscricao?.nome || "", inscricaoId: inscricao?.id, etapa, templateId });
+  }
+  const porEtapa = new Map<number, ContatoFilaApto[]>();
+  for (const contato of aptos) {
+    const grupo = porEtapa.get(contato.etapa) ?? [];
+    grupo.push(contato);
+    porEtapa.set(contato.etapa, grupo);
+  }
+  return {
+    aptos,
+    grupos: [...porEtapa.entries()].sort(([a], [b]) => a - b).map(([etapa, contatos]) => ({
+      etapa,
+      templateId,
+      quantidade: contatos.length,
+      contatos,
+    })),
+  };
+}
+
 export const campanhasWhatsappRouter = router({
+
+  obterProgramacaoFila: campanhasProcedure
+    .input(z.object({ campanhaId: z.number().int().positive() }))
+    .query(async ({ input }) => {
+      const db = await obterDb();
+      const campanha = await buscarCampanha(db, input.campanhaId);
+      const [fila] = await db.select().from(campanhasWhatsappFilas)
+        .where(eq(campanhasWhatsappFilas.campanhaId, input.campanhaId)).limit(1);
+      const envios = fila ? await db.select().from(campanhasWhatsappEnviosProgramados)
+        .where(eq(campanhasWhatsappEnviosProgramados.filaId, fila.id))
+        .orderBy(campanhasWhatsappEnviosProgramados.etapa) : [];
+      const hoje = hojeCampoGrande();
+      return {
+        campanha: { id: campanha.id, nome: campanha.nome, status: campanha.status },
+        fila: fila ?? null,
+        envios: envios.map(e => ({
+          ...e,
+          situacao: e.status === "agendado" && String(e.dataAgendada).slice(0, 10) <= hoje ? "pendente_revisao" : e.status,
+        })),
+        canal: { id: obterCanalId(), telefone: obterCanalTelefone() },
+      };
+    }),
+
+  listarFilasProgramadas: campanhasProcedure.query(async () => {
+    const db = await obterDb();
+    const filas = await db.select({ fila: campanhasWhatsappFilas, campanhaNome: campanhasWhatsapp.nome, campanhaStatus: campanhasWhatsapp.status })
+      .from(campanhasWhatsappFilas)
+      .innerJoin(campanhasWhatsapp, eq(campanhasWhatsapp.id, campanhasWhatsappFilas.campanhaId))
+      .where(eq(campanhasWhatsappFilas.ativo, true));
+    const hoje = hojeCampoGrande();
+    const resultado = [];
+    for (const row of filas) {
+      const envios = await db.select().from(campanhasWhatsappEnviosProgramados)
+        .where(eq(campanhasWhatsappEnviosProgramados.filaId, row.fila.id))
+        .orderBy(campanhasWhatsappEnviosProgramados.etapa);
+      const atual = envios.find(e => ["em_andamento", "pausado"].includes(e.status))
+        ?? envios.find(e => e.status === "agendado" || e.status === "falha")
+        ?? envios.at(-1);
+      if (!atual) continue;
+      const counts = await db.select({ status: campanhasWhatsappFilaItens.status, statusEntrega: campanhasWhatsappFilaItens.statusEntrega, lote: campanhasWhatsappFilaItens.lote, quantidade: count() })
+        .from(campanhasWhatsappFilaItens)
+        .where(eq(campanhasWhatsappFilaItens.envioProgramadoId, atual.id))
+        .groupBy(campanhasWhatsappFilaItens.lote, campanhasWhatsappFilaItens.status, campanhasWhatsappFilaItens.statusEntrega);
+      const progresso = resumirFilaProgramada(counts.map(c => ({ ...c, quantidade: Number(c.quantidade) })));
+      const lotes = contarLotes(atual.totalContatos);
+      const situacao = atual.status === "agendado" && String(atual.dataAgendada).slice(0, 10) <= hoje ? "pendente_revisao" : atual.status;
+      resultado.push({
+        campanhaId: row.fila.campanhaId,
+        campanhaNome: row.campanhaNome,
+        campanhaStatus: row.campanhaStatus,
+        etapa: atual.etapa,
+        totalEtapas: row.fila.quantidadeEnvios,
+        data: atual.dataAgendada,
+        status: atual.status,
+        situacao,
+        envioProgramadoId: atual.id,
+        totalContatos: atual.totalContatos,
+        lotes,
+        lotesConcluidos: atual.status === "concluido" ? lotes : progresso.lotesConcluidos,
+        aceitos: progresso.aceitos,
+        entregues: progresso.entregues,
+        pendentes: progresso.pendentes,
+        incertos: progresso.incertos,
+        falhas: progresso.falhas,
+        cancelados: progresso.cancelados,
+        motivoPausa: atual.motivoPausa,
+        proximoProcessamentoEm: atual.proximoProcessamentoEm,
+      });
+    }
+    return resultado;
+  }),
+
+  salvarProgramacaoFila: campanhasProcedure
+    .input(z.object({
+      campanhaId: z.number().int().positive(),
+      ativo: z.boolean(),
+      quantidadeEnvios: z.union([z.literal(4), z.literal(5), z.literal(6)]),
+      dataInicial: dataIsoSchema,
+      intervaloDias: z.number().int().min(1).max(730),
+      pausaLotesMinutos: z.number().int().min(1).max(1440).default(5),
+      janelaEnvioAtiva: z.boolean().default(false),
+      janelaHoraInicio: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/).default("09:00"),
+      janelaHoraFim: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/).default("18:00"),
+      janelaDiasSemana: z.array(z.number().int().min(0).max(6)).min(1).max(7).default([1, 2, 3, 4, 5]),
+    }).superRefine((input, ctx) => {
+      if (!input.janelaEnvioAtiva) return;
+      if (input.janelaHoraInicio >= input.janelaHoraFim) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["janelaHoraFim"], message: "O fim da janela precisa ser posterior ao início." });
+      }
+      if (new Set(input.janelaDiasSemana).size !== input.janelaDiasSemana.length) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["janelaDiasSemana"], message: "Remova dias repetidos da janela." });
+      }
+    }))
+    .mutation(async ({ input, ctx }) => {
+      const db = await obterDb();
+      const campanha = await buscarCampanha(db, input.campanhaId);
+      const [filaAtual] = await db.select().from(campanhasWhatsappFilas)
+        .where(eq(campanhasWhatsappFilas.campanhaId, input.campanhaId)).limit(1);
+      const enviosAtuais = filaAtual ? await db.select().from(campanhasWhatsappEnviosProgramados)
+        .where(eq(campanhasWhatsappEnviosProgramados.filaId, filaAtual.id)) : [];
+      if (!input.ativo) {
+        if (enviosAtuais.some(e => !["agendado", "concluido"].includes(e.status))) {
+          throw new TRPCError({ code: "CONFLICT", message: "Conclua ou resolva a fila atual antes de desativar a programação." });
+        }
+        if (filaAtual) await db.update(campanhasWhatsappFilas).set({ ativo: false, updatedAt: new Date() })
+          .where(eq(campanhasWhatsappFilas.id, filaAtual.id));
+        return { ativo: false };
+      }
+      if (enviosAtuais.some(e => e.status !== "agendado")) {
+        const calendarioAlterado = !filaAtual
+          || filaAtual.quantidadeEnvios !== input.quantidadeEnvios
+          || iso(filaAtual.dataInicial) !== input.dataInicial
+          || filaAtual.intervaloDias !== input.intervaloDias;
+        if (calendarioAlterado) throw new TRPCError({ code: "CONFLICT", message: "O calendário iniciado não pode ser alterado. Ajuste apenas os controles da fila." });
+        await db.update(campanhasWhatsappFilas).set({
+          ativo: true,
+          pausaLotesMinutos: input.pausaLotesMinutos,
+          janelaEnvioAtiva: input.janelaEnvioAtiva,
+          janelaHoraInicio: input.janelaHoraInicio,
+          janelaHoraFim: input.janelaHoraFim,
+          janelaDiasSemana: input.janelaDiasSemana,
+          configuradoPor: ctx.user.name ?? ctx.user.email ?? "desconhecido",
+          updatedAt: new Date(),
+        }).where(eq(campanhasWhatsappFilas.id, filaAtual.id));
+        return { ativo: true, datas: gerarDatasProgramadas(input.dataInicial, input.quantidadeEnvios, input.intervaloDias), calendarioAlterado: false };
+      }
+      const datas = gerarDatasProgramadas(input.dataInicial, input.quantidadeEnvios, input.intervaloDias);
+      const templateId = campanha.wtsTemplateId?.trim();
+      if (!templateId) throw new TRPCError({ code: "PRECONDITION_FAILED", message: "Configure o template WTS.Chat da campanha antes de salvar o calendário." });
+      await db.transaction(async tx => {
+        const [fila] = await tx.insert(campanhasWhatsappFilas).values({
+          campanhaId: input.campanhaId,
+          quantidadeEnvios: input.quantidadeEnvios,
+          dataInicial: input.dataInicial,
+          intervaloDias: input.intervaloDias,
+          pausaLotesMinutos: input.pausaLotesMinutos,
+          janelaEnvioAtiva: input.janelaEnvioAtiva,
+          janelaHoraInicio: input.janelaHoraInicio,
+          janelaHoraFim: input.janelaHoraFim,
+          janelaDiasSemana: input.janelaDiasSemana,
+          ativo: true,
+          configuradoPor: ctx.user.name ?? ctx.user.email ?? "desconhecido",
+          updatedAt: new Date(),
+        }).onConflictDoUpdate({
+          target: campanhasWhatsappFilas.campanhaId,
+          set: {
+            quantidadeEnvios: input.quantidadeEnvios,
+            dataInicial: input.dataInicial,
+            intervaloDias: input.intervaloDias,
+            pausaLotesMinutos: input.pausaLotesMinutos,
+            janelaEnvioAtiva: input.janelaEnvioAtiva,
+            janelaHoraInicio: input.janelaHoraInicio,
+            janelaHoraFim: input.janelaHoraFim,
+            janelaDiasSemana: input.janelaDiasSemana,
+            ativo: true,
+            configuradoPor: ctx.user.name ?? ctx.user.email ?? "desconhecido",
+            updatedAt: new Date(),
+          },
+        }).returning();
+        await tx.delete(campanhasWhatsappEnviosProgramados).where(eq(campanhasWhatsappEnviosProgramados.filaId, fila.id));
+        await tx.insert(campanhasWhatsappEnviosProgramados).values(datas.map((dataAgendada, index) => ({
+          filaId: fila.id,
+          campanhaId: input.campanhaId,
+          etapa: index + 1,
+          dataAgendada,
+          templateId,
+          versaoEtapas: 1,
+        })));
+      });
+      return { ativo: true, datas };
+    }),
+
+  revisarEnvioProgramado: campanhasProcedure
+    .input(z.object({ envioProgramadoId: z.number().int().positive() }))
+    .query(async ({ input }) => {
+      const db = await obterDb();
+      const [envio] = await db.select().from(campanhasWhatsappEnviosProgramados)
+        .where(eq(campanhasWhatsappEnviosProgramados.id, input.envioProgramadoId)).limit(1);
+      if (!envio) throw new TRPCError({ code: "NOT_FOUND", message: "Envio programado não encontrado." });
+      const campanha = await buscarCampanha(db, envio.campanhaId);
+      const fila = (await db.select().from(campanhasWhatsappFilas).where(eq(campanhasWhatsappFilas.id, envio.filaId)).limit(1))[0];
+      if (envio.status !== "agendado") {
+        const linhas = await db.select({
+          lote: campanhasWhatsappFilaItens.lote,
+          etapa: campanhasWhatsappFilaItens.etapa,
+          templateId: campanhasWhatsappFilaItens.templateId,
+          status: campanhasWhatsappFilaItens.status,
+          statusEntrega: campanhasWhatsappFilaItens.statusEntrega,
+          quantidade: count(),
+        }).from(campanhasWhatsappFilaItens)
+          .where(eq(campanhasWhatsappFilaItens.envioProgramadoId, envio.id))
+          .groupBy(campanhasWhatsappFilaItens.lote, campanhasWhatsappFilaItens.etapa, campanhasWhatsappFilaItens.templateId, campanhasWhatsappFilaItens.status, campanhasWhatsappFilaItens.statusEntrega);
+        const progresso = resumirFilaProgramada(linhas.map(l => ({ ...l, quantidade: Number(l.quantidade) })));
+        const lotes = new Map<number, { lote: number; total: number; aceitos: number; entregues: number; pendentes: number; incertos: number; falhas: number; cancelados: number }>();
+        const grupos = new Map<string, { etapa: number; templateId: string; quantidade: number; lotes: number }>();
+        for (const linha of linhas) {
+          const l = lotes.get(linha.lote) ?? { lote: linha.lote, total: 0, aceitos: 0, entregues: 0, pendentes: 0, incertos: 0, falhas: 0, cancelados: 0 };
+          const n = Number(linha.quantidade);
+          l.total += n;
+          if (linha.status === "aceito") l.aceitos += n;
+          if (["pendente", "enviando"].includes(linha.status)) l.pendentes += n;
+          if (linha.status === "incerto") l.incertos += n;
+          if (linha.status === "falha" || ["FAILED", "ERROR", "REJECTED", "FALHOU", "ERRO", "REJEITADO"].includes(linha.statusEntrega ?? "")) l.falhas += n;
+          if (linha.status === "cancelado") l.cancelados += n;
+          if (linha.statusEntrega && ["DELIVERED", "READ", "LIDO", "ENTREGUE"].includes(linha.statusEntrega)) l.entregues += n;
+          lotes.set(linha.lote, l);
+          const key = `${linha.etapa}:${linha.templateId}`;
+          const g = grupos.get(key) ?? { etapa: linha.etapa, templateId: linha.templateId, quantidade: 0, lotes: 0 };
+          g.quantidade += n;
+          grupos.set(key, g);
+        }
+        const itensIncertos = await db.select({ id: campanhasWhatsappFilaItens.id, telefone: campanhasWhatsappFilaItens.telefone, etapa: campanhasWhatsappFilaItens.etapa, erro: campanhasWhatsappFilaItens.erro })
+          .from(campanhasWhatsappFilaItens)
+          .where(and(eq(campanhasWhatsappFilaItens.envioProgramadoId, envio.id), eq(campanhasWhatsappFilaItens.status, "incerto")))
+          .limit(50);
+        return {
+          campanha: { id: campanha.id, nome: campanha.nome },
+          envio: { ...envio, aceitos: progresso.aceitos, entregues: progresso.entregues, falhas: progresso.falhas },
+          fila,
+          grupos: [...grupos.values()].map(g => ({ ...g, lotes: contarLotes(g.quantidade) })),
+          contatosAptos: envio.totalContatos,
+          lotes: contarLotes(envio.totalContatos),
+          contatosPorEtapa: [...grupos.values()].map(g => ({ etapa: g.etapa, quantidade: g.quantidade })),
+          lotesDetalhe: [...lotes.values()].sort((a, b) => a.lote - b.lote),
+          itensIncertos,
+          canal: { id: obterCanalId(), telefone: obterCanalTelefone() },
+          podeIniciar: false,
+          cancelados: progresso.cancelados,
+          podeReprocessarFalhas: progresso.falhas > 0 && progresso.incertos === 0 && ["concluido", "pausado"].includes(envio.status),
+          bloqueio: envio.motivoPausa,
+        };
+      }
+      const grupos = await gruposAptosParaEnvioProgramado(db, campanha, envio);
+      const anteriores = envio.etapa > 1 ? await db.select().from(campanhasWhatsappEnviosProgramados).where(and(
+        eq(campanhasWhatsappEnviosProgramados.filaId, envio.filaId),
+        lte(campanhasWhatsappEnviosProgramados.etapa, envio.etapa - 1),
+      )) : [];
+      const etapaAnteriorConcluida = anteriores.every(e => e.status === "concluido");
+      const dataVencida = String(envio.dataAgendada).slice(0, 10) <= hojeCampoGrande();
+      return {
+        campanha: { id: campanha.id, nome: campanha.nome },
+        envio,
+        fila,
+        grupos: grupos.grupos.map(g => ({ etapa: g.etapa, templateId: g.templateId, quantidade: g.quantidade, lotes: contarLotes(g.quantidade) })),
+        contatosAptos: grupos.aptos.length,
+        lotes: contarLotes(grupos.aptos.length),
+        contatosPorEtapa: grupos.grupos.map(g => ({ etapa: g.etapa, quantidade: g.quantidade })),
+        lotesDetalhe: [],
+        itensIncertos: [],
+        canal: { id: obterCanalId(), telefone: obterCanalTelefone() },
+        podeIniciar: dataVencida && etapaAnteriorConcluida && envio.status === "agendado" && campanha.status === "ativa",
+        bloqueio: !dataVencida ? "A data deste envio ainda não chegou." : !etapaAnteriorConcluida ? "Conclua o envio anterior antes de iniciar esta etapa." : campanha.status !== "ativa" ? "Reative a campanha antes de iniciar." : null,
+      };
+    }),
+
+  iniciarEnvioProgramado: campanhasProcedure
+    .input(z.object({ envioProgramadoId: z.number().int().positive() }))
+    .mutation(async ({ input, ctx }) => {
+      const db = await obterDb();
+      const [envio] = await db.select().from(campanhasWhatsappEnviosProgramados)
+        .where(eq(campanhasWhatsappEnviosProgramados.id, input.envioProgramadoId)).limit(1);
+      if (!envio) throw new TRPCError({ code: "NOT_FOUND", message: "Envio programado não encontrado." });
+      if (["em_andamento", "pausado", "concluido"].includes(envio.status)) {
+        if (envio.status === "em_andamento") await acordarFilaProgramada(1);
+        return { envioProgramadoId: envio.id, reutilizado: true, status: envio.status };
+      }
+      if (envio.status !== "agendado") throw new TRPCError({ code: "CONFLICT", message: "Este envio não pode ser iniciado neste estado." });
+      const campanha = await buscarCampanha(db, envio.campanhaId);
+      const fila = (await db.select().from(campanhasWhatsappFilas).where(eq(campanhasWhatsappFilas.id, envio.filaId)).limit(1))[0];
+      if (!fila?.ativo) throw new TRPCError({ code: "PRECONDITION_FAILED", message: "Ative a programação da campanha antes de iniciar." });
+      if (campanha.status !== "ativa") throw new TRPCError({ code: "PRECONDITION_FAILED", message: "Reative a campanha antes de iniciar." });
+      if (!wtsChatConfigurado()) throw new TRPCError({ code: "PRECONDITION_FAILED", message: "Configure WTS_CHAT_AUTHORIZATION antes de iniciar a fila." });
+      if (!process.env.QSTASH_TOKEN?.trim() || !process.env.CAMPANHAS_API_KEY?.trim() || !process.env.CAMPANHAS_CADENCIA_WORKER_URL?.trim()) {
+        throw new TRPCError({ code: "PRECONDITION_FAILED", message: "Configure QSTASH_TOKEN, CAMPANHAS_API_KEY e CAMPANHAS_CADENCIA_WORKER_URL para executar em segundo plano." });
+      }
+      const revisao = await gruposAptosParaEnvioProgramado(db, campanha, envio);
+      if (String(envio.dataAgendada).slice(0, 10) > hojeCampoGrande()) throw new TRPCError({ code: "PRECONDITION_FAILED", message: "Aguarde a data prevista antes de iniciar este envio." });
+      const anteriores = envio.etapa > 1 ? await db.select().from(campanhasWhatsappEnviosProgramados).where(and(
+        eq(campanhasWhatsappEnviosProgramados.filaId, envio.filaId),
+        lte(campanhasWhatsappEnviosProgramados.etapa, envio.etapa - 1),
+      )) : [];
+      if (anteriores.some(e => e.status !== "concluido")) throw new TRPCError({ code: "PRECONDITION_FAILED", message: "Conclua os envios anteriores antes de iniciar esta etapa." });
+
+      const atual = await db.transaction(async tx => {
+        const [bloqueio] = await tx.select().from(campanhasWhatsappEnviosProgramados)
+          .where(eq(campanhasWhatsappEnviosProgramados.id, envio.id)).for("update").limit(1);
+        if (!bloqueio || bloqueio.status !== "agendado") return { id: envio.id, reutilizado: true, status: bloqueio?.status ?? envio.status };
+        const telefones = revisao.aptos.map(c => c.telefone);
+        if (telefones.length) await tx.insert(campanhasWhatsappFilaInscricoes).values(revisao.aptos.map(c => ({
+          campanhaId: campanha.id,
+          telefone: c.telefone,
+          nome: c.nome,
+          etapaAtual: 1,
+          status: "ativa",
+        }))).onConflictDoNothing();
+        const inscricoes = telefones.length ? await tx.select().from(campanhasWhatsappFilaInscricoes).where(and(
+          eq(campanhasWhatsappFilaInscricoes.campanhaId, campanha.id),
+          inArray(campanhasWhatsappFilaInscricoes.telefone, telefones),
+          eq(campanhasWhatsappFilaInscricoes.status, "ativa"),
+        )) : [];
+        const inscricaoPorTelefone = new Map(inscricoes.map(i => [i.telefone, i] as const));
+        const prontos = revisao.aptos.filter(c => inscricaoPorTelefone.get(c.telefone)?.etapaAtual === c.etapa);
+        if (revisao.aptos.length && !prontos.length) throw new TRPCError({ code: "PRECONDITION_FAILED", message: "Os contatos aptos mudaram durante a revisão. Atualize e revise novamente." });
+        const proximo = (await tx.select({ data: campanhasWhatsappEnviosProgramados.dataAgendada })
+          .from(campanhasWhatsappEnviosProgramados)
+          .where(and(eq(campanhasWhatsappEnviosProgramados.filaId, envio.filaId), eq(campanhasWhatsappEnviosProgramados.etapa, envio.etapa + 1))).limit(1))[0]?.data;
+        const [disparo] = await tx.insert(campanhasWhatsappDisparos).values({
+          campanhaId: campanha.id,
+          enviadoEm: hojeCampoGrande(),
+          proximaData: proximo ?? null,
+          contatosRecebidos: prontos.length,
+          contatosEnviados: 0,
+          contatosIgnorados: Math.max(0, revisao.aptos.length - prontos.length),
+          contatosInvalidos: 0,
+          origem: "api",
+          observacoes: `Fila programada ${envio.etapa}/${fila.quantidadeEnvios}; ${fila.pausaLotesMinutos} min entre lotes.`,
+          registradoPor: ctx.user.name ?? ctx.user.email ?? "fila-programada",
+        }).returning({ id: campanhasWhatsappDisparos.id });
+        const porOrdem = [...prontos].sort((a, b) => a.etapa - b.etapa || a.telefone.localeCompare(b.telefone));
+        if (porOrdem.length) await tx.insert(campanhasWhatsappFilaItens).values(porOrdem.map((c, index) => ({
+          envioProgramadoId: envio.id,
+          inscricaoId: inscricaoPorTelefone.get(c.telefone)!.id,
+          campanhaId: campanha.id,
+          etapa: c.etapa,
+          lote: numeroLote(index),
+          telefone: c.telefone,
+          nome: c.nome,
+          templateId: c.templateId,
+          status: "pendente",
+        }))).onConflictDoNothing();
+        await tx.update(campanhasWhatsappEnviosProgramados).set({
+          status: prontos.length ? "em_andamento" : "concluido",
+          totalContatos: prontos.length,
+          aceitos: 0,
+          entregues: 0,
+          falhas: 0,
+          disparoId: disparo.id,
+          proximoProcessamentoEm: prontos.length ? new Date() : null,
+          iniciadoPor: ctx.user.name ?? ctx.user.email ?? "desconhecido",
+          iniciadoEm: new Date(),
+          motivoPausa: null,
+          concluidoEm: prontos.length ? null : new Date(),
+          updatedAt: new Date(),
+        }).where(eq(campanhasWhatsappEnviosProgramados.id, envio.id));
+        return { id: envio.id, reutilizado: false, status: prontos.length ? "em_andamento" : "concluido" };
+      });
+      if (atual.status === "em_andamento") await acordarFilaProgramada(1);
+      return { envioProgramadoId: atual.id, reutilizado: atual.reutilizado, status: atual.status };
+    }),
+
+  reprocessarFalhasEnvioProgramado: campanhasProcedure
+    .input(z.object({ envioProgramadoId: z.number().int().positive() }))
+    .mutation(async ({ input }) => {
+      const db = await obterDb();
+      const resultado = await db.transaction(async tx => {
+        const [envio] = await tx.select().from(campanhasWhatsappEnviosProgramados)
+          .where(eq(campanhasWhatsappEnviosProgramados.id, input.envioProgramadoId)).for("update").limit(1);
+        if (!envio || !["concluido", "pausado"].includes(envio.status)) {
+          throw new TRPCError({ code: "CONFLICT", message: "Só é possível reprocessar falhas de uma etapa concluída ou pausada." });
+        }
+        const [incerto] = await tx.select({ id: campanhasWhatsappFilaItens.id }).from(campanhasWhatsappFilaItens)
+          .where(and(eq(campanhasWhatsappFilaItens.envioProgramadoId, envio.id), eq(campanhasWhatsappFilaItens.status, "incerto"))).limit(1);
+        if (incerto) throw new TRPCError({ code: "PRECONDITION_FAILED", message: "Resolva os resultados incertos antes de reprocessar falhas." });
+        const itens = await tx.update(campanhasWhatsappFilaItens).set({ status: "pendente", tentativas: 0, erro: null, updatedAt: new Date() })
+          .where(and(eq(campanhasWhatsappFilaItens.envioProgramadoId, envio.id), eq(campanhasWhatsappFilaItens.status, "falha")))
+          .returning({ id: campanhasWhatsappFilaItens.id });
+        if (!itens.length) return { reprocessados: 0, status: envio.status };
+        if (envio.status === "concluido") {
+          await tx.update(campanhasWhatsappEnviosProgramados).set({
+            status: "em_andamento",
+            falhas: 0,
+            proximoProcessamentoEm: new Date(),
+            concluidoEm: null,
+            motivoPausa: null,
+            updatedAt: new Date(),
+          }).where(eq(campanhasWhatsappEnviosProgramados.id, envio.id));
+          return { reprocessados: itens.length, status: "em_andamento" as const };
+        }
+        return { reprocessados: itens.length, status: envio.status };
+      });
+      if (resultado.status === "em_andamento") await acordarFilaProgramada(1);
+      return resultado;
+    }),
+
+  pausarEnvioProgramado: campanhasProcedure
+    .input(z.object({ envioProgramadoId: z.number().int().positive() }))
+    .mutation(async ({ input }) => {
+      const db = await obterDb();
+      const [envio] = await db.update(campanhasWhatsappEnviosProgramados).set({
+        status: "pausado",
+        motivoPausa: "Pausado pelo usuário.",
+        updatedAt: new Date(),
+      }).where(and(eq(campanhasWhatsappEnviosProgramados.id, input.envioProgramadoId), eq(campanhasWhatsappEnviosProgramados.status, "em_andamento"))).returning({ id: campanhasWhatsappEnviosProgramados.id });
+      if (!envio) throw new TRPCError({ code: "CONFLICT", message: "Esta fila não está em andamento." });
+      return { ok: true };
+    }),
+
+  retomarEnvioProgramado: campanhasProcedure
+    .input(z.object({ envioProgramadoId: z.number().int().positive() }))
+    .mutation(async ({ input }) => {
+      const db = await obterDb();
+      const [envio] = await db.select().from(campanhasWhatsappEnviosProgramados)
+        .where(eq(campanhasWhatsappEnviosProgramados.id, input.envioProgramadoId)).limit(1);
+      if (!envio || envio.status !== "pausado") throw new TRPCError({ code: "CONFLICT", message: "A fila não está pausada." });
+      const [incerto] = await db.select({ id: campanhasWhatsappFilaItens.id }).from(campanhasWhatsappFilaItens)
+        .where(and(eq(campanhasWhatsappFilaItens.envioProgramadoId, envio.id), eq(campanhasWhatsappFilaItens.status, "incerto"))).limit(1);
+      if (incerto) throw new TRPCError({ code: "PRECONDITION_FAILED", message: "Verifique o status da mensagem incerta na WTS.Chat antes de retomar." });
+      const [enviando] = await db.select({ id: campanhasWhatsappFilaItens.id }).from(campanhasWhatsappFilaItens)
+        .where(and(eq(campanhasWhatsappFilaItens.envioProgramadoId, envio.id), eq(campanhasWhatsappFilaItens.status, "enviando"))).limit(1);
+      if (enviando) throw new TRPCError({ code: "CONFLICT", message: "Aguarde a conclusão do contato que já está em envio antes de retomar." });
+      if (!wtsChatConfigurado()) throw new TRPCError({ code: "PRECONDITION_FAILED", message: "Configure WTS_CHAT_AUTHORIZATION antes de retomar." });
+      await db.update(campanhasWhatsappEnviosProgramados).set({
+        status: "em_andamento",
+        proximoProcessamentoEm: sql`GREATEST(COALESCE(${campanhasWhatsappEnviosProgramados.proximoProcessamentoEm}, now()), now())`,
+        motivoPausa: null,
+        leaseToken: null,
+        leaseAte: null,
+        updatedAt: new Date(),
+      }).where(eq(campanhasWhatsappEnviosProgramados.id, envio.id));
+      await acordarFilaProgramada(1);
+      return { ok: true };
+    }),
+
+  verificarItemEnvioProgramado: campanhasProcedure
+    .input(z.object({ itemId: z.number().int().positive() }))
+    .mutation(async ({ input }) => {
+      const db = await obterDb();
+      const [item] = await db.select().from(campanhasWhatsappFilaItens)
+        .where(eq(campanhasWhatsappFilaItens.id, input.itemId)).limit(1);
+      if (!item) throw new TRPCError({ code: "NOT_FOUND", message: "Contato da fila não encontrado." });
+      if (!item.idMensagemWts) throw new TRPCError({ code: "PRECONDITION_FAILED", message: "A WTS.Chat não devolveu um ID consultável. Verifique a conversa no provedor antes de solicitar nova tentativa." });
+      const estado = await consultarEstadoMensagemWts(item.idMensagemWts);
+      if (estado.estado) await registrarStatusFilaProgramada({ idMensagem: item.idMensagemWts, status: estado.estado });
+      return estado;
+    }),
+
+
   /** Painel: campanhas com último/próximo envio, semáforo e os 3 contadores do topo. */
   listar: campanhasProcedure.query(async () => {
     const db = await obterDb();

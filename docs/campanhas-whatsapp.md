@@ -333,6 +333,16 @@ O envio usa o endpoint oficial `POST https://api.app.ceci.chat/chat/v1/send/temp
 
 A janela **Efetuar disparo** também permite **Testar o template em um número**. `campanhasWhatsapp.testarNumeroWts` valida e normaliza o telefone brasileiro, envia uma única mensagem ao número digitado e consulta o status pelo ID/URL retornados. Esse teste fica fora da audiência e não registra disparo nem altera cadência, quarentena ou histórico; o usuário confirma no próprio aparelho se recebeu.
 
+## Calendário e fila persistente por campanha
+
+O bloco **Calendário de envios e fila em lotes** em Editar campanha é opcional. Ele gera 4, 5 ou 6 datas a partir da data inicial e do intervalo em dias (ex.: seis envios a cada 30 dias geram os dias 0, 30, 60, 90, 120 e 150). **Pausa entre lotes** começa em 5 minutos; ela controla somente os lotes do mesmo envio e não altera o intervalo do calendário. A fila usa o template WTS.Chat configurado na campanha, registrado como snapshot em cada envio programado.
+
+Na data de cada etapa, o painel **Fila programada** exibe **Revisar envio** e informa template, canal, contatos aptos e lotes de até 100. Um clique em **Iniciar envio** cria itens persistentes por contato e inicia o worker. O worker envia em sequência, aguarda o intervalo seguro entre contatos, aplica a pausa configurada depois de cada bloco de 100 e agenda a continuação via Upstash QStash; fechar a tela não interrompe a execução. Uma chave única por envio/inscrição torna cliques repetidos idempotentes. Pausar e retomar continua nos itens pendentes; resultados incertos são conciliados pela WTS.Chat antes de qualquer reenvio. Erro 401/403 pausa a fila e mostra o motivo.
+
+O estado **aceito** significa que a WTS.Chat aceitou a mensagem para processamento. **Entregue** só aumenta com confirmação posterior do provedor; aceite não é entrega. Contatos novos entram na etapa 1 quando estiverem aptos. Se houver inscrições em etapas diferentes, a revisão mostra o total e os lotes por etapa. Campanhas sem fila continuam no fluxo existente de **Efetuar disparo** e o teste em um número não entra na fila.
+
+Para executar a fila em produção, configure `QSTASH_TOKEN`, `CAMPANHAS_API_KEY` e `CAMPANHAS_CADENCIA_WORKER_URL` (URL HTTPS pública terminando em `/api/v1/campaigns/process-cadence`), além das credenciais WTS.Chat já existentes. Sem QStash configurado, o sistema deixa salvar e revisar o calendário, mas bloqueia o início da fila.
+
 ## Envios por disparo ("Ver envios", 19/10/2026)
 
 Cada linha do Histórico (`HistoricoDialog.tsx`) tem o botão **"Ver envios"**, que abre `DisparoEnviosDialog.tsx`
@@ -404,6 +414,8 @@ revertido em seguida; para existir em produção precisa rodar de novo com a `DA
 agente não tem essa credencial) ou, mais simples, criar cada campanha pela própria tela.
 
 ## Testes
+
+`server/__tests__/campanhas-whatsapp-fila.test.ts` cobre calendário, divisão de 1.700 contatos em 17 lotes, pausa após três lotes, retomada sem duplicar aceitos, aceite versus entrega, opt-out, janela e backoff. `yarn test:e2e:campanhas` percorre a interface com dados fictícios por uma fixture Vite local, sem banco nem chamadas à WTS.Chat.
 
 `server/__tests__/campanhas-whatsapp.test.ts` (regras puras, incl. `filtrarPorCadenciaCampanha`, + autenticação/
 validação dos webhooks), `server/__tests__/campanhas-whatsapp-db.test.ts` (banco real: quarentena, retroativo,
