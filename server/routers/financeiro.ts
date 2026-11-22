@@ -680,12 +680,12 @@ export const financeiroRouter = router({
         usuarioRole: ctx.user?.role ?? null,
       };
 
-      const agregados = new Map<string, { mes: number; ano: number; aquisicao: number; reativacao: number }>();
+      const agregados = new Map<string, { mes: number; ano: number; aquisicao: number | null; reativacao: number | null }>();
       for (const linha of input) {
         const chave = `${linha.ano}-${linha.mes}`;
-        const atual = agregados.get(chave) ?? { mes: linha.mes, ano: linha.ano, aquisicao: 0, reativacao: 0 };
-        if (linha.categoria === "aquisicao") atual.aquisicao += linha.valor;
-        else atual.reativacao += linha.valor;
+        const atual = agregados.get(chave) ?? { mes: linha.mes, ano: linha.ano, aquisicao: null, reativacao: null };
+        if (linha.categoria === "aquisicao") atual.aquisicao = (atual.aquisicao ?? 0) + linha.valor;
+        else atual.reativacao = (atual.reativacao ?? 0) + linha.valor;
         agregados.set(chave, atual);
       }
 
@@ -697,16 +697,19 @@ export const financeiroRouter = router({
           .where(and(eq(custoMarketing.mes, mes), eq(custoMarketing.ano, ano)))
           .limit(1);
 
-        // ?? 0 explícito: investimentoAquisicao/Reativacao agora são nullable
-        // (não preenchido != zero) — aqui a importação sempre SOMA um valor
-        // numérico ao que já existe, então "não preenchido" vira 0 só para
-        // efeito desta soma incremental, nunca grava null por cima de um valor.
-        const aquisicaoTotal = (existing[0]?.investimentoAquisicao != null ? Number(existing[0].investimentoAquisicao) : 0) + aquisicao;
-        const reativacaoTotal = (existing[0]?.investimentoReativacao != null ? Number(existing[0].investimentoReativacao) : 0) + reativacao;
+        // A categoria ausente no arquivo não muda nem preenche o campo. Só um
+        // valor explicitamente importado soma ao que já está salvo.
+        const aquisicaoAnterior = existing[0]?.investimentoAquisicao != null ? Number(existing[0].investimentoAquisicao) : null;
+        const reativacaoAnterior = existing[0]?.investimentoReativacao != null ? Number(existing[0].investimentoReativacao) : null;
+        const aquisicaoTotal = aquisicao == null ? aquisicaoAnterior : (aquisicaoAnterior ?? 0) + aquisicao;
+        const reativacaoTotal = reativacao == null ? reativacaoAnterior : (reativacaoAnterior ?? 0) + reativacao;
+        const investimentoTotal = aquisicaoTotal == null && reativacaoTotal == null
+          ? null
+          : (aquisicaoTotal ?? 0) + (reativacaoTotal ?? 0);
         const data = {
-          investimentoAquisicao: String(aquisicaoTotal),
-          investimentoReativacao: String(reativacaoTotal),
-          investimento: String(aquisicaoTotal + reativacaoTotal),
+          investimentoAquisicao: aquisicaoTotal != null ? String(aquisicaoTotal) : null,
+          investimentoReativacao: reativacaoTotal != null ? String(reativacaoTotal) : null,
+          investimento: investimentoTotal != null ? String(investimentoTotal) : null,
         };
 
         if (existing.length > 0) {

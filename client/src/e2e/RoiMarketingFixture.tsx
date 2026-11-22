@@ -2,6 +2,8 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { httpBatchLink } from "@trpc/client";
 import { createRoot } from "react-dom/client";
 import superjson from "superjson";
+import MarketingEstadosCampanhas from "@/pages/financeiro/MarketingEstadosCampanhas";
+import MarketingEstadosNovos from "@/pages/financeiro/MarketingEstadosNovos";
 import MarketingVisaoGeral from "@/pages/financeiro/MarketingVisaoGeral";
 import { trpc } from "@/lib/trpc";
 import type { RouterOutputs } from "@/lib/trpc";
@@ -104,6 +106,8 @@ function RoiMarketingFixture() {
   return (
     <main className="mx-auto max-w-7xl space-y-6 p-6">
       <MarketingVisaoGeralE2E />
+      <MarketingEstadosCampanhas ano={2026} />
+      <MarketingEstadosNovos ano={2026} />
     </main>
   );
 }

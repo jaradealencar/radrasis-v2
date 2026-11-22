@@ -36,6 +36,27 @@ export function somarOuNull(valores: Array<number | null | undefined>): number |
   return round2(valores.reduce((s: number, v) => s + (v ?? 0), 0));
 }
 
+/** Converte uma entrada monetária digitada pelo usuário para número.
+ * Aceita formatos pt-BR (1.234,56) e decimal com ponto (1234.56).
+ * `null` representa o campo vazio; `undefined`, um formato inválido. */
+export function parseInvestimentoMarketing(texto: string): number | null | undefined {
+  const limpo = texto.trim().replace(/^R\$\s*/i, "").replace(/\s/g, "");
+  if (!limpo) return null;
+
+  let normalizado: string;
+  if (limpo.includes(",")) {
+    normalizado = limpo.replace(/\./g, "").replace(",", ".");
+  } else if (/^-?\d{1,3}(\.\d{3})+$/.test(limpo)) {
+    normalizado = limpo.replace(/\./g, "");
+  } else {
+    normalizado = limpo;
+  }
+  if (!/^-?\d+(?:\.\d+)?$/.test(normalizado)) return undefined;
+
+  const valor = Number(normalizado);
+  return Number.isFinite(valor) ? valor : undefined;
+}
+
 /** Percentual de `parte` sobre `base`, em pontos percentuais (0-100), com o
  * mesmo guard de `safeDiv`. */
 export function pctSobre(parte: number | null | undefined, base: number | null | undefined): number | null {
@@ -177,7 +198,12 @@ export function calcularResultadoGrupo(investimento: number | null, margemContri
  * total × 100. Aceita quantos grupos forem passados (ex.: novos + reativados,
  * ou novos + recorrentes ativos + reativados). */
 export function calcularResultadoConsolidado(grupos: Array<{ investimento: number | null; margemContribuicao: number }>): ResultadoGrupo {
-  const investimentoTotal = grupos.every(g => g.investimento == null) ? null : grupos.reduce((s, g) => s + (g.investimento ?? 0), 0);
+  // Consolidado só é válido se cada frente tiver sido apurada. Campo vazio é
+  // pendência, não zero; o usuário precisa registrar 0 explicitamente quando
+  // não houve investimento naquela frente.
+  const investimentoTotal = grupos.length === 0 || grupos.some(g => g.investimento == null)
+    ? null
+    : round2(grupos.reduce((s, g) => s + g.investimento!, 0));
   const margemTotal = round2(grupos.reduce((s, g) => s + g.margemContribuicao, 0));
   const resultado = investimentoTotal == null ? null : round2(margemTotal - investimentoTotal);
   const roiPct = investimentoTotal == null ? null : pctSobre(resultado, investimentoTotal);
