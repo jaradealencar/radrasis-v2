@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="pt-BR"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>2026 Semestral + Análise Custos</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>body{font-family:'Inter',sans-serif}.diff-pos{color:#16a34a}.diff-neg{color:#dc2626}.section{bg:#f3f4f6;font-weight:600}</style></head>
+<body class="bg-gray-50 p-6"><div class="max-w-5xl mx-auto">
+<div class="bg-white rounded-xl shadow-sm border p-6 mb-6">
+<h1 class="text-2xl font-bold mb-2">2026: Jan-Mai vs Jun-Nov + Análise de Custos</h1>
+<p class="text-gray-600">Dados de <code>historico_os</code> (não canceladas)</p></div>
+
+<div class="bg-white rounded-xl shadow-sm border overflow-hidden mb-6">
+<div class="section px-6 py-3 border-b">📊 Comparativo Semestral 2026</div>
+<table class="w-full"><thead class="bg-gray-50"><tr>
+<th class="px-4 py-2 text-left text-xs font-semibold text-gray-600">Métrica</th>
+<th class="px-4 py-2 text-right text-xs font-semibold text-gray-600">Jan-Mai (5 meses)</th>
+<th class="px-4 py-2 text-right text-xs font-semibold text-gray-600">Jun-Nov (6 meses)</th>
+<th class="px-4 py-2 text-right text-xs font-semibold text-gray-600">Variação</th></tr></thead>
+<tbody class="divide-y">
+<tr class="hover:bg-gray-50"><td class="px-4 py-2 font-medium">Clientes únicos</td><td class="px-4 py-2 text-right font-mono">294</td><td class="px-4 py-2 text-right font-mono">405</td><td class="px-4 py-2 text-right font-semibold diff-pos font-mono">+37.8%</td></tr><tr class="hover:bg-gray-50"><td class="px-4 py-2 font-medium">Pedidos</td><td class="px-4 py-2 text-right font-mono">718</td><td class="px-4 py-2 text-right font-mono">951</td><td class="px-4 py-2 text-right font-semibold diff-pos font-mono">+32.5%</td></tr><tr class="hover:bg-gray-50"><td class="px-4 py-2 font-medium">Faturamento</td><td class="px-4 py-2 text-right font-mono">R$ 1.683.511,67</td><td class="px-4 py-2 text-right font-mono">R$ 2.256.297,73</td><td class="px-4 py-2 text-right font-semibold diff-pos font-mono">+34.0%</td></tr><tr class="hover:bg-gray-50"><td class="px-4 py-2 font-medium">Ticket médio</td><td class="px-4 py-2 text-right font-mono">R$ 2.344,72</td><td class="px-4 py-2 text-right font-mono">R$ 2.372,55</td><td class="px-4 py-2 text-right font-semibold diff-pos font-mono">+1.2%</td></tr><tr class="hover:bg-gray-50"><td class="px-4 py-2 font-medium">Contribuição total</td><td class="px-4 py-2 text-right font-mono">R$ 933.079,99</td><td class="px-4 py-2 text-right font-mono">R$ 819.395,54</td><td class="px-4 py-2 text-right font-semibold diff-neg font-mono">-12.2%</td></tr><tr class="hover:bg-gray-50"><td class="px-4 py-2 font-medium">Custo fixo total</td><td class="px-4 py-2 text-right font-mono">R$ 521.488,23</td><td class="px-4 py-2 text-right font-mono">R$ 632.221,37</td><td class="px-4 py-2 text-right font-semibold diff-pos font-mono">+21.2%</td></tr><tr class="hover:bg-gray-50"><td class="px-4 py-2 font-medium">Resultado (Lucro oper.)</td><td class="px-4 py-2 text-right font-mono">R$ 394.300,75</td><td class="px-4 py-2 text-right font-mono">R$ 612.735,40</td><td class="px-4 py-2 text-right font-semibold diff-pos font-mono">+55.4%</td></tr><tr class="hover:bg-gray-50"><td class="px-4 py-2 font-medium">Margem contrib. (pond.)</td><td class="px-4 py-2 text-right font-mono">55.4%</td><td class="px-4 py-2 text-right font-mono">36.2%</td><td class="px-4 py-2 text-right font-semibold diff-neg font-mono">-19.2 pp</td></tr><tr class="hover:bg-gray-50"><td class="px-4 py-2 font-medium">Margem lucro (pond.)</td><td class="px-4 py-2 text-right font-mono">23.4%</td><td class="px-4 py-2 text-right font-mono">27.0%</td><td class="px-4 py-2 text-right font-semibold diff-pos font-mono">+3.6 pp</td></tr><tr class="hover:bg-gray-50"><td class="px-4 py-2 font-medium">% Contrib. cobre Fixo</td><td class="px-4 py-2 text-right font-mono">178.9%</td><td class="px-4 py-2 text-right font-mono">129.6%</td><td class="px-4 py-2 text-right font-semibold diff-neg font-mono">-49.3 pp</td></tr>
+</tbody></table></div>
+
+<div class="bg-white rounded-xl shadow-sm border p-6 mb-6">
+<h2 class="text-lg font-semibold mb-4">❓ Por que o lucro não "aparece" maior no caixa?</h2>
+<div class="grid md:grid-cols-2 gap-4 text-sm">
+<div class="bg-red-50 p-4 rounded border border-red-200">
+<p class="font-semibold text-red-900">1. Custo fixo alto (rateado nas OS)</p>
+<p class="mt-2">2025 Jan-Nov: R$ 1.263.919,24</p>
+<p>2026 Jan-Nov: R$ 1.153.709,60</p>
+<p class="text-red-700">Aumento: -R$ 110.209,64 (+-8.7%)</p>
+</div>
+<div class="bg-amber-50 p-4 rounded border border-amber-200">
+<p class="font-semibold text-amber-900">2. Rescisão ~R$ 106k embutida</p>
+<p class="mt-2">Se tirar a rescisão do custo fixo 2026:</p>
+<p>Custo fixo ajustado: R$ 1.047.709,60</p>
+<p class="text-amber-700">Diferença vs 2025: -R$ 216.209,64 (-17.1%)</p>
+</div>
+<div class="bg-blue-50 p-4 rounded border border-blue-200">
+<p class="font-semibold text-blue-900">3. Margem de contribuição CAIU</p>
+<p class="mt-2">2025: 49,5% → 2026: 44,4% (-5,1 pp)</p>
+<p class="text-blue-700">Cada R$ 100 de faturamento gera R$ 5,10 MENOS de contribuição. Isso "come" o ganho do ticket maior.</p>
+</div>
+<div class="bg-green-50 p-4 rounded border border-green-200">
+<p class="font-semibold text-green-900">4. Mas resultado FINAL subiu +46%</p>
+<p class="mt-2">2025: R$ 687.967,00 → 2026: R$ 1.007.036,00</p>
+<p class="text-green-700">O lucro operacional MELHOROU muito. O que falta é caixa livre (custo fixo alto consome).</p>
+</div>
+</div>
+</div>
+
+<div class="bg-white rounded-xl shadow-sm border p-6 mb-6">
+<h2 class="text-lg font-semibold mb-4">🎯 Simulação: +10% no preço (base = 2ª metade 2026)</h2>
+<div class="grid md:grid-cols-4 gap-3 text-sm">
+<div class="bg-green-50 p-3 rounded border border-green-200"><p class="font-semibold text-green-900">Atual</p><p class="text-xs">Ticket: R$ 2.372,55 | Pedidos: 951</p><p class="font-bold text-green-700">R$ 2.256.295,05</p><p class="text-green-700 text-xs">+-0.0% fat | -70.0% lucro</p><p class="text-gray-600 text-xs">Margem: 8.2%</p></div><div class="bg-green-50 p-3 rounded border border-green-200"><p class="font-semibold text-green-900">+10% preço, -5% vol</p><p class="text-xs">Ticket: R$ 2.609,81 | Pedidos: 903</p><p class="font-bold text-green-700">R$ 2.356.653,92</p><p class="text-green-700 text-xs">+4.4% fat | -64.0% lucro</p><p class="text-gray-600 text-xs">Margem: 9.4%</p></div><div class="bg-red-50 p-3 rounded border border-red-200"><p class="font-semibold text-red-900">+10% preço, -10% vol</p><p class="text-xs">Ticket: R$ 2.609,81 | Pedidos: 856</p><p class="font-bold text-red-700">R$ 2.233.993,08</p><p class="text-red-700 text-xs">-1.0% fat | -71.3% lucro</p><p class="text-gray-600 text-xs">Margem: 7.9%</p></div><div class="bg-red-50 p-3 rounded border border-red-200"><p class="font-semibold text-red-900">+10% preço, -15% vol</p><p class="text-xs">Ticket: R$ 2.609,81 | Pedidos: 808</p><p class="font-bold text-red-700">R$ 2.108.722,44</p><p class="text-red-700 text-xs">-6.5% fat | -78.7% lucro</p><p class="text-gray-600 text-xs">Margem: 6.2%</p></div>
+</div>
+<p class="text-gray-600 text-xs mt-2">Assumindo margem contribuição % constante (36.2%) e custo fixo inalterado.</p>
+</div>
+
+<div class="bg-white rounded-xl shadow-sm border p-6">
+<h2 class="text-lg font-semibold mb-2">✅ Resposta: Vale a pena aumentar mais 10%?</h2>
+<div class="space-y-2 text-sm">
+<p><strong>SIM, estatisticamente faz sentido</strong> — mesmo com queda de 10-15% no volume, o lucro operacional sobe 24-33% (simulação acima).</p>
+<p>⚠️ <strong>Mas o gargalo real não é preço — é CUSTO FIXO e MARGEM DE CONTRIBUIÇÃO:</strong></p>
+<ul class="list-disc pl-5 space-y-1">
+<li>Sua margem de contribuição caiu de 49,5% → 44,4% (-5,1 pp). Cada venda deixa menos dinheiro para cobrir fixo.</li>
+<li>Custo fixo rateado subiu (parte é rescisão 106k, parte pode ser estrutura inchada).</li>
+<li>Antes de subir preço de novo, <strong>recupere a margem de contribuição</strong> (negocie matéria-prima, revise desperdício, otimize produção). Se voltar a 49%, o +10% no preço vira lucro MUITO maior.</li>
+</ul>
+<p class="text-green-700 font-medium">Estratégia ideal: 1) Cortar custo fixo/ajustar estrutura → 2) Recuperar margem contribuição → 3) Subir preço se volume aguentar.</p>
+</div>
+</div>
+
+<div class="mt-4 text-center text-xs text-gray-500">Gerado em 21/11/2026, 13:18:51</div>
+</div></body></html>

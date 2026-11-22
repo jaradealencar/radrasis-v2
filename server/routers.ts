@@ -34,6 +34,7 @@ import { radarMercadoRouter } from "./routers/radarMercado";
 import { custoLedRouter } from "./routers/custoLed";
 import { perfilEstoqueRouter } from "./routers/perfilEstoque";
 import { adminRouter } from "./routers/admin";
+import { nfCompraRouter } from "./routers/nfCompra";
 import { systemRouter } from "./_core/systemRouter";
 import { protectedProcedure, publicProcedure, requireRole, router } from "./_core/trpc";
 import { auth } from "./_core/auth";
@@ -125,6 +126,8 @@ export const appRouter = router({
   system: systemRouter,
   // Painel "Status de Sincronização ERP" (cache de OS dos últimos 30 dias + logs)
   admin: adminRouter,
+  // Auditoria de Custo de Matéria-Prima via NF de Compra (leitura XML, memória por fornecedor, rateio frete/ICMS, defasagem vs Mubisys)
+  nfCompra: nfCompraRouter,
 
   // ─── Error Library ──────────────────────────────────────────────────────
   errorLibrary: router({

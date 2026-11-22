@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Comparativo 2025 vs 2026 - Radrasis</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    body { font-family: 'Inter', sans-serif; }
+    .diff-positive { color: #16a34a; }
+    .diff-negative { color: #dc2626; }
+    .diff-neutral { color: #6b7280; }
+  </style>
+</head>
+<body class="bg-gray-50 min-h-screen p-6">
+  <div class="max-w-4xl mx-auto">
+    <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6 mb-6">
+      <h1 class="text-2xl font-bold text-gray-900 mb-2">Comparativo Anual: 2025 vs 2026</h1>
+      <p class="text-gray-600">Dados extraídos de <code>historico_os</code> (OS não canceladas)</p>
+    </div>
+
+    <div class="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+      <table class="w-full">
+        <thead class="bg-gray-50 border-b border-gray-200">
+          <tr>
+            <th class="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Métrica</th>
+            <th class="px-6 py-4 text-right text-xs font-semibold text-gray-600 uppercase tracking-wider">2025</th>
+            <th class="px-6 py-4 text-right text-xs font-semibold text-gray-600 uppercase tracking-wider">2026</th>
+            <th class="px-6 py-4 text-right text-xs font-semibold text-gray-600 uppercase tracking-wider">Variação</th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-gray-200">
+          
+            <tr class="hover:bg-gray-50 transition-colors">
+              <td class="px-6 py-4 text-gray-900 font-medium">a) Clientes únicos</td>
+              <td class="px-6 py-4 text-right text-gray-700 font-mono">591</td>
+              <td class="px-6 py-4 text-right text-gray-700 font-mono">552</td>
+              <td class="px-6 py-4 text-right font-semibold diff-negative font-mono">
+                -6.6%
+              </td>
+            </tr>
+            <tr class="hover:bg-gray-50 transition-colors">
+              <td class="px-6 py-4 text-gray-900 font-medium">b) Número de pedidos</td>
+              <td class="px-6 py-4 text-right text-gray-700 font-mono">2.155</td>
+              <td class="px-6 py-4 text-right text-gray-700 font-mono">1.669</td>
+              <td class="px-6 py-4 text-right font-semibold diff-negative font-mono">
+                -22.6%
+              </td>
+            </tr>
+            <tr class="hover:bg-gray-50 transition-colors">
+              <td class="px-6 py-4 text-gray-900 font-medium">c) Número de recompras (clientes com 2+ pedidos no ano)</td>
+              <td class="px-6 py-4 text-right text-gray-700 font-mono">336</td>
+              <td class="px-6 py-4 text-right text-gray-700 font-mono">282</td>
+              <td class="px-6 py-4 text-right font-semibold diff-negative font-mono">
+                -16.1%
+              </td>
+            </tr>
+            <tr class="hover:bg-gray-50 transition-colors">
+              <td class="px-6 py-4 text-gray-900 font-medium">d) Faturamento</td>
+              <td class="px-6 py-4 text-right text-gray-700 font-mono">R$ 4.171.781,51</td>
+              <td class="px-6 py-4 text-right text-gray-700 font-mono">R$ 3.939.809,40</td>
+              <td class="px-6 py-4 text-right font-semibold diff-negative font-mono">
+                -5.6%
+              </td>
+            </tr>
+            <tr class="hover:bg-gray-50 transition-colors">
+              <td class="px-6 py-4 text-gray-900 font-medium">e) Clientes novos (1ª compra no ano)</td>
+              <td class="px-6 py-4 text-right text-gray-700 font-mono">278</td>
+              <td class="px-6 py-4 text-right text-gray-700 font-mono">248</td>
+              <td class="px-6 py-4 text-right font-semibold diff-negative font-mono">
+                -10.8%
+              </td>
+            </tr>
+            <tr class="hover:bg-gray-50 transition-colors">
+              <td class="px-6 py-4 text-gray-900 font-medium">f) Ticket médio (faturamento / pedidos)</td>
+              <td class="px-6 py-4 text-right text-gray-700 font-mono">R$ 1.935,86</td>
+              <td class="px-6 py-4 text-right text-gray-700 font-mono">R$ 2.360,58</td>
+              <td class="px-6 py-4 text-right font-semibold diff-positive font-mono">
+                +21.9%
+              </td>
+            </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="mt-6 bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+      <h2 class="text-lg font-semibold text-gray-900 mb-4">Observações</h2>
+      <ul class="text-sm text-gray-600 space-y-2">
+        <li>• <strong>Clientes únicos:</strong> Contagem distinta de empresas (nome normalizado) com pelo menos 1 OS válida no ano.</li>
+        <li>• <strong>Recompras:</strong> Clientes que fizeram 2 ou mais pedidos (OS válidas) dentro do mesmo ano.</li>
+        <li>• <strong>Clientes novos:</strong> Clientes cuja primeira compra registrada no histórico (qualquer ano) ocorreu no ano em questão.</li>
+        <li>• <strong>Faturamento:</strong> Soma de <code>valorOs</code> (valor líquido pós-desconto) das OS não canceladas.</li>
+        <li>• <strong>Ticket médio:</strong> Faturamento total ÷ número de pedidos do ano.</li>
+        <li>• Dados de 2026 refletem o ano até a data atual (pode estar incompleto dependendo do mês).</li>
+      </ul>
+    </div>
+
+    <div class="mt-4 text-center text-xs text-gray-500">
+      Gerado em 21/11/2026, 10:25:47
+    </div>
+  </div>
+</body>
+</html>

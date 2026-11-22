@@ -294,6 +294,7 @@ assumir que continua certo.
 client/src/          frontend (Vite root = client/)
   pages/              uma pasta por módulo (logistica/, admin/, comercial/, ...)
                        operacoes/Treinamento.tsx é a Escola Corporativa em /treinamento
+                       comercial/NfCompraAuditoria.tsx é a Auditoria de NF de Compra em /comercial/nf-compra
   components/         componentes compartilhados entre páginas
   hooks/               hooks do app, incluindo useAuth.ts (identidade/permissões)
   lib/                 trpc.ts, auth-client.ts (client do Better Auth)
@@ -303,6 +304,7 @@ server/
   routers.ts          appRouter raiz do tRPC — registra todos os sub-routers
                        `price.listModelCatalog`/`price.saveModelMapping` mantêm produtividade de solda e IDs de faixa por modelo nas tabelas antiga/nova (`price_table_model_mappings`).
   routers/             sub-routers por domínio (logistica.ts, admin.ts, ...)
+                       nfCompra.ts (auditoria de NF de compra: upload de XML modelo 55, rateio por kg/valor, cálculo de ICMS 10%, sugestão com memória contínua, detecção de defasagem vs Mubisys e painel de auditoria com texto de cálculo congelado);
                        treinamento.ts controla catálogo, matérias, matrículas, aplicação de provas, materiais de apoio, geração de rascunhos a partir de POPs, os 11 perfis de questão, tentativas, resultados e ranking da Escola Corporativa; notas finais são normalizadas de 0 a 10, independentemente da quantidade de questões; avaliações são divididas em módulos sequenciais de até 10 questões, com retomada da tentativa aberta; a avaliação Closer cobre as 14 seções e os anexos A–F do POP, com matriz em `docs/escola-corporativa.md` e questões adicionais na migration `0127_closer_full_coverage`;
                        o simulacro do painel de alunos é somente client-side e nunca grava tentativas fictícias
   db/                  acesso a dados (Drizzle + pg puro via getPool()): db.ts, db-connection.ts,
@@ -326,6 +328,10 @@ server/
                        o painel de Campanhas; 429 da API tem retentativa e o lote tem orçamento de 40s),
                        cpqPrecoAssistente.ts (sugestões GPT e recibos assinados
                        de aprovação humana de preço),
+                       nfXmlParser.ts (parser puro de NF-e SEFAZ modelo 55, extrai itens/totais),
+                       nfCalculo.ts (cálculo puro de custo real: rateio por kg/valor, ICMS 10% item a item, conversão e defasagem vs Mubisys),
+                       nfSugestaoVinculo.ts (sugestão de MP com aprendizado contínuo por fornecedor+cProd e memória em nf_mp_vinculos),
+                       cpqFactibilidadeFabricacao.ts (fit-to-sheet, emendas e áreas SVG)
                        cpqFactibilidadeFabricacao.ts (fit-to-sheet, emendas e áreas SVG)
                        e cpqCoresMateriais.ts (CIEDE2000 e custeio por região de cor),
                        cpqRender3d.ts (resolve o spec 3D assinado a partir do orçamento) e
