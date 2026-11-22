@@ -4,6 +4,7 @@ import {
   cacPonderado, custoReativacaoPonderado,
   margemDoPedido, agregarMargem,
   calcularResultadoGrupo, calcularResultadoConsolidado,
+  calcularFaturamentoLiquidoAposMarketing,
   mediana, participacaoTopN,
   avaliarSemaforoTeto, avaliarSemaforoPiso,
   conciliar,
@@ -141,6 +142,18 @@ describe("marketing-financeiro: resultado/ROI/ROAS por grupo e consolidado", () 
     ]);
     expect(c.investimento).toBeNull();
     expect(c.resultado).toBeNull();
+  });
+});
+
+describe("marketing-financeiro: faturamento líquido após campanha", () => {
+  it("subtrai o investimento de campanha do faturamento bruto", () => {
+    expect(calcularFaturamentoLiquidoAposMarketing(2000, 100)).toBe(1900);
+    expect(calcularFaturamentoLiquidoAposMarketing(1000, 200)).toBe(800);
+  });
+
+  it("preserva valores negativos e retorna null quando o investimento está pendente", () => {
+    expect(calcularFaturamentoLiquidoAposMarketing(100, 125)).toBe(-25);
+    expect(calcularFaturamentoLiquidoAposMarketing(100, null)).toBeNull();
   });
 });
 

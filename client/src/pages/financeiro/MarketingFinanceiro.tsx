@@ -10,7 +10,7 @@ import FiltrosMarketing, { type FiltrosMarketingState } from "./FiltrosMarketing
 import MarketingVisaoGeral from "./MarketingVisaoGeral";
 import MarketingAquisicao from "./MarketingAquisicao";
 import MarketingReativacao from "./MarketingReativacao";
-import MarketingAnaliseMensal from "./MarketingAnaliseMensal";
+import MarketingRoiPeriodo from "./MarketingRoiPeriodo";
 import MarketingCampanhasWhatsapp from "./MarketingCampanhasWhatsapp";
 import MarketingConfiguracoes from "./MarketingConfiguracoes";
 import MarketingDrillDownDialog from "./MarketingDrillDownDialog";
@@ -18,7 +18,6 @@ import DetalhamentoMarketing from "./DetalhamentoMarketing";
 import ImportarCustoMarketing from "./ImportarCustoMarketing";
 import ResultadoGeral from "./ResultadoGeral";
 import InsightsCarteira from "./InsightsCarteira";
-import MarketingLancamentoCAC from "./MarketingLancamentoCAC";
 import MarketingEstadosCampanhas from "./MarketingEstadosCampanhas";
 import MarketingEstadosNovos from "./MarketingEstadosNovos";
 
@@ -55,9 +54,11 @@ export default function MarketingFinanceiro({ anoSel, dataInicial, dataFinal, ab
     setAbaMarketing(proximaAba);
   }
 
-  const {
-    data: relatorio, isLoading, isError, refetch,
-  } = trpc.marketingFinanceiro.getRelatorioAno.useQuery({ ano: anoSel, vendedor: filtros.vendedor, cidade: filtros.cidade });
+  const utils = trpc.useUtils();
+  const { data: relatorio, isLoading, refetch } = trpc.marketingFinanceiro.getRelatorioAno.useQuery(
+    { ano: anoSel, vendedor: filtros.vendedor, cidade: filtros.cidade },
+    { enabled: abaMarketing !== "mensal" },
+  );
   const { data: config } = trpc.marketingFinanceiro.getConfig.useQuery();
   const { data: opcoesFiltro } = trpc.marketingFinanceiro.getFiltrosDisponiveis.useQuery({ ano: anoSel });
 
@@ -109,7 +110,7 @@ export default function MarketingFinanceiro({ anoSel, dataInicial, dataFinal, ab
               </Button>
             </div>
 
-            <ImportarCustoMarketing open={importOpen} onOpenChange={setImportOpen} anoSel={anoSel} onImported={() => refetch()} />
+            <ImportarCustoMarketing open={importOpen} onOpenChange={setImportOpen} anoSel={anoSel} onImported={() => utils.marketingFinanceiro.getRelatorioAno.invalidate()} />
 
             <TabsContent value="geral" className="space-y-4">
               {dados ? (
@@ -148,15 +149,10 @@ export default function MarketingFinanceiro({ anoSel, dataInicial, dataFinal, ab
               ) : semDados}
             </TabsContent>
 
-            <TabsContent value="mensal">
-              {dados ? (
-                <div className="space-y-5">
-                  <MarketingEstadosCampanhas dataInicial={dataInicial} dataFinal={dataFinal} />
-                  <MarketingEstadosNovos dataInicial={dataInicial} dataFinal={dataFinal} />
-                  <MarketingLancamentoCAC ano={anoSel} relatorio={dados.relatorio} refetch={refetch} />
-                  <MarketingAnaliseMensal ano={anoSel} relatorio={dados.relatorio} refetch={refetch} />
-                </div>
-              ) : semDados}
+            <TabsContent value="mensal" className="space-y-5">
+              <MarketingEstadosCampanhas dataInicial={dataInicial} dataFinal={dataFinal} />
+              <MarketingEstadosNovos dataInicial={dataInicial} dataFinal={dataFinal} />
+              <MarketingRoiPeriodo key={`${dataInicial}/${dataFinal}`} inicio={dataInicial.slice(0, 7)} fim={dataFinal.slice(0, 7)} />
             </TabsContent>
 
             <TabsContent value="campanhas">

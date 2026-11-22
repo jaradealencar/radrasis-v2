@@ -6,30 +6,34 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableHeader, TableBody, TableFooter, TableRow, TableHead, TableCell } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Edit3, Check, X, Download, Target, RefreshCw, Layers } from "lucide-react";
-import { fmtBrl, fmtPct, fmtNum, MESES } from "@/lib/format";
+import { competenciaIso, fmtBrl, fmtPct, fmtNum, MESES } from "@/lib/format";
 import { exportRowsToXlsx } from "@/lib/exportXlsx";
 import type { RouterOutputs } from "@/lib/trpc";
 import MarketingInvestimentoInput from "./MarketingInvestimentoInput";
 import {
   calcularResultadoGrupo,
   calcularResultadoConsolidado,
+  calcularFaturamentoLiquidoAposMarketing,
   cacPonderado,
   custoReativacaoPonderado,
   parseInvestimentoMarketing,
   somarOuNull,
 } from "@shared/marketing-financeiro";
 
-type RelatorioAno = RouterOutputs["marketingFinanceiro"]["getRelatorioAno"];
-type MesRelatorio = RelatorioAno["meses"][number];
+type MesRelatorio = RouterOutputs["marketingFinanceiro"]["getRelatorioAno"]["meses"][number];
 
 interface Props {
-  ano: number;
-  relatorio: RelatorioAno;
-  refetch: () => void;
+  meses: MesRelatorio[];
+  periodoTexto: string;
+  nomeArquivo: string;
 }
 
 function celulaValor(v: number | null | undefined, cor: string): React.ReactNode {
   return v != null ? <span className={cor}>{fmtBrl(v)}</span> : <span className="text-muted-foreground">—</span>;
+}
+
+function celulaFaturamentoLiquido(v: number | null): React.ReactNode {
+  return celulaValor(v, v != null && v < 0 ? "text-red-600" : "text-teal-700");
 }
 
 function celulaRoi(v: number | null | undefined): React.ReactNode {
@@ -43,46 +47,45 @@ function celulaRoi(v: number | null | undefined): React.ReactNode {
  * também resolve a tabela larga demais de antes, que exigia rolar a barra
  * horizontal pra ver Aquisição e Reativação ao mesmo tempo. */
 
-export default function MarketingAnaliseMensal({ ano, relatorio, refetch }: Props) {
+export default function MarketingAnaliseMensal({ meses, periodoTexto, nomeArquivo }: Props) {
   const utils = trpc.useUtils();
   const upsertMarketing = trpc.financeiro.upsertCustoMarketing.useMutation({
     onSuccess: () => {
       toast.success("Investimento salvo!");
-      refetch();
-      utils.marketingFinanceiro.invalidate();
+      void utils.marketingFinanceiro.invalidate();
     },
     onError: (e) => toast.error("Erro ao salvar: " + e.message),
   });
 
   // ─── Bloco Aquisição ────────────────────────────────────────────────────
-  const [editAquisicao, setEditAquisicao] = useState<number | null>(null);
+  const [editAquisicao, setEditAquisicao] = useState<string | null>(null);
   const [inputAquisicao, setInputAquisicao] = useState("");
 
   function iniciarEdicaoAquisicao(m: MesRelatorio) {
-    setEditAquisicao(m.mes);
+    setEditAquisicao(competenciaIso(m.ano, m.mes));
     setInputAquisicao(m.investimentoAquisicao != null ? m.investimentoAquisicao.toFixed(2).replace(".", ",") : "");
   }
-  function salvarAquisicao(mes: number) {
+  function salvarAquisicao({ mes, ano }: MesRelatorio) {
     const val = parseInvestimentoMarketing(inputAquisicao);
     if (val === undefined || (val != null && val < 0)) { toast.error("Valor inválido"); return; }
     upsertMarketing.mutate({ mes, ano, investimentoAquisicao: val }, { onSuccess: () => setEditAquisicao(null) });
   }
 
   // ─── Bloco Reativação ───────────────────────────────────────────────────
-  const [editReativacao, setEditReativacao] = useState<number | null>(null);
+  const [editReativacao, setEditReativacao] = useState<string | null>(null);
   const [inputReativacao, setInputReativacao] = useState("");
 
   function iniciarEdicaoReativacao(m: MesRelatorio) {
-    setEditReativacao(m.mes);
+    setEditReativacao(competenciaIso(m.ano, m.mes));
     setInputReativacao(m.investimentoReativacao != null ? m.investimentoReativacao.toFixed(2).replace(".", ",") : "");
   }
-  function salvarReativacao(mes: number) {
+  function salvarReativacao({ mes, ano }: MesRelatorio) {
     const val = parseInvestimentoMarketing(inputReativacao);
     if (val === undefined || (val != null && val < 0)) { toast.error("Valor inválido"); return; }
     upsertMarketing.mutate({ mes, ano, investimentoReativacao: val }, { onSuccess: () => setEditReativacao(null) });
   }
 
-  const mesesFechados = relatorio.meses.filter(m => !m.mesParcial);
+  const mesesFechados = meses.filter(m => !m.mesParcial);
   const mesesAquisicaoCobertos = mesesFechados.filter(m => m.investimentoAquisicao != null);
   const mesesReativacaoCobertos = mesesFechados.filter(m => m.investimentoReativacao != null);
   const mesesConsolidadosCobertos = mesesFechados.filter(m => m.investimentoAquisicao != null && m.investimentoReativacao != null);
@@ -92,6 +95,7 @@ export default function MarketingAnaliseMensal({ ano, relatorio, refetch }: Prop
   const faturamentoNovosCobertos = mesesAquisicaoCobertos.reduce((s, m) => s + m.novo.faturamento, 0);
   const margemNovosCobertos = mesesAquisicaoCobertos.reduce((s, m) => s + m.novo.margem.margemTotal, 0);
   const resultadoAquisicaoTotal = calcularResultadoGrupo(investimentoAquisicaoTotal, margemNovosCobertos, faturamentoNovosCobertos);
+  const faturamentoLiquidoNovosCobertos = calcularFaturamentoLiquidoAposMarketing(faturamentoNovosCobertos, investimentoAquisicaoTotal);
   const cacTotal = cacPonderado(investimentoAquisicaoTotal, clientesNovosCobertos);
 
   const investimentoReativacaoTotal = somarOuNull(mesesReativacaoCobertos.map(m => m.investimentoReativacao));
@@ -99,6 +103,7 @@ export default function MarketingAnaliseMensal({ ano, relatorio, refetch }: Prop
   const faturamentoReativacaoCoberto = mesesReativacaoCobertos.reduce((s, m) => s + m.reativado.faturamento, 0);
   const margemReativacaoCoberta = mesesReativacaoCobertos.reduce((s, m) => s + m.reativado.margem.margemTotal, 0);
   const resultadoReativacaoTotal = calcularResultadoGrupo(investimentoReativacaoTotal, margemReativacaoCoberta, faturamentoReativacaoCoberto);
+  const faturamentoLiquidoReativacaoCoberto = calcularFaturamentoLiquidoAposMarketing(faturamentoReativacaoCoberto, investimentoReativacaoTotal);
   const custoReativacaoTotal = custoReativacaoPonderado(investimentoReativacaoTotal, eventosReativacaoCobertos);
 
   const investimentoConsolidadoTotal = somarOuNull(mesesConsolidadosCobertos.map(m => m.investimentoAquisicao! + m.investimentoReativacao!));
@@ -109,21 +114,24 @@ export default function MarketingAnaliseMensal({ ano, relatorio, refetch }: Prop
 
   function exportar() {
     exportRowsToXlsx(
-      relatorio.meses,
+      meses,
       [
         { header: "Mês", valor: m => MESES[m.mes - 1], largura: 12 },
+        { header: "Ano", valor: m => m.ano, largura: 8 },
         { header: "Parcial?", valor: m => m.mesParcial ? "Sim" : "Não", largura: 10 },
         { header: "Invest. Aquisição", valor: m => m.investimentoAquisicao ?? "", largura: 16 },
         { header: "Clientes Novos", valor: m => m.novo.qtdClientesUnicos, largura: 14 },
         { header: "CAC", valor: m => m.novo.cacPonderado ?? "", largura: 12 },
-        { header: "Fat. Novos", valor: m => m.novo.faturamento, largura: 14 },
+        { header: "Fat. Bruto Novos", valor: m => m.novo.faturamento, largura: 16 },
+        { header: "Fat. Líquido Novos", valor: m => calcularFaturamentoLiquidoAposMarketing(m.novo.faturamento, m.investimentoAquisicao) ?? "", largura: 18 },
         { header: "Margem Novos", valor: m => m.novo.margem.margemTotal, largura: 14 },
         { header: "Resultado Novos", valor: m => m.novo.resultado ?? "", largura: 14 },
         { header: "ROI Novos (%)", valor: m => m.novo.roiPct ?? "", largura: 12 },
         { header: "Invest. Reativação", valor: m => m.investimentoReativacao ?? "", largura: 16 },
         { header: "Reativados", valor: m => m.reativado.qtdClientesUnicos, largura: 12 },
         { header: "Custo/Reativado", valor: m => m.reativado.custoReativacaoPonderado ?? "", largura: 14 },
-        { header: "Fat. Reativados", valor: m => m.reativado.faturamento, largura: 14 },
+        { header: "Fat. Bruto Reativados", valor: m => m.reativado.faturamento, largura: 19 },
+        { header: "Fat. Líquido Reativados", valor: m => calcularFaturamentoLiquidoAposMarketing(m.reativado.faturamento, m.investimentoReativacao) ?? "", largura: 22 },
         { header: "Margem Reativados", valor: m => m.reativado.margem.margemTotal, largura: 16 },
         { header: "Resultado Reativados", valor: m => m.reativado.resultado ?? "", largura: 16 },
         { header: "ROI Reativados (%)", valor: m => m.reativado.roiPct ?? "", largura: 14 },
@@ -135,8 +143,8 @@ export default function MarketingAnaliseMensal({ ano, relatorio, refetch }: Prop
         { header: "Resultado Consolidado", valor: m => m.consolidado.resultado ?? "", largura: 16 },
         { header: "ROI Consolidado (%)", valor: m => m.consolidado.roiPct ?? "", largura: 16 },
       ],
-      `roi-marketing-${ano}`,
-      `Marketing ${ano}`,
+      nomeArquivo,
+      "ROI Marketing",
     );
   }
 
@@ -144,17 +152,17 @@ export default function MarketingAnaliseMensal({ ano, relatorio, refetch }: Prop
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <p className="text-xs text-muted-foreground max-w-xl">
-          Preencha o investimento mensal em cada bloco (vazio = pendente; use 0 quando não houve gasto). Os totais usam valores lançados em meses fechados, calculados pelos totais e não pela média dos meses. Aquisição e Reativação são independentes.
+          Preencha o investimento mensal em cada bloco (vazio = pendente; use 0 quando não houve gasto). Faturamento líquido = faturamento bruto menos o investimento em campanha; sem investimento informado, o líquido fica pendente. Os totais usam valores lançados em meses fechados, calculados pelos totais e não pela média dos meses. Aquisição e Reativação são independentes.
         </p>
         <Button size="sm" variant="outline" className="gap-1.5 shrink-0" onClick={exportar}>
-          <Download size={14} /> Exportar Excel completo
+          <Download size={14} /> Exportar Excel do período
         </Button>
       </div>
 
       {/* ─── Bloco Aquisição ────────────────────────────────────────────── */}
       <Card>
         <CardHeader className="pb-2">
-          <CardTitle className="flex items-center gap-2 text-base text-purple-700"><Target size={17} /> Aquisição — {ano}</CardTitle>
+          <CardTitle className="flex items-center gap-2 text-base text-purple-700"><Target size={17} /> Aquisição — {periodoTexto}</CardTitle>
         </CardHeader>
         <CardContent className="p-0">
           <div className="overflow-x-auto">
@@ -165,19 +173,20 @@ export default function MarketingAnaliseMensal({ ano, relatorio, refetch }: Prop
                   <TableHead className="text-right">Invest.</TableHead>
                   <TableHead className="text-right">Novos</TableHead>
                   <TableHead className="text-right">CAC</TableHead>
-                  <TableHead className="text-right">Faturamento</TableHead>
+                  <TableHead className="text-right">Fat. Bruto</TableHead>
+                  <TableHead className="text-right">Fat. Líquido após campanha</TableHead>
                   <TableHead className="text-right">Margem</TableHead>
                   <TableHead className="text-right">ROI</TableHead>
                   <TableHead className="w-10">Ação</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {relatorio.meses.map(m => {
-                  const isEditing = editAquisicao === m.mes;
+                {meses.map(m => {
+                  const isEditing = editAquisicao === competenciaIso(m.ano, m.mes);
                   return (
-                    <TableRow key={m.mes} className={m.mesParcial ? "bg-blue-50/40" : ""}>
+                    <TableRow key={competenciaIso(m.ano, m.mes)} className={m.mesParcial ? "bg-blue-50/40" : ""}>
                       <TableCell className="font-medium">
-                        {MESES[m.mes - 1]}
+                        {MESES[m.mes - 1]} / {m.ano}
                         {m.mesParcial && <Badge variant="outline" className="ml-1.5 text-[9px] bg-blue-50 text-blue-700 border-blue-200">Parcial</Badge>}
                       </TableCell>
                       <TableCell className="text-right">
@@ -188,21 +197,22 @@ export default function MarketingAnaliseMensal({ ano, relatorio, refetch }: Prop
                             value={inputAquisicao}
                             placeholder="vazio"
                             autoFocus
-                            ariaLabel={`Investimento de aquisição em ${MESES[m.mes - 1]}`}
+                            ariaLabel={`Investimento de aquisição em ${MESES[m.mes - 1]} / ${m.ano}`}
                             onChange={setInputAquisicao}
-                            onKeyDown={e => { if (e.key === "Enter") salvarAquisicao(m.mes); if (e.key === "Escape") setEditAquisicao(null); }}
+                            onKeyDown={e => { if (e.key === "Enter") salvarAquisicao(m); if (e.key === "Escape") setEditAquisicao(null); }}
                           />
                         ) : celulaValor(m.investimentoAquisicao, "font-semibold text-purple-700")}
                       </TableCell>
                       <TableCell className="text-right">{fmtNum(m.novo.qtdClientesUnicos)}</TableCell>
                       <TableCell className="text-right">{m.novo.cacPonderado != null ? fmtBrl(m.novo.cacPonderado) : "—"}</TableCell>
                       <TableCell className="text-right text-emerald-700">{fmtBrl(m.novo.faturamento)}</TableCell>
+                      <TableCell className="text-right">{celulaFaturamentoLiquido(calcularFaturamentoLiquidoAposMarketing(m.novo.faturamento, m.investimentoAquisicao))}</TableCell>
                       <TableCell className="text-right">{fmtBrl(m.novo.margem.margemTotal)}</TableCell>
                       <TableCell className="text-right">{celulaRoi(m.novo.roiPct)}</TableCell>
                       <TableCell>
                         {isEditing ? (
                           <div className="flex items-center gap-1">
-                            <Button size="sm" variant="ghost" className="h-6 w-6 p-0 text-emerald-600" onClick={() => salvarAquisicao(m.mes)} disabled={upsertMarketing.isPending}><Check size={13} /></Button>
+                            <Button size="sm" variant="ghost" className="h-6 w-6 p-0 text-emerald-600" onClick={() => salvarAquisicao(m)} disabled={upsertMarketing.isPending}><Check size={13} /></Button>
                             <Button size="sm" variant="ghost" className="h-6 w-6 p-0 text-red-500" onClick={() => setEditAquisicao(null)}><X size={13} /></Button>
                           </div>
                         ) : (
@@ -220,6 +230,7 @@ export default function MarketingAnaliseMensal({ ano, relatorio, refetch }: Prop
                   <TableCell className="text-right">{fmtNum(clientesNovosCobertos)}</TableCell>
                   <TableCell className="text-right">{cacTotal != null ? fmtBrl(cacTotal) : "—"}</TableCell>
                   <TableCell className="text-right text-emerald-700">{fmtBrl(faturamentoNovosCobertos)}</TableCell>
+                  <TableCell className="text-right">{celulaFaturamentoLiquido(faturamentoLiquidoNovosCobertos)}</TableCell>
                   <TableCell className="text-right">{fmtBrl(margemNovosCobertos)}</TableCell>
                   <TableCell className="text-right">{celulaRoi(resultadoAquisicaoTotal.roiPct)}</TableCell>
                   <TableCell />
@@ -233,7 +244,7 @@ export default function MarketingAnaliseMensal({ ano, relatorio, refetch }: Prop
       {/* ─── Bloco Reativação ───────────────────────────────────────────── */}
       <Card>
         <CardHeader className="pb-2">
-          <CardTitle className="flex items-center gap-2 text-base text-orange-700"><RefreshCw size={17} /> Reativação — {ano}</CardTitle>
+          <CardTitle className="flex items-center gap-2 text-base text-orange-700"><RefreshCw size={17} /> Reativação — {periodoTexto}</CardTitle>
         </CardHeader>
         <CardContent className="p-0">
           <div className="overflow-x-auto">
@@ -244,19 +255,20 @@ export default function MarketingAnaliseMensal({ ano, relatorio, refetch }: Prop
                   <TableHead className="text-right">Invest.</TableHead>
                   <TableHead className="text-right">Reativados</TableHead>
                   <TableHead className="text-right">Custo/Reat.</TableHead>
-                  <TableHead className="text-right">Faturamento</TableHead>
+                  <TableHead className="text-right">Fat. Bruto</TableHead>
+                  <TableHead className="text-right">Fat. Líquido após campanha</TableHead>
                   <TableHead className="text-right">Margem</TableHead>
                   <TableHead className="text-right">ROI</TableHead>
                   <TableHead className="w-10">Ação</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {relatorio.meses.map(m => {
-                  const isEditing = editReativacao === m.mes;
+                {meses.map(m => {
+                  const isEditing = editReativacao === competenciaIso(m.ano, m.mes);
                   return (
-                    <TableRow key={m.mes} className={m.mesParcial ? "bg-blue-50/40" : ""}>
+                    <TableRow key={competenciaIso(m.ano, m.mes)} className={m.mesParcial ? "bg-blue-50/40" : ""}>
                       <TableCell className="font-medium">
-                        {MESES[m.mes - 1]}
+                        {MESES[m.mes - 1]} / {m.ano}
                         {m.mesParcial && <Badge variant="outline" className="ml-1.5 text-[9px] bg-blue-50 text-blue-700 border-blue-200">Parcial</Badge>}
                       </TableCell>
                       <TableCell className="text-right">
@@ -267,21 +279,22 @@ export default function MarketingAnaliseMensal({ ano, relatorio, refetch }: Prop
                             value={inputReativacao}
                             placeholder="vazio"
                             autoFocus
-                            ariaLabel={`Investimento de reativação em ${MESES[m.mes - 1]}`}
+                            ariaLabel={`Investimento de reativação em ${MESES[m.mes - 1]} / ${m.ano}`}
                             onChange={setInputReativacao}
-                            onKeyDown={e => { if (e.key === "Enter") salvarReativacao(m.mes); if (e.key === "Escape") setEditReativacao(null); }}
+                            onKeyDown={e => { if (e.key === "Enter") salvarReativacao(m); if (e.key === "Escape") setEditReativacao(null); }}
                           />
                         ) : celulaValor(m.investimentoReativacao, "font-semibold text-orange-700")}
                       </TableCell>
                       <TableCell className="text-right">{fmtNum(m.reativado.qtdClientesUnicos)}</TableCell>
                       <TableCell className="text-right">{m.reativado.custoReativacaoPonderado != null ? fmtBrl(m.reativado.custoReativacaoPonderado) : "—"}</TableCell>
                       <TableCell className="text-right text-emerald-700">{fmtBrl(m.reativado.faturamento)}</TableCell>
+                      <TableCell className="text-right">{celulaFaturamentoLiquido(calcularFaturamentoLiquidoAposMarketing(m.reativado.faturamento, m.investimentoReativacao))}</TableCell>
                       <TableCell className="text-right">{fmtBrl(m.reativado.margem.margemTotal)}</TableCell>
                       <TableCell className="text-right">{celulaRoi(m.reativado.roiPct)}</TableCell>
                       <TableCell>
                         {isEditing ? (
                           <div className="flex items-center gap-1">
-                            <Button size="sm" variant="ghost" className="h-6 w-6 p-0 text-emerald-600" onClick={() => salvarReativacao(m.mes)} disabled={upsertMarketing.isPending}><Check size={13} /></Button>
+                            <Button size="sm" variant="ghost" className="h-6 w-6 p-0 text-emerald-600" onClick={() => salvarReativacao(m)} disabled={upsertMarketing.isPending}><Check size={13} /></Button>
                             <Button size="sm" variant="ghost" className="h-6 w-6 p-0 text-red-500" onClick={() => setEditReativacao(null)}><X size={13} /></Button>
                           </div>
                         ) : (
@@ -299,6 +312,7 @@ export default function MarketingAnaliseMensal({ ano, relatorio, refetch }: Prop
                   <TableCell className="text-right">{fmtNum(eventosReativacaoCobertos)}</TableCell>
                   <TableCell className="text-right">{custoReativacaoTotal != null ? fmtBrl(custoReativacaoTotal) : "—"}</TableCell>
                   <TableCell className="text-right text-emerald-700">{fmtBrl(faturamentoReativacaoCoberto)}</TableCell>
+                  <TableCell className="text-right">{celulaFaturamentoLiquido(faturamentoLiquidoReativacaoCoberto)}</TableCell>
                   <TableCell className="text-right">{fmtBrl(margemReativacaoCoberta)}</TableCell>
                   <TableCell className="text-right">{celulaRoi(resultadoReativacaoTotal.roiPct)}</TableCell>
                   <TableCell />
@@ -312,7 +326,7 @@ export default function MarketingAnaliseMensal({ ano, relatorio, refetch }: Prop
       {/* ─── Bloco Recorrente Ativo + Consolidado (só leitura) ─────────────── */}
       <Card>
         <CardHeader className="pb-2">
-          <CardTitle className="flex items-center gap-2 text-base text-emerald-700"><Layers size={17} /> Recorrente Ativo e Consolidado — {ano}</CardTitle>
+          <CardTitle className="flex items-center gap-2 text-base text-emerald-700"><Layers size={17} /> Recorrente Ativo e Consolidado — {periodoTexto}</CardTitle>
           <p className="text-xs text-muted-foreground">Recorrentes são informativos. O ROI consolidado considera apenas meses fechados com investimento preenchido nas duas frentes ({mesesConsolidadosCobertos.length}/{mesesFechados.length}).</p>
         </CardHeader>
         <CardContent className="p-0">
@@ -330,10 +344,10 @@ export default function MarketingAnaliseMensal({ ano, relatorio, refetch }: Prop
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {relatorio.meses.map(m => (
-                  <TableRow key={m.mes} className={m.mesParcial ? "bg-blue-50/40" : ""}>
+                {meses.map(m => (
+                  <TableRow key={competenciaIso(m.ano, m.mes)} className={m.mesParcial ? "bg-blue-50/40" : ""}>
                     <TableCell className="font-medium">
-                      {MESES[m.mes - 1]}
+                      {MESES[m.mes - 1]} / {m.ano}
                       {m.mesParcial && <Badge variant="outline" className="ml-1.5 text-[9px] bg-blue-50 text-blue-700 border-blue-200">Parcial</Badge>}
                     </TableCell>
                     <TableCell className="text-right">{fmtNum(m.recorrenteAtivo.qtdClientesUnicos)}</TableCell>

@@ -432,6 +432,9 @@ local; `yarn e2e:seed` também exige que `DATABASE_URL` seja o mesmo banco
 descartável. O workflow `Quality` executa essa suíte em um serviço Postgres CI.
 `yarn test:e2e:marketing` valida os indicadores separados de Novos e Reativados
 com dados sintéticos servidos por uma fixture Vite local, sem conexão ao banco.
+`yarn test:e2e:roi` compila o cliente e abre Performance Comercial
+com dados simulados e verifica o filtro do ROI, as tabelas estaduais e mensais
+e a competência de lançamento do CAC em intervalos que atravessam a virada do ano.
 `yarn test:e2e:campanhas` valida revisão, calendário e pausa/retomada da fila WhatsApp
 com dados fictícios servidos por uma fixture Vite local, sem conexão ao banco ou à WTS.Chat.
 
