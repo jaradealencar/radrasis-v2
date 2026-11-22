@@ -6,7 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableHeader, TableBody, TableFooter, TableRow, TableHead, TableCell } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Edit3, Check, X, Download, Target, RefreshCw, Layers } from "lucide-react";
-import { fmtBrl, fmtPct, fmtNum, MESES } from "@/lib/format";
+import { competenciaIso, fmtBrl, fmtPct, fmtNum, MESES } from "@/lib/format";
 import { exportRowsToXlsx } from "@/lib/exportXlsx";
 import type { RouterOutputs } from "@/lib/trpc";
 import MarketingInvestimentoInput from "./MarketingInvestimentoInput";
@@ -19,13 +19,12 @@ import {
   somarOuNull,
 } from "@shared/marketing-financeiro";
 
-type RelatorioAno = RouterOutputs["marketingFinanceiro"]["getRelatorioAno"];
-type MesRelatorio = RelatorioAno["meses"][number];
+type MesRelatorio = RouterOutputs["marketingFinanceiro"]["getRelatorioAno"]["meses"][number];
 
 interface Props {
-  ano: number;
-  relatorio: RelatorioAno;
-  refetch: () => void;
+  meses: MesRelatorio[];
+  periodoTexto: string;
+  nomeArquivo: string;
 }
 
 function celulaValor(v: number | null | undefined, cor: string): React.ReactNode {
@@ -43,46 +42,45 @@ function celulaRoi(v: number | null | undefined): React.ReactNode {
  * também resolve a tabela larga demais de antes, que exigia rolar a barra
  * horizontal pra ver Aquisição e Reativação ao mesmo tempo. */
 
-export default function MarketingAnaliseMensal({ ano, relatorio, refetch }: Props) {
+export default function MarketingAnaliseMensal({ meses, periodoTexto, nomeArquivo }: Props) {
   const utils = trpc.useUtils();
   const upsertMarketing = trpc.financeiro.upsertCustoMarketing.useMutation({
     onSuccess: () => {
       toast.success("Investimento salvo!");
-      refetch();
-      utils.marketingFinanceiro.invalidate();
+      void utils.marketingFinanceiro.invalidate();
     },
     onError: (e) => toast.error("Erro ao salvar: " + e.message),
   });
 
   // ─── Bloco Aquisição ────────────────────────────────────────────────────
-  const [editAquisicao, setEditAquisicao] = useState<number | null>(null);
+  const [editAquisicao, setEditAquisicao] = useState<string | null>(null);
   const [inputAquisicao, setInputAquisicao] = useState("");
 
   function iniciarEdicaoAquisicao(m: MesRelatorio) {
-    setEditAquisicao(m.mes);
+    setEditAquisicao(competenciaIso(m.ano, m.mes));
     setInputAquisicao(m.investimentoAquisicao != null ? m.investimentoAquisicao.toFixed(2).replace(".", ",") : "");
   }
-  function salvarAquisicao(mes: number) {
+  function salvarAquisicao({ mes, ano }: MesRelatorio) {
     const val = parseInvestimentoMarketing(inputAquisicao);
     if (val === undefined || (val != null && val < 0)) { toast.error("Valor inválido"); return; }
     upsertMarketing.mutate({ mes, ano, investimentoAquisicao: val }, { onSuccess: () => setEditAquisicao(null) });
   }
 
   // ─── Bloco Reativação ───────────────────────────────────────────────────
-  const [editReativacao, setEditReativacao] = useState<number | null>(null);
+  const [editReativacao, setEditReativacao] = useState<string | null>(null);
   const [inputReativacao, setInputReativacao] = useState("");
 
   function iniciarEdicaoReativacao(m: MesRelatorio) {
-    setEditReativacao(m.mes);
+    setEditReativacao(competenciaIso(m.ano, m.mes));
     setInputReativacao(m.investimentoReativacao != null ? m.investimentoReativacao.toFixed(2).replace(".", ",") : "");
   }
-  function salvarReativacao(mes: number) {
+  function salvarReativacao({ mes, ano }: MesRelatorio) {
     const val = parseInvestimentoMarketing(inputReativacao);
     if (val === undefined || (val != null && val < 0)) { toast.error("Valor inválido"); return; }
     upsertMarketing.mutate({ mes, ano, investimentoReativacao: val }, { onSuccess: () => setEditReativacao(null) });
   }
 
-  const mesesFechados = relatorio.meses.filter(m => !m.mesParcial);
+  const mesesFechados = meses.filter(m => !m.mesParcial);
   const mesesAquisicaoCobertos = mesesFechados.filter(m => m.investimentoAquisicao != null);
   const mesesReativacaoCobertos = mesesFechados.filter(m => m.investimentoReativacao != null);
   const mesesConsolidadosCobertos = mesesFechados.filter(m => m.investimentoAquisicao != null && m.investimentoReativacao != null);
@@ -109,9 +107,10 @@ export default function MarketingAnaliseMensal({ ano, relatorio, refetch }: Prop
 
   function exportar() {
     exportRowsToXlsx(
-      relatorio.meses,
+      meses,
       [
         { header: "Mês", valor: m => MESES[m.mes - 1], largura: 12 },
+        { header: "Ano", valor: m => m.ano, largura: 8 },
         { header: "Parcial?", valor: m => m.mesParcial ? "Sim" : "Não", largura: 10 },
         { header: "Invest. Aquisição", valor: m => m.investimentoAquisicao ?? "", largura: 16 },
         { header: "Clientes Novos", valor: m => m.novo.qtdClientesUnicos, largura: 14 },
@@ -135,8 +134,8 @@ export default function MarketingAnaliseMensal({ ano, relatorio, refetch }: Prop
         { header: "Resultado Consolidado", valor: m => m.consolidado.resultado ?? "", largura: 16 },
         { header: "ROI Consolidado (%)", valor: m => m.consolidado.roiPct ?? "", largura: 16 },
       ],
-      `roi-marketing-${ano}`,
-      `Marketing ${ano}`,
+      nomeArquivo,
+      "ROI Marketing",
     );
   }
 
@@ -147,14 +146,14 @@ export default function MarketingAnaliseMensal({ ano, relatorio, refetch }: Prop
           Preencha o investimento mensal em cada bloco (vazio = pendente; use 0 quando não houve gasto). Os totais usam valores lançados em meses fechados, calculados pelos totais e não pela média dos meses. Aquisição e Reativação são independentes.
         </p>
         <Button size="sm" variant="outline" className="gap-1.5 shrink-0" onClick={exportar}>
-          <Download size={14} /> Exportar Excel completo
+          <Download size={14} /> Exportar Excel do período
         </Button>
       </div>
 
       {/* ─── Bloco Aquisição ────────────────────────────────────────────── */}
       <Card>
         <CardHeader className="pb-2">
-          <CardTitle className="flex items-center gap-2 text-base text-purple-700"><Target size={17} /> Aquisição — {ano}</CardTitle>
+          <CardTitle className="flex items-center gap-2 text-base text-purple-700"><Target size={17} /> Aquisição — {periodoTexto}</CardTitle>
         </CardHeader>
         <CardContent className="p-0">
           <div className="overflow-x-auto">
@@ -172,12 +171,12 @@ export default function MarketingAnaliseMensal({ ano, relatorio, refetch }: Prop
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {relatorio.meses.map(m => {
-                  const isEditing = editAquisicao === m.mes;
+                {meses.map(m => {
+                  const isEditing = editAquisicao === competenciaIso(m.ano, m.mes);
                   return (
-                    <TableRow key={m.mes} className={m.mesParcial ? "bg-blue-50/40" : ""}>
+                    <TableRow key={competenciaIso(m.ano, m.mes)} className={m.mesParcial ? "bg-blue-50/40" : ""}>
                       <TableCell className="font-medium">
-                        {MESES[m.mes - 1]}
+                        {MESES[m.mes - 1]} / {m.ano}
                         {m.mesParcial && <Badge variant="outline" className="ml-1.5 text-[9px] bg-blue-50 text-blue-700 border-blue-200">Parcial</Badge>}
                       </TableCell>
                       <TableCell className="text-right">
@@ -188,9 +187,9 @@ export default function MarketingAnaliseMensal({ ano, relatorio, refetch }: Prop
                             value={inputAquisicao}
                             placeholder="vazio"
                             autoFocus
-                            ariaLabel={`Investimento de aquisição em ${MESES[m.mes - 1]}`}
+                            ariaLabel={`Investimento de aquisição em ${MESES[m.mes - 1]} / ${m.ano}`}
                             onChange={setInputAquisicao}
-                            onKeyDown={e => { if (e.key === "Enter") salvarAquisicao(m.mes); if (e.key === "Escape") setEditAquisicao(null); }}
+                            onKeyDown={e => { if (e.key === "Enter") salvarAquisicao(m); if (e.key === "Escape") setEditAquisicao(null); }}
                           />
                         ) : celulaValor(m.investimentoAquisicao, "font-semibold text-purple-700")}
                       </TableCell>
@@ -202,7 +201,7 @@ export default function MarketingAnaliseMensal({ ano, relatorio, refetch }: Prop
                       <TableCell>
                         {isEditing ? (
                           <div className="flex items-center gap-1">
-                            <Button size="sm" variant="ghost" className="h-6 w-6 p-0 text-emerald-600" onClick={() => salvarAquisicao(m.mes)} disabled={upsertMarketing.isPending}><Check size={13} /></Button>
+                            <Button size="sm" variant="ghost" className="h-6 w-6 p-0 text-emerald-600" onClick={() => salvarAquisicao(m)} disabled={upsertMarketing.isPending}><Check size={13} /></Button>
                             <Button size="sm" variant="ghost" className="h-6 w-6 p-0 text-red-500" onClick={() => setEditAquisicao(null)}><X size={13} /></Button>
                           </div>
                         ) : (
@@ -233,7 +232,7 @@ export default function MarketingAnaliseMensal({ ano, relatorio, refetch }: Prop
       {/* ─── Bloco Reativação ───────────────────────────────────────────── */}
       <Card>
         <CardHeader className="pb-2">
-          <CardTitle className="flex items-center gap-2 text-base text-orange-700"><RefreshCw size={17} /> Reativação — {ano}</CardTitle>
+          <CardTitle className="flex items-center gap-2 text-base text-orange-700"><RefreshCw size={17} /> Reativação — {periodoTexto}</CardTitle>
         </CardHeader>
         <CardContent className="p-0">
           <div className="overflow-x-auto">
@@ -251,12 +250,12 @@ export default function MarketingAnaliseMensal({ ano, relatorio, refetch }: Prop
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {relatorio.meses.map(m => {
-                  const isEditing = editReativacao === m.mes;
+                {meses.map(m => {
+                  const isEditing = editReativacao === competenciaIso(m.ano, m.mes);
                   return (
-                    <TableRow key={m.mes} className={m.mesParcial ? "bg-blue-50/40" : ""}>
+                    <TableRow key={competenciaIso(m.ano, m.mes)} className={m.mesParcial ? "bg-blue-50/40" : ""}>
                       <TableCell className="font-medium">
-                        {MESES[m.mes - 1]}
+                        {MESES[m.mes - 1]} / {m.ano}
                         {m.mesParcial && <Badge variant="outline" className="ml-1.5 text-[9px] bg-blue-50 text-blue-700 border-blue-200">Parcial</Badge>}
                       </TableCell>
                       <TableCell className="text-right">
@@ -267,9 +266,9 @@ export default function MarketingAnaliseMensal({ ano, relatorio, refetch }: Prop
                             value={inputReativacao}
                             placeholder="vazio"
                             autoFocus
-                            ariaLabel={`Investimento de reativação em ${MESES[m.mes - 1]}`}
+                            ariaLabel={`Investimento de reativação em ${MESES[m.mes - 1]} / ${m.ano}`}
                             onChange={setInputReativacao}
-                            onKeyDown={e => { if (e.key === "Enter") salvarReativacao(m.mes); if (e.key === "Escape") setEditReativacao(null); }}
+                            onKeyDown={e => { if (e.key === "Enter") salvarReativacao(m); if (e.key === "Escape") setEditReativacao(null); }}
                           />
                         ) : celulaValor(m.investimentoReativacao, "font-semibold text-orange-700")}
                       </TableCell>
@@ -281,7 +280,7 @@ export default function MarketingAnaliseMensal({ ano, relatorio, refetch }: Prop
                       <TableCell>
                         {isEditing ? (
                           <div className="flex items-center gap-1">
-                            <Button size="sm" variant="ghost" className="h-6 w-6 p-0 text-emerald-600" onClick={() => salvarReativacao(m.mes)} disabled={upsertMarketing.isPending}><Check size={13} /></Button>
+                            <Button size="sm" variant="ghost" className="h-6 w-6 p-0 text-emerald-600" onClick={() => salvarReativacao(m)} disabled={upsertMarketing.isPending}><Check size={13} /></Button>
                             <Button size="sm" variant="ghost" className="h-6 w-6 p-0 text-red-500" onClick={() => setEditReativacao(null)}><X size={13} /></Button>
                           </div>
                         ) : (
@@ -312,7 +311,7 @@ export default function MarketingAnaliseMensal({ ano, relatorio, refetch }: Prop
       {/* ─── Bloco Recorrente Ativo + Consolidado (só leitura) ─────────────── */}
       <Card>
         <CardHeader className="pb-2">
-          <CardTitle className="flex items-center gap-2 text-base text-emerald-700"><Layers size={17} /> Recorrente Ativo e Consolidado — {ano}</CardTitle>
+          <CardTitle className="flex items-center gap-2 text-base text-emerald-700"><Layers size={17} /> Recorrente Ativo e Consolidado — {periodoTexto}</CardTitle>
           <p className="text-xs text-muted-foreground">Recorrentes são informativos. O ROI consolidado considera apenas meses fechados com investimento preenchido nas duas frentes ({mesesConsolidadosCobertos.length}/{mesesFechados.length}).</p>
         </CardHeader>
         <CardContent className="p-0">
@@ -330,10 +329,10 @@ export default function MarketingAnaliseMensal({ ano, relatorio, refetch }: Prop
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {relatorio.meses.map(m => (
-                  <TableRow key={m.mes} className={m.mesParcial ? "bg-blue-50/40" : ""}>
+                {meses.map(m => (
+                  <TableRow key={competenciaIso(m.ano, m.mes)} className={m.mesParcial ? "bg-blue-50/40" : ""}>
                     <TableCell className="font-medium">
-                      {MESES[m.mes - 1]}
+                      {MESES[m.mes - 1]} / {m.ano}
                       {m.mesParcial && <Badge variant="outline" className="ml-1.5 text-[9px] bg-blue-50 text-blue-700 border-blue-200">Parcial</Badge>}
                     </TableCell>
                     <TableCell className="text-right">{fmtNum(m.recorrenteAtivo.qtdClientesUnicos)}</TableCell>

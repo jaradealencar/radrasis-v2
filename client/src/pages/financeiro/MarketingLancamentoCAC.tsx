@@ -1,79 +1,50 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useState } from "react";
 import { toast } from "sonner";
 import { Calculator, CheckCircle2 } from "lucide-react";
 import { trpc } from "@/lib/trpc";
 import type { RouterOutputs } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
-import { fmtBrl, fmtNum, MESES } from "@/lib/format";
+import { competenciaIso, fmtBrl, fmtNum, MESES } from "@/lib/format";
 import { parseInvestimentoMarketing } from "@shared/marketing-financeiro";
 import MarketingInvestimentoInput from "./MarketingInvestimentoInput";
 
-type RelatorioAno = RouterOutputs["marketingFinanceiro"]["getRelatorioAno"];
+type MesRelatorio = RouterOutputs["marketingFinanceiro"]["getRelatorioAno"]["meses"][number];
 
-interface Props {
-  ano: number;
-  relatorio: RelatorioAno;
-  refetch: () => void;
+function sugerirMes(meses: MesRelatorio[]) {
+  const recentes = [...meses].reverse();
+  return recentes.find(m => m.novo.qtdClientesUnicos > 0 && m.investimentoAquisicao == null)
+    ?? recentes.find(m => m.faturamentoTotalValido > 0 || m.investimentoAquisicao != null)
+    ?? recentes[0];
 }
 
-function sugerirMes(relatorio: RelatorioAno, ano: number): number {
-  const mesComClientesSemInvestimento = [...relatorio.meses]
-    .reverse()
-    .find(m => m.novo.qtdClientesUnicos > 0 && m.investimentoAquisicao == null);
-  if (mesComClientesSemInvestimento) return mesComClientesSemInvestimento.mes;
-
-  const ultimoMesComDados = [...relatorio.meses]
-    .reverse()
-    .find(m => m.faturamentoTotalValido > 0 || m.investimentoAquisicao != null);
-  if (ultimoMesComDados) return ultimoMesComDados.mes;
-
-  const agora = new Date();
-  return ano === agora.getFullYear() ? agora.getMonth() + 1 : 12;
-}
-
-function valorInicial(relatorio: RelatorioAno, mes: number): string {
-  const valor = relatorio.meses.find(m => m.mes === mes)?.investimentoAquisicao;
+function valorInicial(mes: MesRelatorio): string {
+  const valor = mes.investimentoAquisicao;
   return valor != null ? valor.toFixed(2).replace(".", ",") : "";
 }
 
-export default function MarketingLancamentoCAC({ ano, relatorio, refetch }: Props) {
-  const mesInicial = useMemo(() => sugerirMes(relatorio, ano), [ano, relatorio]);
-  const [mes, setMes] = useState(mesInicial);
-  const [valor, setValor] = useState(() => valorInicial(relatorio, mesInicial));
-  const anoRef = useRef(ano);
-  const anoRelatorioRef = useRef(relatorio.meses[0]?.ano ?? null);
-  const anoDoRelatorio = relatorio.meses[0]?.ano ?? null;
-
-  useEffect(() => {
-    if (anoRef.current !== ano) {
-      anoRef.current = ano;
-      setMes(ano === new Date().getFullYear() ? new Date().getMonth() + 1 : 12);
-      setValor("");
-    }
-    if (anoDoRelatorio === ano && anoRelatorioRef.current !== ano) {
-      anoRelatorioRef.current = ano;
-      const proximoMes = sugerirMes(relatorio, ano);
-      setMes(proximoMes);
-      setValor(valorInicial(relatorio, proximoMes));
-    }
-  }, [ano, anoDoRelatorio, relatorio]);
-
-  const mesRelatorio = relatorio.meses.find(m => m.mes === mes);
-  const mesDisponivel = mesRelatorio?.ano === ano;
+export default function MarketingLancamentoCAC({ meses }: { meses: MesRelatorio[] }) {
+  const utils = trpc.useUtils();
+  const mesInicial = sugerirMes(meses);
+  const [competencia, setCompetencia] = useState(() => competenciaIso(mesInicial.ano, mesInicial.mes));
+  const [valor, setValor] = useState(() => valorInicial(mesInicial));
+  const mesRelatorio = meses.find(m => competenciaIso(m.ano, m.mes) === competencia);
   const salvar = trpc.financeiro.upsertCustoMarketing.useMutation({
     onSuccess: () => {
       toast.success("Investimento salvo. O CAC foi atualizado.");
-      refetch();
+      void utils.marketingFinanceiro.getRelatorioAno.invalidate();
     },
     onError: erro => toast.error("Erro ao salvar: " + erro.message),
   });
 
-  function selecionarMes(novoMes: number) {
-    setMes(novoMes);
-    setValor(valorInicial(relatorio, novoMes));
+  function selecionarMes(novaCompetencia: string) {
+    const novoMes = meses.find(m => competenciaIso(m.ano, m.mes) === novaCompetencia);
+    if (!novoMes) return;
+    setCompetencia(novaCompetencia);
+    setValor(valorInicial(novoMes));
   }
 
   function salvarInvestimento() {
+    if (!mesRelatorio || salvar.isPending) return;
     const investimentoAquisicao = parseInvestimentoMarketing(valor);
     if (investimentoAquisicao === undefined || (investimentoAquisicao != null && investimentoAquisicao < 0)) {
       toast.error("Informe um valor válido, como 1250,50.");
@@ -84,7 +55,7 @@ export default function MarketingLancamentoCAC({ ano, relatorio, refetch }: Prop
       return;
     }
 
-    salvar.mutate({ mes, ano, investimentoAquisicao });
+    salvar.mutate({ mes: mesRelatorio.mes, ano: mesRelatorio.ano, investimentoAquisicao });
   }
 
   return (
@@ -105,13 +76,13 @@ export default function MarketingLancamentoCAC({ ano, relatorio, refetch }: Prop
         <label className="space-y-1.5 text-sm font-medium text-slate-700">
           Mês de referência
           <select
-            value={mes}
-            onChange={e => selecionarMes(Number(e.target.value))}
+            value={competencia}
+            onChange={e => selecionarMes(e.target.value)}
             className="h-10 w-full rounded-md border border-slate-300 bg-white px-3 text-sm"
           >
-            {MESES.map((nome, index) => {
-              const mesExisteNoRelatorio = relatorio.meses.some(m => m.mes === index + 1 && m.ano === ano);
-              return <option key={nome} value={index + 1} disabled={!mesExisteNoRelatorio}>{nome} / {ano}</option>;
+            {meses.map(m => {
+              const id = competenciaIso(m.ano, m.mes);
+              return <option key={id} value={id}>{MESES[m.mes - 1]} / {m.ano}</option>;
             })}
           </select>
         </label>
@@ -132,11 +103,11 @@ export default function MarketingLancamentoCAC({ ano, relatorio, refetch }: Prop
         <Button
           type="button"
           onClick={salvarInvestimento}
-          disabled={salvar.isPending || !mesDisponivel}
+          disabled={salvar.isPending || !mesRelatorio}
           className="h-10 gap-2 bg-purple-700 text-white hover:bg-purple-800"
         >
           <CheckCircle2 size={16} aria-hidden="true" />
-          {salvar.isPending ? "Salvando…" : mesDisponivel ? "Salvar e calcular CAC" : "Dados do mês indisponíveis"}
+          {salvar.isPending ? "Salvando…" : mesRelatorio ? "Salvar e calcular CAC" : "Dados do mês indisponíveis"}
         </Button>
       </div>
 
@@ -146,9 +117,9 @@ export default function MarketingLancamentoCAC({ ano, relatorio, refetch }: Prop
           <p className="mt-0.5 font-semibold text-slate-900">{fmtNum(mesRelatorio?.novo.qtdClientesUnicos ?? 0)}</p>
         </div>
         <div>
-          <p className="text-xs text-slate-500">CAC calculado para {MESES[mes - 1]}</p>
+          <p className="text-xs text-slate-500">CAC calculado{mesRelatorio && ` para ${MESES[mesRelatorio.mes - 1]}/${mesRelatorio.ano}`}</p>
           <p className="mt-0.5 font-semibold text-purple-800">
-            {!mesDisponivel
+            {!mesRelatorio
               ? "Dados do mês indisponíveis"
               : mesRelatorio?.novo.cacPonderado != null
               ? fmtBrl(mesRelatorio.novo.cacPonderado)

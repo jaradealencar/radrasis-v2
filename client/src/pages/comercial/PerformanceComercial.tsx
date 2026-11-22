@@ -27,7 +27,7 @@ import {
 } from "@/components/ui/table";
 import ChartTooltip from "@/components/ChartTooltip";
 import { chartColor } from "@/lib/chartColors";
-import { fmtNum, fmtBrl, fmtPct } from "@/lib/format";
+import { competenciaIso, fmtNum, fmtBrl, fmtPct } from "@/lib/format";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
 } from "@/components/ui/dialog";
@@ -383,8 +383,15 @@ function CardClientesContato({ titulo, badge, icon: Icon, corIcone, corBadge, de
 type MesAno = { mes: number; ano: number };
 
 export default function PerformanceComercial() {
-  const [mesSelecionado, setMesSelecionado] = useState(MES_ATUAL);
-  const [anoSelecionado, setAnoSelecionado] = useState(ANO_ATUAL);
+  const competenciaAtual = competenciaIso(ANO_ATUAL, MES_ATUAL);
+  const [periodoAnalise, setPeriodoAnalise] = useState({ inicio: competenciaAtual, fim: competenciaAtual });
+  const [anoSelecionado, mesSelecionado] = periodoAnalise.fim.split("-").map(Number);
+
+  function selecionarCompetencia(ano: number, mes: number) {
+    const competencia = competenciaIso(ano, mes);
+    setPeriodoAnalise({ inicio: competencia, fim: competencia });
+  }
+
   const [janelaProbabilidade, setJanelaProbabilidade] = useState<1 | 3>(3);
   const [abaAtiva, setAbaAtiva] = useState<"visao-geral" | "diaria" | "evolucao" | "inteligente">("visao-geral");
   const [showComparativo, setShowComparativo] = useState(true);
@@ -729,8 +736,8 @@ export default function PerformanceComercial() {
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:flex-wrap">
             {/* Linha 1 no mobile: seletores de mês/ano + badge */}
             <div className="flex items-center gap-2 flex-wrap">
-              <Select value={String(mesSelecionado)} onValueChange={v => setMesSelecionado(Number(v))}>
-                <SelectTrigger className="w-32 sm:w-36 h-9 text-sm">
+              <Select value={String(mesSelecionado)} onValueChange={v => selecionarCompetencia(anoSelecionado, Number(v))}>
+                <SelectTrigger aria-label="Mês da Performance Comercial" className="w-32 sm:w-36 h-9 text-sm">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -739,12 +746,12 @@ export default function PerformanceComercial() {
                   ))}
                 </SelectContent>
               </Select>
-              <Select value={String(anoSelecionado)} onValueChange={v => setAnoSelecionado(Number(v))}>
-                <SelectTrigger className="w-20 sm:w-24 h-9 text-sm">
+              <Select value={String(anoSelecionado)} onValueChange={v => selecionarCompetencia(Number(v), mesSelecionado)}>
+                <SelectTrigger aria-label="Ano da Performance Comercial" className="w-20 sm:w-24 h-9 text-sm">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  {[ANO_ATUAL, ANO_ATUAL - 1, ANO_ATUAL - 2].map(a => (
+                  {[ANO_ATUAL, ANO_ATUAL - 1, ANO_ATUAL - 2, ANO_ATUAL - 3].map(a => (
                     <SelectItem key={a} value={String(a)}>{a}</SelectItem>
                   ))}
                 </SelectContent>
@@ -926,7 +933,7 @@ export default function PerformanceComercial() {
 
         {/* ─── Aba: Inteligência de Clientes ──────────────────────────────────── */}
         {abaAtiva === "inteligente" && (
-          <InteligenteClientes anoSelecionado={anoSelecionado} />
+          <InteligenteClientes periodo={periodoAnalise} onPeriodoChange={(inicio, fim) => setPeriodoAnalise({ inicio, fim })} />
         )}
 
         <div style={{ display: abaAtiva !== "visao-geral" ? "none" : undefined }}>

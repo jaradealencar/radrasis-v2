@@ -20,8 +20,8 @@ export default defineConfig({
     trace: "off",
   },
   webServer: {
-    command: "corepack yarn vite --config vite.e2e.config.ts --configLoader runner --host 127.0.0.1 --port 43173 --strictPort",
-    url: `${baseURL}/e2e-roi-marketing.html`,
+    command: "corepack yarn vite preview --host 127.0.0.1 --port 43173 --strictPort",
+    url: `${baseURL}/comercial/performance`,
     reuseExistingServer: false,
     timeout: 60_000,
   },

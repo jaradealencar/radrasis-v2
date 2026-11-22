@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect, useRef } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { trpc } from "@/lib/trpc";
 import {
   Users, UserPlus, TrendingDown, TrendingUp, ShoppingCart,
@@ -24,7 +24,7 @@ import {
   PieChart, Pie, Legend,
 } from "recharts";
 import KpiCard from "@/components/KpiCard";
-import { fmtBrl, fmtNum, fmtPct, fmtDate } from "@/lib/format";
+import { fmtBrl, fmtNum, fmtPct, fmtDate, fmtPeriodoMeses } from "@/lib/format";
 import { Empty, EmptyHeader, EmptyMedia, EmptyTitle, EmptyDescription } from "@/components/ui/empty";
 import { FaixaDiasConfigForm } from "@/components/FaixaDiasConfigForm";
 import MarketingFinanceiro from "@/pages/financeiro/MarketingFinanceiro";
@@ -41,14 +41,6 @@ const MESES = [
 ];
 
 function pad(n: number) { return String(n).padStart(2, "0"); }
-
-function formatarPeriodo(ini: string, fim: string) {
-  const [aIni, mIni] = ini.split("-").map(Number);
-  const [aFim, mFim] = fim.split("-").map(Number);
-  if (ini === fim) return `${MESES[mIni - 1]}/${aIni}`;
-  if (aIni === aFim) return `${MESES[mIni - 1]} a ${MESES[mFim - 1]}/${aFim}`;
-  return `${MESES[mIni - 1]}/${aIni} a ${MESES[mFim - 1]}/${aFim}`;
-}
 
 export const CLASSIFICACAO_INFO: Record<string, { label: string; cor: string; icone: string; corHex: string; descricao: string }> = {
   primeira_compra: {
@@ -185,6 +177,7 @@ function SeletorPeriodo({
       <div className="flex items-center gap-1.5">
         <CalendarDays className="w-3.5 h-3.5 text-slate-400" />
         <select
+          aria-label="Mês inicial do período de análise"
           value={mesIni}
           onChange={e => alterarInicio(`${anoIni}-${pad(Number(e.target.value))}`)}
           className="text-xs border border-slate-200 rounded-lg px-2 py-1.5 bg-white text-slate-700 focus:outline-none focus:border-blue-400"
@@ -192,6 +185,7 @@ function SeletorPeriodo({
           {MESES.map((m, i) => <option key={i + 1} value={i + 1}>{m.slice(0, 3)}</option>)}
         </select>
         <select
+          aria-label="Ano inicial do período de análise"
           value={anoIni}
           onChange={e => alterarInicio(`${e.target.value}-${pad(mesIni)}`)}
           className="text-xs border border-slate-200 rounded-lg px-2 py-1.5 bg-white text-slate-700 focus:outline-none focus:border-blue-400"
@@ -202,6 +196,7 @@ function SeletorPeriodo({
       <span className="text-xs text-slate-400 font-medium">até</span>
       <div className="flex items-center gap-1.5">
         <select
+          aria-label="Mês final do período de análise"
           value={mesFim}
           onChange={e => alterarFim(`${anoFim}-${pad(Number(e.target.value))}`)}
           className="text-xs border border-slate-200 rounded-lg px-2 py-1.5 bg-white text-slate-700 focus:outline-none focus:border-blue-400"
@@ -209,6 +204,7 @@ function SeletorPeriodo({
           {MESES.map((m, i) => <option key={i + 1} value={i + 1}>{m.slice(0, 3)}</option>)}
         </select>
         <select
+          aria-label="Ano final do período de análise"
           value={anoFim}
           onChange={e => alterarFim(`${e.target.value}-${pad(mesFim)}`)}
           className="text-xs border border-slate-200 rounded-lg px-2 py-1.5 bg-white text-slate-700 focus:outline-none focus:border-blue-400"
@@ -359,7 +355,7 @@ function VistaVisaoGeral({ dataInicial, dataFinal }: { dataInicial: string; data
     <div className="space-y-5">
       <div className="flex items-center justify-between">
         <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
-          Base de clientes — {formatarPeriodo(dataInicial.slice(0, 7), dataFinal.slice(0, 7))}
+          Base de clientes — {fmtPeriodoMeses(dataInicial.slice(0, 7), dataFinal.slice(0, 7))}
         </p>
         <button onClick={() => setShowDicionario(true)} className="flex items-center gap-1 text-[11px] text-blue-600 hover:text-blue-700 font-semibold">
           <HelpCircle className="w-3.5 h-3.5" /> O que significa isso?
@@ -1572,12 +1568,8 @@ function VistaPerfilCnpj() {
 // ─── Componente principal ─────────────────────────────────────────────────────
 
 interface InteligenteClientesProps {
-  anoSelecionado: number;
-}
-
-function periodoInicialDoAno(ano: number): string {
-  const atual = new Date();
-  return ano === atual.getFullYear() ? `${ano}-${pad(atual.getMonth() + 1)}` : `${ano}-12`;
+  periodo: { inicio: string; fim: string };
+  onPeriodoChange: (inicio: string, fim: string) => void;
 }
 
 type Vista = "visao-geral" | "crescimento" | "clientes" | "fila" | "retencao" | "funil" | "previsoes" | "assistente" | "perfil-cnpj";
@@ -1594,11 +1586,9 @@ const VISTAS: Array<{ id: Vista; label: string; icon: string }> = [
   { id: "perfil-cnpj", label: "Perfil (CNPJ)", icon: "🏢" },
 ];
 
-export default function InteligenteClientes({ anoSelecionado }: InteligenteClientesProps) {
+export default function InteligenteClientes({ periodo, onPeriodoChange }: InteligenteClientesProps) {
   const { user } = useAuth();
   const isAdmin = user?.role === "admin" || user?.role === "master" || user?.role === "gestor";
-  const [dataInicialMes, setDataInicialMes] = useState(() => periodoInicialDoAno(anoSelecionado));
-  const [dataFinalMes, setDataFinalMes] = useState(() => periodoInicialDoAno(anoSelecionado));
   const [vista, setVista] = useState<Vista>("visao-geral");
   const [abrirCACRequest, setAbrirCACRequest] = useState(0);
   // "crescimento" fica restrita a admin/master/gestor — mostra CAC, ROI,
@@ -1607,20 +1597,10 @@ export default function InteligenteClientes({ anoSelecionado }: InteligenteClien
   // (hoje a página inteira já é admin-only, mas isso é reforço).
   const vistasVisiveis = useMemo(() => VISTAS.filter(v => v.id !== "crescimento" || isAdmin), [isAdmin]);
 
-  const anoRef = useRef(anoSelecionado);
-  useEffect(() => {
-    if (anoSelecionado !== anoRef.current) {
-      anoRef.current = anoSelecionado;
-      const periodo = periodoInicialDoAno(anoSelecionado);
-      setDataInicialMes(periodo);
-      setDataFinalMes(periodo);
-    }
-  }, [anoSelecionado]);
-
-  const [anoFimCalc, mesFimCalc] = dataFinalMes.split("-").map(Number);
-  const lastDay = new Date(anoFimCalc, mesFimCalc, 0).getDate();
-  const dataInicial = `${dataInicialMes}-01`;
-  const dataFinal = `${dataFinalMes}-${pad(lastDay)}`;
+  const [anoSelecionado, mesFinal] = periodo.fim.split("-").map(Number);
+  const ultimoDia = new Date(anoSelecionado, mesFinal, 0).getDate();
+  const dataInicial = `${periodo.inicio}-01`;
+  const dataFinal = `${periodo.fim}-${pad(ultimoDia)}`;
 
   return (
     <div className="space-y-5">
@@ -1628,7 +1608,7 @@ export default function InteligenteClientes({ anoSelecionado }: InteligenteClien
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex flex-col gap-2">
             <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Período de Análise</p>
-            <SeletorPeriodo dataInicial={dataInicialMes} dataFinal={dataFinalMes} onChange={(ini, fim) => { setDataInicialMes(ini); setDataFinalMes(fim); }} />
+            <SeletorPeriodo dataInicial={periodo.inicio} dataFinal={periodo.fim} onChange={onPeriodoChange} />
           </div>
           {isAdmin && (
             <button

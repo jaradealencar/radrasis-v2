@@ -83,3 +83,15 @@ export const MESES_ABREV = [
   "Jan", "Fev", "Mar", "Abr", "Mai", "Jun",
   "Jul", "Ago", "Set", "Out", "Nov", "Dez",
 ] as const;
+
+export function competenciaIso(ano: number, mes: number): string {
+  return `${ano}-${String(mes).padStart(2, "0")}`;
+}
+
+export function fmtPeriodoMeses(inicio: string, fim: string): string {
+  const [anoIni, mesIni] = inicio.split("-").map(Number);
+  const [anoFim, mesFim] = fim.split("-").map(Number);
+  if (inicio === fim) return `${MESES[mesIni - 1]}/${anoIni}`;
+  if (anoIni === anoFim) return `${MESES[mesIni - 1]} a ${MESES[mesFim - 1]}/${anoFim}`;
+  return `${MESES[mesIni - 1]}/${anoIni} a ${MESES[mesFim - 1]}/${anoFim}`;
+}
