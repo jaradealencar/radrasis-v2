@@ -47,6 +47,7 @@ interface ItemEditavel {
   valorTotalItem: number;
   valorIpi: number;
   pesoUnitarioFreteKg: number | null;
+  pesoUnitarioFreteKgTexto: string;
   materiaPrimaId: number | null;
   nomeMateriaPrima: string | null;
   unidadeErp: "ML" | "M2" | "UN" | "LT" | null;
@@ -97,6 +98,13 @@ function lerFatorManual(texto: string): number | null {
   if (!Number.isFinite(valor) || valor <= 0) return null;
   const fator = Number(valor.toFixed(8));
   return fator > 0 ? fator : null;
+}
+
+function lerPesoUnitarioFreteKg(texto: string): number | null {
+  const normalizado = texto.trim().replace(",", ".");
+  if (!normalizado || /\.$/.test(normalizado) || !/^(?:\d+(?:\.\d*)?|\.\d+)$/.test(normalizado)) return null;
+  const valor = Number(normalizado);
+  return Number.isFinite(valor) && valor >= 0 ? valor : null;
 }
 
 function normalizarUnidadeErpMateriaPrima(unidade: string | null | undefined): "ML" | "M2" | "UN" | "LT" {
@@ -308,6 +316,7 @@ export default function NfCompraAuditoria() {
               valorTotalItem: i.valorTotalItem,
               valorIpi: i.valorIpi ?? 0,
               pesoUnitarioFreteKg: i.pesoUnitarioFreteKg ?? null,
+              pesoUnitarioFreteKgTexto: i.pesoUnitarioFreteKg != null ? String(i.pesoUnitarioFreteKg) : "",
               materiaPrimaId: i.materiaPrimaId,
               nomeMateriaPrima: i.nomeMateriaPrima,
               unidadeErp: i.unidadeErp as any,
@@ -450,6 +459,11 @@ export default function NfCompraAuditoria() {
         : unidadeCompra === "UN" && unidadeErp === "UN" && fator === 1
           ? mp.tecnico?.pesoEspecificoKg ?? null
           : null;
+      const pesoUnitarioFreteKgTexto = mesmoVinculo && alvo.pesoUnitarioFreteKgTexto !== undefined
+        ? alvo.pesoUnitarioFreteKgTexto
+        : pesoUnitarioFreteKg != null
+          ? String(pesoUnitarioFreteKg)
+          : "";
 
       copia[idxItem] = {
         ...alvo,
@@ -462,6 +476,7 @@ export default function NfCompraAuditoria() {
         baseCalculoTexto: baseTexto,
         custoCadastrado: mp.custoUnitario,
         pesoUnitarioFreteKg,
+        pesoUnitarioFreteKgTexto,
         confianca: "media",
         pendencias: [],
       };
@@ -983,12 +998,12 @@ export default function NfCompraAuditoria() {
                                 <input
                                   type="text"
                                   inputMode="decimal"
-                                  value={item.pesoUnitarioFreteKg == null ? "" : String(item.pesoUnitarioFreteKg)}
+                                  value={item.pesoUnitarioFreteKgTexto}
                                   onChange={(e) => {
                                     const texto = e.target.value;
-                                    const numero = texto.trim() === "" ? null : parseNumSeguro(texto, Number.NaN);
+                                    const numero = lerPesoUnitarioFreteKg(texto);
                                     setItens((prev) => prev.map((linha, linhaIdx) => linhaIdx === idx
-                                      ? { ...linha, pesoUnitarioFreteKg: numero != null && Number.isFinite(numero) && numero >= 0 ? numero : null }
+                                      ? { ...linha, pesoUnitarioFreteKgTexto: texto, pesoUnitarioFreteKg: numero }
                                       : linha));
                                   }}
                                   placeholder="0,0000"
