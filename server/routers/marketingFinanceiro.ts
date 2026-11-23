@@ -291,10 +291,6 @@ export const marketingFinanceiroRouter = router({
       };
       const anoInicial = Number(input.dataInicial.slice(0, 4));
       const anoFinal = Number(input.dataFinal.slice(0, 4));
-      const config = await buscarConfig(db).catch(error => {
-        marcarFonteIndisponivel("configuração de marketing", error);
-        return CONFIG_DEFAULTS;
-      });
       const [osHistoricas, propostasHistoricas, cachesMubiSys, perfisCnpj] = await Promise.all([
         db.select({
           id: historicoOs.id,
@@ -340,19 +336,6 @@ export const marketingFinanceiroRouter = router({
             return [];
           }),
       ]);
-      const agora = new Date();
-      const mesAtualIso = `${agora.getFullYear()}-${String(agora.getMonth() + 1).padStart(2, "0")}`;
-      const incluiMesAtual = input.dataInicial.slice(0, 7) <= mesAtualIso && input.dataFinal.slice(0, 7) >= mesAtualIso;
-      const classificadasAoVivo = incluiMesAtual
-        ? await classificarAno(db, agora.getFullYear(), config.mesesInatividadeReativacao).catch(error => {
-          marcarFonteIndisponivel("classificação atual do ERP", error);
-          return [];
-        })
-        : [];
-      const linhasAoVivoNoPeriodo = classificadasAoVivo.filter(linha => dataDentroPeriodoMarketing(
-        dataOsMarketing(linha.dataAprovacao, linha.mes, linha.ano), input.dataInicial, input.dataFinal,
-      ));
-
       const compradorPrimeiraCompra = new Map<string, { estado: string | null; data: Date }>();
       const primeiraCompraPorCliente = new Map<string, Date>();
       const estadoHistoricoPorCliente = new Map<string, { estado: string; data: Date; id: number }>();
@@ -387,21 +370,6 @@ export const marketingFinanceiroRouter = router({
           compradorPrimeiraCompra.set(clienteKey, dados);
         }
       }
-      for (const linha of linhasAoVivoNoPeriodo) {
-        if (!linha.clienteKey) continue;
-        const data = dataOsMarketing(linha.dataAprovacao, linha.mes, linha.ano);
-        const primeira = primeiraCompraPorCliente.get(linha.clienteKey);
-        if (!primeira || data < primeira) primeiraCompraPorCliente.set(linha.clienteKey, data);
-        if (linha.categoria !== "novo") continue;
-        const primeiraConhecida = primeiraCompraPorCliente.get(linha.clienteKey);
-        if (primeiraConhecida && dataLocalParaIso(data) !== dataLocalParaIso(primeiraConhecida)) continue;
-        const estado = ufMarketing(linha.estado);
-        const atual = compradorPrimeiraCompra.get(linha.clienteKey);
-        if (!atual || data < atual.data || (dataLocalParaIso(data) === dataLocalParaIso(atual.data) && estado && !atual.estado)) {
-          compradorPrimeiraCompra.set(linha.clienteKey, { estado: estado ?? atual?.estado ?? null, data });
-        }
-      }
-
       const estadoCachePorOrcamento = new Map<string, { estado: string; id: number }>();
       for (const cache of cachesMubiSys) {
         if (cache.cacheKey !== `raw_${cache.mes}_${cache.ano}` || !cache.orcData) continue;
@@ -443,16 +411,6 @@ export const marketingFinanceiroRouter = router({
         ordens.set(chaveOs, Number(os.valorOs ?? os.valorTotal ?? 0) || 0);
         ordensPorCliente.set(clienteKey, ordens);
       }
-      for (const [indice, linha] of linhasAoVivoNoPeriodo.entries()) {
-        if (!linha.clienteKey || !compradorPrimeiraCompra.has(linha.clienteKey)) continue;
-        const chaveOs = linha.osNumero?.trim()
-          ? `os:${linha.osNumero.trim()}`
-          : `ao-vivo:${linha.clienteKey}:${dataOsMarketing(linha.dataAprovacao, linha.mes, linha.ano).getTime()}:${indice}`;
-        const ordens = ordensPorCliente.get(linha.clienteKey) ?? new Map<string, number>();
-        ordens.set(chaveOs, linha.valorOs);
-        ordensPorCliente.set(linha.clienteKey, ordens);
-      }
-
       const compradoresNovos = [...compradorPrimeiraCompra.entries()].map(([clienteKey, dados]) => ({
         clienteKey,
         estado: dados.estado,
@@ -510,7 +468,12 @@ export const marketingFinanceiroRouter = router({
     .input(periodoMarketingSchema)
     .query(async ({ input }) => {
       const db = await getDb();
-      if (!db) return resumirEstadosCampanhas([], []);
+      if (!db) return { ...resumirEstadosCampanhas([], []), fontesIndisponiveis: ["base de dados"] };
+      const fontesIndisponiveis: string[] = [];
+      const marcarFonteIndisponivel = (fonte: string, error: unknown) => {
+        registrarFalhaFonteEstadosMarketing(fonte, error);
+        fontesIndisponiveis.push(fonte);
+      };
 
       const anoInicial = Number(input.dataInicial.slice(0, 4));
       const anoFinal = Number(input.dataFinal.slice(0, 4));
@@ -523,11 +486,19 @@ export const marketingFinanceiroRouter = router({
       const [historicoEnvios, itensDisparados, osRows] = await Promise.all([
         db.select({ disparoId: campanhasWhatsappContatosHistorico.disparoId, telefone: campanhasWhatsappContatosHistorico.telefone, dataEnvio: campanhasWhatsappContatosHistorico.ultimoEnvioEm })
           .from(campanhasWhatsappContatosHistorico)
-          .where(and(gte(campanhasWhatsappContatosHistorico.ultimoEnvioEm, inicioIso), lt(campanhasWhatsappContatosHistorico.ultimoEnvioEm, fimExclusivoIso))),
+          .where(and(gte(campanhasWhatsappContatosHistorico.ultimoEnvioEm, inicioIso), lt(campanhasWhatsappContatosHistorico.ultimoEnvioEm, fimExclusivoIso)))
+          .catch(error => {
+            marcarFonteIndisponivel("histórico de envios de campanhas", error);
+            return [];
+          }),
         db.select({ disparoId: campanhasWhatsappDisparoItens.disparoId, telefone: campanhasWhatsappDisparoItens.telefone, dataEnvio: campanhasWhatsappDisparos.enviadoEm, status: campanhasWhatsappDisparoItens.status })
           .from(campanhasWhatsappDisparoItens)
           .innerJoin(campanhasWhatsappDisparos, eq(campanhasWhatsappDisparoItens.disparoId, campanhasWhatsappDisparos.id))
-          .where(and(gte(campanhasWhatsappDisparos.enviadoEm, inicioIso), lt(campanhasWhatsappDisparos.enviadoEm, fimExclusivoIso))),
+          .where(and(gte(campanhasWhatsappDisparos.enviadoEm, inicioIso), lt(campanhasWhatsappDisparos.enviadoEm, fimExclusivoIso)))
+          .catch(error => {
+            marcarFonteIndisponivel("itens enviados de campanhas", error);
+            return [];
+          }),
         db.select({
           osNumero: historicoOs.osNumero,
           empresa: historicoOs.empresa,
@@ -539,7 +510,11 @@ export const marketingFinanceiroRouter = router({
           valorTotal: historicoOs.valorTotal,
           tipoOs: historicoOs.tipoOs,
           status: historicoOs.status,
-        }).from(historicoOs).where(and(gte(historicoOs.ano, anoInicial), lte(historicoOs.ano, anoFinal))),
+        }).from(historicoOs).where(and(gte(historicoOs.ano, anoInicial), lte(historicoOs.ano, anoFinal)))
+          .catch(error => {
+            marcarFonteIndisponivel("histórico de O.S.", error);
+            return [];
+          }),
       ]);
 
       const itensFalhos = new Set(itensDisparados.flatMap(item => {
@@ -558,7 +533,12 @@ export const marketingFinanceiroRouter = router({
         const dataEnvio = dataIsoEnvio(item.dataEnvio);
         if (dataEnvio) envios.push({ telefone: item.telefone, dataEnvio });
       }
-      completarTelefonesPeloCadastro(osRows, await carregarTelefonesClientes());
+      try {
+        completarTelefonesPeloCadastro(osRows, await carregarTelefonesClientes());
+      } catch (error) {
+        registrarFalhaFonteEstadosMarketing("cadastro de telefones do ERP", error);
+        fontesIndisponiveis.push("cadastro de telefones do ERP");
+      }
       const vendas = osRows.flatMap(os => {
         if (!isOsNormalDb(os)) return [];
         const dtAprovacao = parseDataFlexivel(os.dataAprovacao);
@@ -574,7 +554,7 @@ export const marketingFinanceiroRouter = router({
         }];
       });
 
-      return resumirEstadosCampanhas(vendas, envios, 30);
+      return { ...resumirEstadosCampanhas(vendas, envios, 30), fontesIndisponiveis };
     }),
 
   // ─── Opções de filtro (vendedor/cidade disponíveis no ano) ─────────────────
