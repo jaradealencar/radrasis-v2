@@ -151,6 +151,8 @@ export default function NfCompraAuditoria() {
   // Estado para cotação em PDF
   const [arquivoPdfNome, setArquivoPdfNome] = useState<string>("");
   const [cotacaoPdfResultado, setCotacaoPdfResultado] = useState<any | null>(null);
+  const [itemCotacaoEmEdicao, setItemCotacaoEmEdicao] = useState<number | null>(null);
+  const [buscaMateriaPrimaCotacao, setBuscaMateriaPrimaCotacao] = useState("");
 
   // Origem da compra (Interestadual vs Local/Dentro de MS)
   const [origemCompra, setOrigemCompra] = useState<"interestadual" | "local">("interestadual");
@@ -193,6 +195,10 @@ export default function NfCompraAuditoria() {
   const buscarMpsQuery = trpc.nfCompra.buscarMateriasPrimas.useQuery(
     { busca: buscaMp, limite: 15 },
     { enabled: buscaMp.trim().length >= 2 }
+  );
+  const buscarMpsCotacaoQuery = trpc.nfCompra.buscarMateriasPrimas.useQuery(
+    { busca: buscaMateriaPrimaCotacao, limite: 10 },
+    { enabled: itemCotacaoEmEdicao !== null && buscaMateriaPrimaCotacao.trim().length >= 2 }
   );
   const memoriasQuery = trpc.nfCompra.listarMemoriaPorFornecedor.useQuery(
     { cnpjFornecedor: cabecalho?.cnpjFornecedor },
@@ -284,6 +290,52 @@ export default function NfCompraAuditoria() {
       }
     };
     reader.readAsDataURL(file);
+  };
+
+  const vincularMateriaPrimaCotacao = async (indice: number, mp: any) => {
+    const cotacao = cotacaoPdfResultado;
+    const item = cotacao?.itens?.[indice];
+    if (!cotacao || !item) return;
+
+    try {
+      const historico = await utils.nfCompra.historicoCotacaoPorMateriaPrima.fetch({
+        materiaPrimaId: mp.id,
+        cnpjFornecedor: cotacao.cnpjFornecedor || undefined,
+        fornecedor: cotacao.fornecedor || undefined,
+        precoCotado: item.precoUnitario,
+        unidadeCotada: item.unidade,
+      });
+
+      setCotacaoPdfResultado((atual: any) => {
+        if (!atual) return atual;
+        return {
+          ...atual,
+          itens: atual.itens.map((linha: any, linhaIdx: number) => linhaIdx === indice
+            ? {
+                ...linha,
+                materiaPrimaVinculada: {
+                  id: mp.id,
+                  nome: mp.nome,
+                  mubisysId: mp.mubisysId,
+                  custoUnitarioMubisys: mp.custoUnitario,
+                  unidadeMubisys: mp.unidadeMedida,
+                },
+                origemVinculo: "vínculo manual",
+                ...historico,
+                variacaoPrecoCotadoVsMubisys: null,
+                semHistoricoCompras: !historico.ultimaCompraGeral,
+              }
+            : linha),
+        };
+      });
+      toast.success("Matéria-prima vinculada; histórico e comparação atualizados.");
+    } catch (error) {
+      const detalhe = error instanceof Error ? error.message : "Tente novamente.";
+      toast.error(`Não foi possível carregar o histórico desta matéria-prima: ${detalhe}`);
+    } finally {
+      setItemCotacaoEmEdicao(null);
+      setBuscaMateriaPrimaCotacao("");
+    }
   };
 
   // Leitura do arquivo XML via drag-and-drop ou file input
@@ -1412,14 +1464,47 @@ export default function NfCompraAuditoria() {
                     <TableHead className="text-right">Qtd Cotada</TableHead>
                     <TableHead className="text-right">Preço Cotado</TableHead>
                     <TableHead>MP Vinculada no Radrasys</TableHead>
-                    <TableHead className="text-right">Última Compra Real</TableHead>
-                    <TableHead className="text-right">Reajuste vs Última Compra</TableHead>
-                    <TableHead className="text-right">Custo no Mubisys</TableHead>
+                    <TableHead className="text-right">Última compra deste fornecedor</TableHead>
+                    <TableHead className="text-right">Compra mais recente (todos)</TableHead>
+                    <TableHead className="text-right">Reajuste vs compra</TableHead>
+                    <TableHead className="text-right">Custo no MubiSys</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {cotacaoPdfResultado.itens.map((item: any, i: number) => {
-                    const varCompra = item.variacaoPrecoCotadoVsUltimaCompra;
+                    const compraFornecedor = item.ultimaCompraFornecedor;
+                    const compraGeral = item.ultimaCompraGeral;
+                    const mesmaCompra = Boolean(
+                      compraFornecedor && compraGeral &&
+                      compraFornecedor.precoUnitario === compraGeral.precoUnitario &&
+                      compraFornecedor.unidade === compraGeral.unidade &&
+                      compraFornecedor.data === compraGeral.data &&
+                      compraFornecedor.fornecedor === compraGeral.fornecedor
+                    );
+                    const variacaoFornecedor = item.variacaoPrecoCotadoVsFornecedor;
+                    const variacaoGeral = item.variacaoPrecoCotadoVsUltimaCompra;
+                    const semVariacao = variacaoFornecedor == null && variacaoGeral == null;
+                    const formatarCompra = (compra: any, mostrarFornecedor: boolean) => compra ? (
+                      <div>
+                        <span>{fmtBrl(compra.precoUnitario)}/{compra.unidade}</span>
+                        <span className="text-[10px] text-slate-400 block">
+                          {mostrarFornecedor ? compra.fornecedor : "Mesmo fornecedor"}{compra.data ? ` · ${compra.data}` : ""}
+                        </span>
+                      </div>
+                    ) : <span className="text-slate-400">—</span>;
+                    const botaoVincular = (itemCotado: any) => (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setItemCotacaoEmEdicao(i);
+                          setBuscaMateriaPrimaCotacao("");
+                        }}
+                        className="text-[11px] text-blue-600 hover:underline"
+                      >
+                        {itemCotado.materiaPrimaVinculada ? "Trocar vínculo" : "Vincular matéria-prima"}
+                      </button>
+                    );
+
                     return (
                       <TableRow key={i}>
                         <TableCell>
@@ -1434,44 +1519,96 @@ export default function NfCompraAuditoria() {
                         <TableCell className="text-right font-mono text-xs font-bold text-slate-800">
                           {fmtBrl(item.precoUnitario)}/{item.unidade}
                         </TableCell>
-                        <TableCell>
-                          {item.materiaPrimaVinculada ? (
-                            <span className="text-xs font-medium text-slate-800">
-                              {item.materiaPrimaVinculada.nome}
+                        <TableCell className="min-w-56">
+                          <div className="space-y-1">
+                            <span className="text-xs font-medium text-slate-800 block">
+                              {item.materiaPrimaVinculada?.nome ?? (
+                                <span className="text-amber-600 italic">Não vinculado</span>
+                              )}
                             </span>
-                          ) : (
-                            <span className="text-xs text-amber-600 italic">Não vinculado</span>
-                          )}
+                            {item.origemVinculo && (
+                              <span className="text-[10px] text-slate-400 block">Correspondência: {item.origemVinculo}</span>
+                            )}
+                            {botaoVincular(item)}
+                            {itemCotacaoEmEdicao === i && (
+                              <div className="mt-2 min-w-64 space-y-1 rounded border border-slate-200 bg-slate-50 p-2">
+                                <input
+                                  type="search"
+                                  value={buscaMateriaPrimaCotacao}
+                                  onChange={e => setBuscaMateriaPrimaCotacao(e.target.value)}
+                                  placeholder="Buscar matéria-prima ou SKU"
+                                  className="w-full rounded border border-slate-300 bg-white px-2 py-1.5 text-xs"
+                                  aria-label={`Buscar matéria-prima para ${item.descricao}`}
+                                />
+                                {buscarMpsCotacaoQuery.isFetching && (
+                                  <span className="block text-[10px] text-slate-400">Buscando...</span>
+                                )}
+                                {buscaMateriaPrimaCotacao.trim().length >= 2 && !buscarMpsCotacaoQuery.isFetching &&
+                                  buscarMpsCotacaoQuery.data?.length === 0 && (
+                                    <span className="block text-[10px] text-slate-500">Nenhuma matéria-prima encontrada.</span>
+                                  )}
+                                <div className="max-h-36 overflow-y-auto">
+                                  {buscarMpsCotacaoQuery.data?.map(mp => (
+                                    <button
+                                      key={mp.id}
+                                      type="button"
+                                      onClick={() => void vincularMateriaPrimaCotacao(i, mp)}
+                                      className="block w-full border-t border-slate-200 px-1 py-1.5 text-left hover:bg-blue-50"
+                                    >
+                                      <span className="block text-[11px] font-medium text-slate-700">{mp.nome}</span>
+                                      <span className="block text-[10px] text-slate-400">
+                                        {mp.unidadeMedida}{mp.custoUnitario != null && mp.custoUnitario > 0
+                                          ? ` · ${fmtBrl(mp.custoUnitario)}`
+                                          : " · sem custo cadastrado"}
+                                      </span>
+                                    </button>
+                                  ))}
+                                </div>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setItemCotacaoEmEdicao(null);
+                                    setBuscaMateriaPrimaCotacao("");
+                                  }}
+                                  className="text-[10px] text-slate-500 underline"
+                                >
+                                  Cancelar
+                                </button>
+                              </div>
+                            )}
+                          </div>
                         </TableCell>
                         <TableCell className="text-right font-mono text-xs text-slate-600">
-                          {item.ultimaCompraReal ? (
-                            <div>
-                              <span>{fmtBrl(item.ultimaCompraReal.precoUnitario)}/{item.ultimaCompraReal.unidade}</span>
-                              <span className="text-[10px] text-slate-400 block">{item.ultimaCompraReal.fornecedor}</span>
-                            </div>
-                          ) : (
-                            "—"
-                          )}
+                          {formatarCompra(compraFornecedor, false)}
+                        </TableCell>
+                        <TableCell className="text-right font-mono text-xs text-slate-600">
+                          {formatarCompra(compraGeral, true)}
                         </TableCell>
                         <TableCell className="text-right font-mono text-xs font-bold">
-                          {varCompra !== null && varCompra !== undefined ? (
-                            <span
-                              className={`px-2 py-0.5 rounded text-xs inline-flex items-center gap-1 ${
-                                varCompra > 0
-                                  ? "bg-red-100 text-red-800"
-                                  : "bg-emerald-100 text-emerald-800"
-                              }`}
-                            >
-                              {varCompra > 0 ? "+" : ""}
-                              {fmtPct(varCompra, 2)}
-                            </span>
+                          {!semVariacao ? (
+                            <div className="space-y-1">
+                              {variacaoFornecedor != null && (
+                                <span className={`block ${variacaoFornecedor > 0 ? "text-red-700" : "text-emerald-700"}`}>
+                                  Fornecedor: {variacaoFornecedor > 0 ? "+" : ""}{fmtPct(variacaoFornecedor, 2)}
+                                </span>
+                              )}
+                              {variacaoGeral != null && (!mesmaCompra || variacaoFornecedor == null) && (
+                                <span className={`block ${variacaoGeral > 0 ? "text-red-700" : "text-emerald-700"}`}>
+                                  Geral: {variacaoGeral > 0 ? "+" : ""}{fmtPct(variacaoGeral, 2)}
+                                </span>
+                              )}
+                            </div>
+                          ) : item.semHistoricoCompras ? (
+                            <span className="text-slate-400 text-[11px]">Sem compras anteriores</span>
+                          ) : item.ultimaCompraGeral && !item.historicoUnidadeCompativel ? (
+                            <span className="text-amber-600 text-[11px]">Unidade diferente</span>
                           ) : (
-                            <span className="text-slate-400 text-[11px]">1ª vez</span>
+                            <span className="text-slate-400 text-[11px]">—</span>
                           )}
                         </TableCell>
                         <TableCell className="text-right font-mono text-xs text-slate-600">
                           {item.materiaPrimaVinculada?.custoUnitarioMubisys
-                            ? fmtBrl(item.materiaPrimaVinculada.custoUnitarioMubisys)
+                            ? `${fmtBrl(item.materiaPrimaVinculada.custoUnitarioMubisys)}/${item.materiaPrimaVinculada.unidadeMubisys}`
                             : "—"}
                         </TableCell>
                       </TableRow>

@@ -11,7 +11,7 @@ import {
   nfCompraItens,
   nfMpVinculos,
 } from "../../drizzle/schema";
-import { eq, inArray, ilike, or, and, desc, sql } from "drizzle-orm";
+import { eq, inArray, ilike, or, and, desc, sql, isNotNull } from "drizzle-orm";
 import { parseNfXml } from "../services/nfXmlParser";
 import {
   sugerirVinculoItem,
@@ -22,6 +22,194 @@ import {
 } from "../services/nfSugestaoVinculo";
 import { calcularNfCompra, type ItemCalculoEntrada } from "../services/nfCalculo";
 import { sincronizarCatalogoMubiSys } from "../services/mubisysEspelho";
+
+function digitosCnpj(valor: string | null | undefined): string {
+  return (valor ?? "").replace(/\D/g, "");
+}
+
+function normalizarNomeFornecedor(valor: string | null | undefined): string {
+  return (valor ?? "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toUpperCase()
+    .replace(/[^A-Z0-9]+/g, " ")
+    .replace(/\b(SA|S A|LTDA|LIMITADA|EIRELI|ME|EPP|MATRIZ|FILIAL)\b/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function mesmoFornecedor(
+  fornecedorAtual: { cnpjFornecedor?: string | null; nomeFornecedor?: string | null },
+  fornecedorAnterior: { cnpjFornecedor?: string | null; nomeFornecedor?: string | null }
+): boolean {
+  const cnpjAtual = digitosCnpj(fornecedorAtual.cnpjFornecedor);
+  const cnpjAnterior = digitosCnpj(fornecedorAnterior.cnpjFornecedor);
+  if (cnpjAtual.length === 14 && cnpjAnterior.length === 14) return cnpjAtual === cnpjAnterior;
+
+  const nomeAtual = normalizarNomeFornecedor(fornecedorAtual.nomeFornecedor);
+  const nomeAnterior = normalizarNomeFornecedor(fornecedorAnterior.nomeFornecedor);
+  return Boolean(nomeAtual && nomeAnterior && nomeAtual === nomeAnterior);
+}
+
+function normalizarUnidadeCotacao(unidade: string | null | undefined): string {
+  const texto = (unidade ?? "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .trim()
+    .toUpperCase()
+    .replace(/²/g, "2");
+  if (["UN", "UND", "UNID", "UNIDADE", "PC", "PCS", "PCE", "PECA", "PECAS"].includes(texto)) return "UN";
+  if (["KG", "KGS", "KGM"].includes(texto)) return "KG";
+  if (["M", "MT", "ML", "METRO", "METROS"].includes(texto)) return "ML";
+  if (["M2", "MTS2"].includes(texto)) return "M2";
+  if (["L", "LT", "LITRO", "LITROS"].includes(texto)) return "LT";
+  if (["CX", "CXS", "CAIXA", "CAIXAS"].includes(texto)) return "CX";
+  if (["PCT", "PACOTE", "PACOTES"].includes(texto)) return "PCT";
+  if (["RL", "ROLO", "ROLOS"].includes(texto)) return "RL";
+  return texto;
+}
+
+function tokensDescricao(valor: string | null | undefined): string[] {
+  return Array.from(new Set(
+    (valor ?? "")
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .toUpperCase()
+      .replace(/[^A-Z0-9]+/g, " ")
+      .split(/\s+/)
+      .filter(token => token.length >= 2 && !["DE", "DA", "DO", "DAS", "DOS", "COM", "PARA", "POR", "UND"].includes(token))
+  ));
+}
+
+function pontuarDescricao(a: string, b: string): number {
+  const tokensA = tokensDescricao(a);
+  const tokensB = tokensDescricao(b);
+  if (!tokensA.length || !tokensB.length) return 0;
+  const conjuntoB = new Set(tokensB);
+  const iguais = tokensA.filter(token => conjuntoB.has(token)).length;
+  return (2 * iguais) / (tokensA.length + tokensB.length);
+}
+
+function mapearCompraHistorica(row: {
+  valorUnitarioOriginal: unknown;
+  unidadeCompra: string;
+  dataEmissao: string | null;
+  dataImportacao: Date;
+  fornecedorNome: string | null;
+  fornecedorCnpj: string;
+}) {
+  return {
+    precoUnitario: Number(row.valorUnitarioOriginal),
+    unidade: row.unidadeCompra,
+    data: row.dataEmissao || row.dataImportacao.toISOString().slice(0, 10),
+    fornecedor: row.fornecedorNome || "Fornecedor sem nome",
+    cnpjFornecedor: row.fornecedorCnpj,
+  };
+}
+
+function calcularVariacaoCotada(
+  precoCotado: number,
+  unidadeCotada: string,
+  compra: { precoUnitario: number; unidade: string } | null
+): number | null {
+  if (!compra || compra.precoUnitario <= 0 || precoCotado < 0) return null;
+  if (normalizarUnidadeCotacao(unidadeCotada) !== normalizarUnidadeCotacao(compra.unidade)) return null;
+  return Number((((precoCotado - compra.precoUnitario) / compra.precoUnitario) * 100).toFixed(2));
+}
+
+function resumirComprasCotacao(
+  compras: Array<{
+    valorUnitarioOriginal: unknown;
+    unidadeCompra: string;
+    dataEmissao: string | null;
+    dataImportacao: Date;
+    fornecedorNome: string | null;
+    fornecedorCnpj: string;
+  }>,
+  fornecedorAtual: { cnpjFornecedor?: string | null; nomeFornecedor?: string | null },
+  precoCotado: number,
+  unidadeCotada: string,
+  comprasFornecedor?: Array<{
+    valorUnitarioOriginal: unknown;
+    unidadeCompra: string;
+    dataEmissao: string | null;
+    dataImportacao: Date;
+    fornecedorNome: string | null;
+    fornecedorCnpj: string;
+  }>
+) {
+  const compraAtual = compras[0] ?? null;
+  const compraFornecedor = (comprasFornecedor ?? compras).find(compra => mesmoFornecedor(fornecedorAtual, {
+    cnpjFornecedor: compra.fornecedorCnpj,
+    nomeFornecedor: compra.fornecedorNome,
+  })) ?? null;
+  const ultimaCompraGeral = compraAtual ? mapearCompraHistorica(compraAtual) : null;
+  const ultimaCompraFornecedor = compraFornecedor ? mapearCompraHistorica(compraFornecedor) : null;
+  return {
+    ultimaCompraFornecedor,
+    ultimaCompraGeral,
+    variacaoPrecoCotadoVsFornecedor: calcularVariacaoCotada(precoCotado, unidadeCotada, ultimaCompraFornecedor),
+    variacaoPrecoCotadoVsUltimaCompra: calcularVariacaoCotada(precoCotado, unidadeCotada, ultimaCompraGeral),
+    historicoUnidadeCompativel: Boolean(
+      ultimaCompraGeral && normalizarUnidadeCotacao(unidadeCotada) === normalizarUnidadeCotacao(ultimaCompraGeral.unidade)
+    ),
+  };
+}
+
+async function buscarHistoricoComprasCotacao(
+  db: NonNullable<Awaited<ReturnType<typeof getDb>>>,
+  materiaPrimaId: number,
+  fornecedorAtual: { cnpjFornecedor?: string | null; nomeFornecedor?: string | null }
+) {
+  const selecionarCompras = () => db
+    .select({
+      valorUnitarioOriginal: nfCompraItens.valorUnitario,
+      unidadeCompra: nfCompraItens.unidadeCompra,
+      dataEmissao: nfCompraImportacoes.dataEmissao,
+      dataImportacao: nfCompraImportacoes.createdAt,
+      fornecedorNome: nfCompraImportacoes.nomeFornecedor,
+      fornecedorCnpj: nfCompraImportacoes.cnpjFornecedor,
+    })
+    .from(nfCompraItens)
+    .innerJoin(nfCompraImportacoes, eq(nfCompraImportacoes.id, nfCompraItens.importacaoId));
+  const filtroBase = and(
+    eq(nfCompraItens.materiaPrimaId, materiaPrimaId),
+    eq(nfCompraImportacoes.status, "concluida")
+  );
+  const comprasGerais = await selecionarCompras()
+    .where(filtroBase)
+    .orderBy(desc(nfCompraImportacoes.createdAt))
+    .limit(200);
+
+  let comprasFornecedor = comprasGerais.filter(compra => mesmoFornecedor(fornecedorAtual, {
+    cnpjFornecedor: compra.fornecedorCnpj,
+    nomeFornecedor: compra.fornecedorNome,
+  }));
+  const cnpj = digitosCnpj(fornecedorAtual.cnpjFornecedor);
+  if (cnpj.length === 14) {
+    comprasFornecedor = await selecionarCompras()
+      .where(and(
+        filtroBase,
+        sql`regexp_replace(${nfCompraImportacoes.cnpjFornecedor}, '[^0-9]', '', 'g') = ${cnpj}`
+      ))
+      .orderBy(desc(nfCompraImportacoes.createdAt))
+      .limit(200);
+  } else {
+    const chaveNome = normalizarNomeFornecedor(fornecedorAtual.nomeFornecedor).split(" ")[0];
+    if (chaveNome) {
+      const comprasNome = await selecionarCompras()
+        .where(and(filtroBase, ilike(nfCompraImportacoes.nomeFornecedor, `%${chaveNome}%`)))
+        .orderBy(desc(nfCompraImportacoes.createdAt))
+        .limit(200);
+      comprasFornecedor = comprasNome.filter(compra => mesmoFornecedor(fornecedorAtual, {
+        cnpjFornecedor: compra.fornecedorCnpj,
+        nomeFornecedor: compra.fornecedorNome,
+      }));
+    }
+  }
+
+  return { comprasGerais, comprasFornecedor };
+}
 
 export const nfCompraRouter = router({
   /**
@@ -641,10 +829,39 @@ export const nfCompraRouter = router({
     }),
 
   /**
-   * Função 2 para o Comprador: Análise de Cotação em PDF com IA
-   * Extrai os itens do PDF, tenta achar vínculos automáticos e compara os preços
-   * cotados contra as últimas compras reais registradas no sistema.
+   * Purchase history summary for an item linked manually in the quote.
    */
+  historicoCotacaoPorMateriaPrima: protectedProcedure
+    .input(z.object({
+      materiaPrimaId: z.number().int().positive(),
+      cnpjFornecedor: z.string().optional(),
+      fornecedor: z.string().optional(),
+      precoCotado: z.number().nonnegative(),
+      unidadeCotada: z.string().min(1),
+    }))
+    .query(async ({ input }) => {
+      const db = await getDb();
+      if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Banco indisponível." });
+
+      const fornecedorAtual = {
+        cnpjFornecedor: input.cnpjFornecedor,
+        nomeFornecedor: input.fornecedor,
+      };
+      const { comprasGerais, comprasFornecedor } = await buscarHistoricoComprasCotacao(
+        db,
+        input.materiaPrimaId,
+        fornecedorAtual
+      );
+
+      return resumirComprasCotacao(
+        comprasGerais,
+        fornecedorAtual,
+        input.precoCotado,
+        input.unidadeCotada,
+        comprasFornecedor
+      );
+    }),
+
   analisarCotacaoPdf: protectedProcedure
     .input(
       z.object({
@@ -672,67 +889,164 @@ export const nfCompraRouter = router({
         .from(materiasPrimas)
         .where(eq(materiasPrimas.ativa, true));
 
+      const fornecedorAtual = {
+        cnpjFornecedor: cotacao.cnpjFornecedor,
+        nomeFornecedor: cotacao.fornecedor,
+      };
+      const catalogoPorId = new Map(todasMps.map(mp => [mp.id, mp]));
+
       // Para cada item da cotação, buscar histórico de última compra e comparar
       const itensAnalisados = await Promise.all(
-        cotacao.itens.map(async (itemCotado) => {
-          // Tentar encontrar MP correspondente pelo nome (busca simples por termos)
-          const termos = itemCotado.descricao.toLowerCase().split(/\s+/).filter(t => t.length > 2);
-          let melhorMp: (typeof todasMps)[0] | null = null;
-          let maiorScore = 0;
+        cotacao.itens.map(async itemCotado => {
+          const tokensBusca = tokensDescricao(itemCotado.descricao).filter(token => token.length >= 3).slice(0, 8);
+          const condicoesHistorico = [
+            ...(itemCotado.codigo?.trim() ? [eq(nfCompraItens.codigoFornecedor, itemCotado.codigo.trim())] : []),
+            ...tokensBusca.map(token => ilike(nfCompraItens.descricaoNf, `%${token}%`)),
+          ];
+          const cnpjCotacao = digitosCnpj(cotacao.cnpjFornecedor);
+          const chaveNomeFornecedor = normalizarNomeFornecedor(cotacao.fornecedor).split(" ")[0];
+          const comprasCodigoFornecedor = itemCotado.codigo?.trim() && cnpjCotacao.length === 14
+            ? await db
+                .select({
+                  materiaPrimaId: nfCompraItens.materiaPrimaId,
+                  codigoFornecedor: nfCompraItens.codigoFornecedor,
+                  descricaoNf: nfCompraItens.descricaoNf,
+                  cnpjFornecedor: nfCompraImportacoes.cnpjFornecedor,
+                  fornecedorNome: nfCompraImportacoes.nomeFornecedor,
+                })
+                .from(nfCompraItens)
+                .innerJoin(nfCompraImportacoes, eq(nfCompraImportacoes.id, nfCompraItens.importacaoId))
+                .where(and(
+                  eq(nfCompraImportacoes.status, "concluida"),
+                  isNotNull(nfCompraItens.materiaPrimaId),
+                  eq(nfCompraItens.codigoFornecedor, itemCotado.codigo.trim()),
+                  sql`regexp_replace(${nfCompraImportacoes.cnpjFornecedor}, '[^0-9]', '', 'g') = ${cnpjCotacao}`
+                ))
+                .orderBy(desc(nfCompraImportacoes.createdAt))
+                .limit(50)
+            : itemCotado.codigo?.trim() && chaveNomeFornecedor
+              ? await db
+                  .select({
+                    materiaPrimaId: nfCompraItens.materiaPrimaId,
+                    codigoFornecedor: nfCompraItens.codigoFornecedor,
+                    descricaoNf: nfCompraItens.descricaoNf,
+                    cnpjFornecedor: nfCompraImportacoes.cnpjFornecedor,
+                    fornecedorNome: nfCompraImportacoes.nomeFornecedor,
+                  })
+                  .from(nfCompraItens)
+                  .innerJoin(nfCompraImportacoes, eq(nfCompraImportacoes.id, nfCompraItens.importacaoId))
+                  .where(and(
+                    eq(nfCompraImportacoes.status, "concluida"),
+                    isNotNull(nfCompraItens.materiaPrimaId),
+                    eq(nfCompraItens.codigoFornecedor, itemCotado.codigo.trim()),
+                    ilike(nfCompraImportacoes.nomeFornecedor, `%${chaveNomeFornecedor}%`)
+                  ))
+                  .orderBy(desc(nfCompraImportacoes.createdAt))
+                  .limit(50)
+              : [];
+          const comprasParaCorrespondencia = condicoesHistorico.length
+            ? await db
+                .select({
+                  materiaPrimaId: nfCompraItens.materiaPrimaId,
+                  codigoFornecedor: nfCompraItens.codigoFornecedor,
+                  descricaoNf: nfCompraItens.descricaoNf,
+                  cnpjFornecedor: nfCompraImportacoes.cnpjFornecedor,
+                  fornecedorNome: nfCompraImportacoes.nomeFornecedor,
+                })
+                .from(nfCompraItens)
+                .innerJoin(nfCompraImportacoes, eq(nfCompraImportacoes.id, nfCompraItens.importacaoId))
+                .where(and(
+                  eq(nfCompraImportacoes.status, "concluida"),
+                  isNotNull(nfCompraItens.materiaPrimaId),
+                  or(...condicoesHistorico)
+                ))
+                .orderBy(desc(nfCompraImportacoes.createdAt))
+                .limit(300)
+            : [];
 
-          for (const mp of todasMps) {
-            const mpNome = mp.nome.toLowerCase();
-            let score = 0;
-            for (const t of termos) {
-              if (mpNome.includes(t)) score++;
-            }
-            if (score > maiorScore && score >= 2) {
-              maiorScore = score;
-              melhorMp = mp;
+          const candidatosPorId = new Map<number, { pontuacao: number; origem: string }>();
+          const codigosExatosDoFornecedor = new Set<number>();
+          for (const compra of [...comprasCodigoFornecedor, ...comprasParaCorrespondencia]) {
+            if (compra.materiaPrimaId == null) continue;
+            const fornecedorIgual = mesmoFornecedor(fornecedorAtual, {
+              cnpjFornecedor: compra.cnpjFornecedor,
+              nomeFornecedor: compra.fornecedorNome,
+            });
+            const codigoIgual = Boolean(
+              fornecedorIgual && itemCotado.codigo?.trim() &&
+              compra.codigoFornecedor.trim().toUpperCase() === itemCotado.codigo.trim().toUpperCase()
+            );
+            const pontuacaoTexto = pontuarDescricao(itemCotado.descricao, compra.descricaoNf);
+            const pontuacao = codigoIgual ? 2 : pontuacaoTexto;
+            if (codigoIgual) codigosExatosDoFornecedor.add(compra.materiaPrimaId);
+            const origem = codigoIgual
+              ? "código do fornecedor"
+              : fornecedorIgual
+                ? "histórico deste fornecedor"
+                : "histórico de outros fornecedores";
+            const anterior = candidatosPorId.get(compra.materiaPrimaId);
+            if (!anterior || pontuacao > anterior.pontuacao) {
+              candidatosPorId.set(compra.materiaPrimaId, { pontuacao, origem });
             }
           }
 
-          // Se achou uma MP candidata, buscar o histórico da última compra
-          let ultimaCompraReal: any = null;
-          let variacaoPrecoCotadoVsUltimaCompra: number | null = null;
+          for (const mp of todasMps) {
+            const pontuacao = pontuarDescricao(itemCotado.descricao, mp.nome);
+            const anterior = candidatosPorId.get(mp.id);
+            if (!anterior || pontuacao > anterior.pontuacao) {
+              candidatosPorId.set(mp.id, { pontuacao, origem: "cadastro de matérias-primas" });
+            }
+          }
+
+          const candidatosOrdenados = Array.from(candidatosPorId.entries())
+            .filter(([id, candidato]) => catalogoPorId.has(id) && candidato.pontuacao > 0)
+            .sort((a, b) => b[1].pontuacao - a[1].pontuacao);
+          const candidatosCodigo = candidatosOrdenados.filter(([id]) => codigosExatosDoFornecedor.has(id));
+          const topo = candidatosOrdenados[0] ?? null;
+          const segundo = candidatosOrdenados[1] ?? null;
+          const margem = topo ? topo[1].pontuacao - (segundo?.[1].pontuacao ?? 0) : 0;
+          let idVinculado: number | null = null;
+          if (candidatosCodigo.length === 1) {
+            idVinculado = candidatosCodigo[0][0];
+          } else if (candidatosCodigo.length === 0 && topo) {
+            const limite = topo[1].origem === "histórico deste fornecedor" ? 0.62 : 0.78;
+            if (topo[1].pontuacao >= limite && (segundo == null || margem >= 0.12)) {
+              idVinculado = topo[0];
+            }
+          }
+
+          const melhorMp = idVinculado == null ? null : catalogoPorId.get(idVinculado) ?? null;
+          const origemVinculo = idVinculado == null
+            ? null
+            : candidatosPorId.get(idVinculado)?.origem ?? null;
+          let comprasResumo = {
+            ultimaCompraFornecedor: null as ReturnType<typeof mapearCompraHistorica> | null,
+            ultimaCompraGeral: null as ReturnType<typeof mapearCompraHistorica> | null,
+            variacaoPrecoCotadoVsFornecedor: null as number | null,
+            variacaoPrecoCotadoVsUltimaCompra: null as number | null,
+            historicoUnidadeCompativel: false,
+          };
           let variacaoPrecoCotadoVsMubisys: number | null = null;
 
           if (melhorMp) {
-            const [ultima] = await db
-              .select({
-                valorUnitarioOriginal: nfCompraItens.valorUnitario,
-                unidadeCompra: nfCompraItens.unidadeCompra,
-                dataEmissao: nfCompraImportacoes.dataEmissao,
-                fornecedorNome: nfCompraImportacoes.nomeFornecedor,
-              })
-              .from(nfCompraItens)
-              .innerJoin(nfCompraImportacoes, eq(nfCompraImportacoes.id, nfCompraItens.importacaoId))
-              .where(eq(nfCompraItens.materiaPrimaId, melhorMp.id))
-              .orderBy(desc(nfCompraImportacoes.createdAt))
-              .limit(1);
+            const { comprasGerais, comprasFornecedor } = await buscarHistoricoComprasCotacao(
+              db,
+              melhorMp.id,
+              fornecedorAtual
+            );
+            comprasResumo = resumirComprasCotacao(
+              comprasGerais,
+              fornecedorAtual,
+              itemCotado.precoUnitario,
+              itemCotado.unidade,
+              comprasFornecedor
+            );
 
-            if (ultima) {
-              ultimaCompraReal = {
-                precoUnitario: Number(ultima.valorUnitarioOriginal),
-                unidade: ultima.unidadeCompra,
-                data: ultima.dataEmissao,
-                fornecedor: ultima.fornecedorNome,
-              };
-
-              // Se a unidade for a mesma, calcular variação direta
-              if (ultima.unidadeCompra.toUpperCase() === itemCotado.unidade.toUpperCase()) {
-                const uPreco = Number(ultima.valorUnitarioOriginal);
-                if (uPreco > 0) {
-                  variacaoPrecoCotadoVsUltimaCompra = Number(
-                    (((itemCotado.precoUnitario - uPreco) / uPreco) * 100).toFixed(2)
-                  );
-                }
-              }
-            }
-
-            // Comparar contra custo Mubisys atual
             const custoErp = melhorMp.custoUnitario ? Number(melhorMp.custoUnitario) : null;
-            if (custoErp && custoErp > 0) {
+            if (
+              custoErp && custoErp > 0 &&
+              normalizarUnidadeCotacao(melhorMp.unidadeMedida) === normalizarUnidadeCotacao(itemCotado.unidade)
+            ) {
               variacaoPrecoCotadoVsMubisys = Number(
                 (((itemCotado.precoUnitario - custoErp) / custoErp) * 100).toFixed(2)
               );
@@ -750,13 +1064,19 @@ export const nfCompraRouter = router({
                   unidadeMubisys: melhorMp.unidadeMedida,
                 }
               : null,
-            ultimaCompraReal,
-            variacaoPrecoCotadoVsUltimaCompra,
+            candidatosMateriaPrima: candidatosOrdenados.slice(0, 5).map(([id, candidato]) => ({
+              id,
+              nome: catalogoPorId.get(id)!.nome,
+              origem: candidato.origem,
+              pontuacao: Number(candidato.pontuacao.toFixed(3)),
+            })),
+            origemVinculo,
+            ...comprasResumo,
             variacaoPrecoCotadoVsMubisys,
+            semHistoricoCompras: Boolean(melhorMp && !comprasResumo.ultimaCompraGeral),
           };
         })
       );
-
       return {
         fornecedor: cotacao.fornecedor,
         cnpjFornecedor: cotacao.cnpjFornecedor,
