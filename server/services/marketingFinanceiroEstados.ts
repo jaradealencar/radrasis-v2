@@ -21,6 +21,7 @@ export interface PropostaClienteNovoEstado {
   clienteKey: string;
   estado: string | null;
   dataProposta: Date;
+  dataPrimeiraCompra: Date | null;
   valor: number | null;
 }
 
@@ -82,7 +83,13 @@ export function resumirEstadosNovos(
     vendasPorUf.set(destino, resumo);
   }
 
-  const propostasPorUf = new Map<string, { chaves: Set<string>; clientes: Set<string>; valor: number; semValor: number }>();
+  const propostasPorUf = new Map<string, {
+    chaves: Set<string>;
+    clientes: Set<string>;
+    clientesConvertidos: Set<string>;
+    valor: number;
+    semValor: number;
+  }>();
   const propostasSemUf = new Set<string>();
   const propostasSemValor = new Set<string>();
   const propostasVistas = new Set<string>();
@@ -111,9 +118,18 @@ export function resumirEstadosNovos(
       propostasSemUf.add(chave);
       if (valorValido) valorPropostasSemUf += proposta.valor!;
     } else {
-      const resumo = propostasPorUf.get(uf) ?? { chaves: new Set<string>(), clientes: new Set<string>(), valor: 0, semValor: 0 };
+      const resumo = propostasPorUf.get(uf) ?? {
+        chaves: new Set<string>(),
+        clientes: new Set<string>(),
+        clientesConvertidos: new Set<string>(),
+        valor: 0,
+        semValor: 0,
+      };
       resumo.chaves.add(chave);
-      if (proposta.clienteKey) resumo.clientes.add(proposta.clienteKey);
+      if (clienteKey) resumo.clientes.add(clienteKey);
+      if (proposta.dataPrimeiraCompra && proposta.dataPrimeiraCompra > proposta.dataProposta) {
+        resumo.clientesConvertidos.add(clienteKey);
+      }
       if (valorValido) resumo.valor += proposta.valor!;
       else resumo.semValor++;
       propostasPorUf.set(uf, resumo);
@@ -152,10 +168,11 @@ export function resumirEstadosNovos(
       uf,
       propostas: resumo.chaves.size,
       clientes: resumo.clientes.size,
+      clientesConvertidos: resumo.clientesConvertidos.size,
       valorPropostas: arredondar(resumo.valor),
       propostasSemValor: resumo.semValor,
     }))
-    .sort((a, b) => b.valorPropostas - a.valorPropostas || b.propostas - a.propostas || a.uf.localeCompare(b.uf));
+    .sort((a, b) => b.propostas - a.propostas || b.valorPropostas - a.valorPropostas || a.uf.localeCompare(b.uf));
 
   const compradores = [...vendasPorUf.values()];
   const vendasSemUfResumo = vendasPorUf.get("");

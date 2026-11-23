@@ -64,7 +64,7 @@ export default function MarketingEstadosNovos({ dataInicial, dataFinal }: { data
             <Users size={17} className="text-blue-600" /> Desempenho dos novos clientes por Estado
           </CardTitle>
           <p className="text-xs text-muted-foreground">
-            Ordenado pelo faturamento. Propostas são vinculadas ao mesmo cliente e só entram se foram emitidas antes da primeira compra, dentro do período.
+            Ordenado pelo faturamento. Propostas são vinculadas ao mesmo cliente e só entram se foram emitidas antes da primeira compra, dentro do período. Conversão = clientes com proposta prévia ÷ novos clientes.
           </p>
         </CardHeader>
         <CardContent>
@@ -82,13 +82,13 @@ export default function MarketingEstadosNovos({ dataInicial, dataFinal }: { data
                     <TableHead className="text-right">Média / cliente</TableHead>
                     <TableHead className="text-right">Clientes com proposta prévia</TableHead>
                     <TableHead className="text-right">Propostas antes da compra</TableHead>
-                    <TableHead className="text-right">Conversão</TableHead>
+                    <TableHead className="text-right">Com proposta (%)</TableHead>
                     <TableHead className="text-right">Valor cotado antes da compra</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {data.clientesPrimeiraCompra.map(item => {
-                    const conversao = conversaoPct(item.clientes, item.propostasAntesDaCompra);
+                    const conversao = conversaoPct(item.clientesComPropostaAntesDaCompra, item.clientes);
                     return (
                       <TableRow key={item.uf}>
                         <TableCell>{nomeEstado(item.uf)}</TableCell>
@@ -112,7 +112,7 @@ export default function MarketingEstadosNovos({ dataInicial, dataFinal }: { data
                       <TableCell className="text-right">{fmtBrl(data.clientesPrimeiraCompraSemUf > 0 ? data.faturamentoPrimeiraCompraSemUf / data.clientesPrimeiraCompraSemUf : 0)}</TableCell>
                       <TableCell className="text-right">{fmtNum(data.clientesComPropostaAntesDaCompraSemUf)}</TableCell>
                       <TableCell className="text-right">{fmtNum(data.propostasAntesDaCompraSemUf)}</TableCell>
-                      <TableCell className="text-right">{conversaoPct(data.clientesComPropostaAntesDaCompraSemUf, data.propostasAntesDaCompraSemUf) == null ? "—" : `${conversaoPct(data.clientesComPropostaAntesDaCompraSemUf, data.propostasAntesDaCompraSemUf)!.toFixed(1)}%`}</TableCell>
+                      <TableCell className="text-right">{conversaoPct(data.clientesComPropostaAntesDaCompraSemUf, data.clientesPrimeiraCompraSemUf) == null ? "—" : `${conversaoPct(data.clientesComPropostaAntesDaCompraSemUf, data.clientesPrimeiraCompraSemUf)!.toFixed(1)}%`}</TableCell>
                       <TableCell className="text-right">{fmtBrl(data.valorPropostasAntesDaCompraSemUf)}</TableCell>
                     </TableRow>
                   )}
@@ -124,7 +124,7 @@ export default function MarketingEstadosNovos({ dataInicial, dataFinal }: { data
                     <TableCell className="text-right">{fmtBrl(data.totalClientesPrimeiraCompra > 0 ? data.faturamentoPrimeiraCompra / data.totalClientesPrimeiraCompra : 0)}</TableCell>
                     <TableCell className="text-right">{fmtNum(data.clientesComPropostaAntesDaCompra)}</TableCell>
                     <TableCell className="text-right">{fmtNum(data.totalPropostasAntesDaCompra)}</TableCell>
-                    <TableCell className="text-right">{conversaoPct(data.totalClientesPrimeiraCompra, data.totalPropostasAntesDaCompra) == null ? "—" : `${conversaoPct(data.totalClientesPrimeiraCompra, data.totalPropostasAntesDaCompra)!.toFixed(1)}%`}</TableCell>
+                    <TableCell className="text-right">{conversaoPct(data.clientesComPropostaAntesDaCompra, data.totalClientesPrimeiraCompra) == null ? "—" : `${conversaoPct(data.clientesComPropostaAntesDaCompra, data.totalClientesPrimeiraCompra)!.toFixed(1)}%`}</TableCell>
                     <TableCell className="text-right">{fmtBrl(data.valorPropostasAntesDaCompra)}</TableCell>
                   </TableRow>
                 </TableBody>
@@ -144,7 +144,7 @@ export default function MarketingEstadosNovos({ dataInicial, dataFinal }: { data
             <MapPin size={17} className="text-violet-600" /> Pipeline de propostas para prospects por Estado
           </CardTitle>
           <p className="text-xs text-muted-foreground">
-            Propostas emitidas no período ({periodoTexto}) antes de qualquer compra válida registrada para o cliente. O Estado vem do endereço da proposta quando disponível.
+            Ordenado pelo número de propostas. Propostas emitidas no período ({periodoTexto}) antes de qualquer compra válida registrada para o cliente. O Estado vem do endereço da proposta quando disponível.
           </p>
         </CardHeader>
         <CardContent>
@@ -156,24 +156,23 @@ export default function MarketingEstadosNovos({ dataInicial, dataFinal }: { data
                 <TableHeader>
                   <TableRow>
                     <TableHead>Estado</TableHead>
-                    <TableHead className="text-right">Prospects</TableHead>
+                    <TableHead className="text-right">Clientes cotados</TableHead>
                     <TableHead className="text-right">Propostas</TableHead>
                     <TableHead className="text-right">Valor cotado</TableHead>
-                    <TableHead className="text-right">Clientes novos</TableHead>
+                    <TableHead className="text-right">Vendas</TableHead>
                     <TableHead className="text-right">Conversão</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {data.propostasNovosClientes.map(item => {
-                    const clientes = data.clientesPrimeiraCompra.find(c => c.uf === item.uf)?.clientes ?? 0;
-                    const conversao = conversaoPct(clientes, item.propostas);
+                    const conversao = conversaoPct(item.clientesConvertidos, item.clientes);
                     return (
                       <TableRow key={item.uf}>
                         <TableCell>{nomeEstado(item.uf)}</TableCell>
                         <TableCell className="text-right">{fmtNum(item.clientes)}</TableCell>
                         <TableCell className="text-right font-medium">{fmtNum(item.propostas)}</TableCell>
                         <TableCell className="text-right">{fmtBrl(item.valorPropostas)}</TableCell>
-                        <TableCell className="text-right">{fmtNum(clientes)}</TableCell>
+                        <TableCell className="text-right">{fmtNum(item.clientesConvertidos)}</TableCell>
                         <TableCell className="text-right">{conversao == null ? "—" : `${conversao.toFixed(1)}%`}</TableCell>
                       </TableRow>
                     );
@@ -183,7 +182,7 @@ export default function MarketingEstadosNovos({ dataInicial, dataFinal }: { data
             </div>
           )}
           <p className="mt-3 text-xs text-muted-foreground">
-            {fmtNum(data.totalPropostasNovosClientes)} propostas · {fmtBrl(data.valorPropostasNovosClientes)} no total com valor disponível. Clientes podem aparecer em UFs diferentes quando os endereços registrados nas propostas divergem.
+            {fmtNum(data.totalPropostasNovosClientes)} propostas · {fmtBrl(data.valorPropostasNovosClientes)} no total com valor disponível. O período selecionado considera a data de emissão das propostas. Vendas são clientes cuja primeira compra ocorreu depois de uma proposta do período, observadas até a última sincronização do histórico, mesmo que aconteçam fora do período; vínculo por nome normalizado. Taxa = vendas ÷ clientes cotados. Clientes podem aparecer em UFs diferentes quando os endereços das propostas divergem; as taxas por UF são independentes nesse caso.
             {data.propostasNovosClientesSemUf > 0 && ` ${fmtNum(data.propostasNovosClientesSemUf)} propostas (${fmtBrl(data.valorPropostasNovosClientesSemUf)}) sem UF confiável.`}
             {data.propostasNovosClientesSemValor > 0 && ` ${fmtNum(data.propostasNovosClientesSemValor)} ${data.propostasNovosClientesSemValor === 1 ? "proposta sem valor disponível." : "propostas sem valor disponível."}`}
           </p>

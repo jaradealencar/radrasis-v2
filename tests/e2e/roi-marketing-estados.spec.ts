@@ -33,8 +33,8 @@ const novos = {
   totalPropostasAntesDaCompra: 8,
   valorPropostasAntesDaCompra: 22400,
   propostasNovosClientes: [
-    { uf: "MT", propostas: 5, clientes: 4, valorPropostas: 9000, propostasSemValor: 0 },
-    { uf: "SP", propostas: 3, clientes: 3, valorPropostas: 22000, propostasSemValor: 0 },
+    { uf: "MT", propostas: 5, clientes: 4, clientesConvertidos: 2, valorPropostas: 9000, propostasSemValor: 0 },
+    { uf: "SP", propostas: 3, clientes: 3, clientesConvertidos: 1, valorPropostas: 22000, propostasSemValor: 0 },
   ],
   totalPropostasNovosClientes: 10,
   valorPropostasNovosClientes: 33000,
@@ -68,7 +68,7 @@ const novos2025 = {
   clientesComPropostaAntesDaCompra: 1,
   totalPropostasAntesDaCompra: 2,
   valorPropostasAntesDaCompra: 2400,
-  propostasNovosClientes: [{ uf: "GO", propostas: 2, clientes: 2, valorPropostas: 7200, propostasSemValor: 0 }],
+  propostasNovosClientes: [{ uf: "GO", propostas: 2, clientes: 2, clientesConvertidos: 1, valorPropostas: 7200, propostasSemValor: 0 }],
   totalPropostasNovosClientes: 2,
   valorPropostasNovosClientes: 7200,
   propostasNovosClientesSemUf: 0,
@@ -148,17 +148,33 @@ test("mantém CAC/ROI anual enquanto os relatórios por Estado seguem o período
   const linhaMtNovos = vendasPorEstado.getByRole("row", { name: /Mato Grosso \(MT\)/ });
   await expect(linhaMtNovos).toContainText("42.000,00");
   await expect(linhaMtNovos).toContainText("6.000,00");
+  await expect(linhaMtNovos).toContainText("57.1%");
   const linhaTotalNovos = vendasPorEstado.getByRole("row", { name: /^Total/ });
   await expect(linhaTotalNovos).toContainText("66.200,20");
   await expect(linhaTotalNovos).toContainText("22.400,00");
+  await expect(linhaTotalNovos).toContainText("50.0%");
   await expect(page.getByText("Pipeline de propostas para prospects por Estado")).toBeVisible();
   await expect(page.getByRole("cell", { name: "São Paulo (SP)" })).toBeVisible();
   const propostasPorEstado = roi.locator('[data-slot="card"]').filter({ hasText: "Pipeline de propostas para prospects por Estado" });
-  await expect(propostasPorEstado.getByRole("row", { name: /Mato Grosso \(MT\)/ })).toContainText("5");
-  await expect(propostasPorEstado.getByRole("row", { name: /São Paulo \(SP\)/ })).toContainText("22.000,00");
+  await expect(propostasPorEstado.getByRole("columnheader", { name: "Clientes cotados" })).toBeVisible();
+  await expect(propostasPorEstado.getByRole("columnheader", { name: "Vendas" })).toBeVisible();
+  const propostasMt = propostasPorEstado.getByRole("row", { name: /Mato Grosso \(MT\)/ });
+  await expect(propostasPorEstado.getByRole("row").nth(1)).toContainText("Mato Grosso (MT)");
+  await expect(propostasMt.getByRole("cell").nth(1)).toHaveText("4");
+  await expect(propostasMt.getByRole("cell").nth(2)).toHaveText("5");
+  await expect(propostasMt.getByRole("cell").nth(4)).toHaveText("2");
+  await expect(propostasMt.getByRole("cell").nth(5)).toHaveText("50.0%");
+  const propostasSp = propostasPorEstado.getByRole("row", { name: /São Paulo \(SP\)/ });
+  await expect(propostasSp.getByRole("cell").nth(1)).toHaveText("3");
+  await expect(propostasSp.getByRole("cell").nth(2)).toHaveText("3");
+  await expect(propostasSp.getByRole("cell").nth(3)).toContainText("22.000,00");
+  await expect(propostasSp.getByRole("cell").nth(4)).toHaveText("1");
+  await expect(propostasSp.getByRole("cell").nth(5)).toHaveText("33.3%");
+  await expect(roi.getByText(/taxas por UF são independentes/i)).toBeVisible();
   const resumoPipeline = propostasPorEstado.locator("p").last();
   await expect(resumoPipeline).toContainText("10 propostas");
   await expect(resumoPipeline).toContainText("33.000,00");
+  await expect(resumoPipeline).toContainText("última sincronização do histórico");
   await expect(resumoPipeline).toContainText("2 propostas");
   await expect(resumoPipeline).toContainText("1 proposta sem valor disponível");
 
@@ -175,7 +191,10 @@ test("mantém CAC/ROI anual enquanto os relatórios por Estado seguem o período
   await expect(reativacaoAno.getByRole("row", { name: /Novembro \/ 2026/ })).toBeVisible();
   const vendasOutubroPorEstado = roi.locator('[data-slot="card"]').filter({ hasText: "Desempenho dos novos clientes por Estado" });
   await expect(vendasOutubroPorEstado.getByRole("row", { name: /Rio Grande do Sul \(RS\)/ })).toContainText("4.500,00");
-  await expect(page.getByRole("row", { name: /\(GO\)/ })).toContainText("7.200,00");
+  const propostasGo2025 = page.getByRole("row", { name: /\(GO\)/ });
+  await expect(propostasGo2025).toContainText("7.200,00");
+  await expect(propostasGo2025).toContainText("1");
+  await expect(propostasGo2025).toContainText("50.0%");
   await expect(page.getByText(/Fontes indispon/)).toBeVisible();
   const resumoPipeline2025 = propostasPorEstado.locator("p").last();
   await expect(resumoPipeline2025).toContainText("2 propostas");

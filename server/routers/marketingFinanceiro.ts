@@ -424,6 +424,7 @@ export const marketingFinanceiroRouter = router({
         clienteKey: string;
         estado: string | null;
         dataProposta: Date;
+        dataPrimeiraCompra: Date | null;
         valor: number | null;
       }> = [];
       const statusExcluidos = new Set(["cancelada", "cancelado", "excluída", "excluído", "excluida", "excluido"]);
@@ -448,6 +449,7 @@ export const marketingFinanceiroRouter = router({
           clienteKey,
           estado,
           dataProposta,
+          dataPrimeiraCompra: primeiraCompra ?? null,
           valor: proposta.total == null || !Number.isFinite(Number(proposta.total)) ? null : Number(proposta.total),
         });
       }
