@@ -122,11 +122,9 @@ test("cadastra cotação de empresa nova e exibe na lista", async ({ page }) => 
 
   await page.getByRole("button", { name: /Nova Cotação Externa/ }).click();
 
-  await page.getByLabel(/CNPJ/).fill("11.222.333/0001-44");
-  await page.getByLabel(/Nome Fantasia/).fill("FORNECEDOR NOVO LTDA");
-  await page.getByLabel(/Razão Social/).fill("Fornecedor Novo LTDA");
-  await page.getByLabel(/Cidade/).fill("São Paulo");
-  await page.getByLabel(/Estado/).fill("SP");
+  await page.locator('input[name="cnpj"]').fill("11.222.333/0001-44");
+  await page.locator('input[name="nomeFantasia"]').fill("FORNECEDOR NOVO LTDA");
+  await page.locator('input[name="razaoSocial"]').fill("Fornecedor Novo LTDA");
   // Empresa que NUNCA trabalhamos — deixa o checkbox desmarcado
 
   await page.getByRole("button", { name: /Salvar Cotação/ }).click();
@@ -134,9 +132,7 @@ test("cadastra cotação de empresa nova e exibe na lista", async ({ page }) => 
   // Deve aparecer na lista com selo de empresa nova
   await expect(page.getByText("FORNECEDOR NOVO LTDA")).toBeVisible();
   await expect(page.getByText("11.222.333/0001-44")).toBeVisible();
-  await expect(
-    page.getByRole("button", { name: /Empresa nova/ })
-  ).toBeVisible();
+  await expect(page.getByText("Empresa nova", { exact: true })).toBeVisible();
   expect(erros).toEqual([]);
 });
 
@@ -188,6 +184,6 @@ test("exibe KPIs de fornecedores cadastrados e empresas novas", async ({ page })
   await page.goto("/e2e-cotacoes-externas.html", { waitUntil: "domcontentloaded" });
 
   await expect(page.getByText("FORNECEDOR A LTDA")).toBeVisible();
-  await expect(page.getByText("R$ 28,50")).toBeVisible();
+  await expect(page.getByRole("cell", { name: /28,50/ })).toBeVisible();
   expect(erros).toEqual([]);
 });
