@@ -14,6 +14,13 @@ export const logisticaCompraSchema = z.object({
     .default(null),
   freteConfirmado: z.boolean(),
   pesoPrevistoKg: z.number().finite().positive().max(1e9).nullable(),
+  volumePrevistoM3: z
+    .number()
+    .finite()
+    .positive()
+    .max(1e9)
+    .nullable()
+    .default(null),
   transportadora: z.string().trim().max(256),
   numeroColeta: z.string().trim().max(128),
 });

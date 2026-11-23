@@ -21,6 +21,7 @@ export function FreteCompraCampos({
   mudarModo,
   mudarValor,
   mudarPeso,
+  mostrarPeso = true,
 }: {
   modo: ModoFreteCompra;
   valor: string;
@@ -28,6 +29,7 @@ export function FreteCompraCampos({
   mudarModo: (modo: ModoFreteCompra) => void;
   mudarValor: (valor: string) => void;
   mudarPeso: (peso: string) => void;
+  mostrarPeso?: boolean;
 }) {
   const calculo = calcularFreteCompra(
     modo,
@@ -62,7 +64,7 @@ export function FreteCompraCampos({
           onChange={e => mudarValor(e.target.value)}
         />
       </Campo>
-      {modo === "por_kg" ? (
+      {modo === "por_kg" && mostrarPeso ? (
         <Campo nome="Peso previsto da carga (kg)">
           <Input
             inputMode="decimal"
@@ -71,14 +73,14 @@ export function FreteCompraCampos({
             placeholder="Definitivo quando chegar a NF"
           />
         </Campo>
-      ) : (
+      ) : modo !== "por_kg" ? (
         <p className="self-end text-xs pb-2">
           Total de frete:{" "}
           <strong>
             {calculo.total == null ? "não informado" : fmtBrl(calculo.total)}
           </strong>
         </p>
-      )}
+      ) : null}
       {modo === "por_kg" && (
         <p className="sm:col-span-3 text-xs text-slate-500">
           {calculo.total == null
@@ -161,6 +163,9 @@ function EditorLogistica({
   const [peso, setPeso] = useState(
     o.pesoPrevistoKg == null ? "" : String(o.pesoPrevistoKg)
   );
+  const [volume, setVolume] = useState(
+    o.volumePrevistoM3 == null ? "" : String(o.volumePrevistoM3)
+  );
   const [modo, setModo] = useState<ModoFreteCompra>(
     o.freteModo as ModoFreteCompra
   );
@@ -170,6 +175,7 @@ function EditorLogistica({
   const salvar = trpc.compras.atualizarLogistica.useMutation();
   const valor = decimal(frete);
   const pesoKg = decimal(peso);
+  const volumeM3 = decimal(volume);
   const calculo = calcularFreteCompra(
     modo,
     valor,
@@ -201,8 +207,25 @@ function EditorLogistica({
           setConfirmado(false);
         }}
         mudarPeso={setPeso}
+        mostrarPeso={false}
       />
       <div className="grid gap-3 sm:grid-cols-2">
+        <Campo nome="Peso total da carga (kg)">
+          <Input
+            inputMode="decimal"
+            value={peso}
+            onChange={e => setPeso(e.target.value)}
+            placeholder="Opcional"
+          />
+        </Campo>
+        <Campo nome="Volume total da carga (m³)">
+          <Input
+            inputMode="decimal"
+            value={volume}
+            onChange={e => setVolume(e.target.value)}
+            placeholder="Opcional"
+          />
+        </Campo>
         <Campo nome="Transportadora">
           <Input
             value={transportadora}
@@ -243,9 +266,10 @@ function EditorLogistica({
           try {
             if (
               (modo !== "gratis" && (!Number.isFinite(valor) || valor < 0)) ||
-              (peso.trim() && !(pesoKg > 0))
+              (peso.trim() && !(pesoKg > 0)) ||
+              (volume.trim() && !(volumeM3 > 0))
             ) {
-              toast.error("Confira o valor do frete e o peso.");
+              toast.error("Confira o valor do frete, peso e volume.");
               return;
             }
             await salvar.mutateAsync({
@@ -256,6 +280,7 @@ function EditorLogistica({
               freteValorInformado: modo === "gratis" ? 0 : valor,
               freteConfirmado: confirmado,
               pesoPrevistoKg: peso.trim() ? pesoKg : null,
+              volumePrevistoM3: volume.trim() ? volumeM3 : null,
               transportadora,
               numeroColeta: coleta,
             });

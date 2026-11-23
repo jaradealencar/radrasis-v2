@@ -112,7 +112,51 @@ export const ordemCompraSchema = z
       .max(1e9)
       .nullable()
       .default(null),
-    pesoPrevistoKg: z.number().finite().positive().nullable().default(null),
+    pesoPrevistoKg: z
+      .number()
+      .finite()
+      .positive()
+      .max(1e9)
+      .nullable()
+      .default(null),
+    volumePrevistoM3: z
+      .number()
+      .finite()
+      .positive()
+      .max(1e9)
+      .nullable()
+      .default(null),
+    observacoes: z.string().max(4000),
+    itens: z
+      .array(
+        z.object({
+          itemId: z.number().int().positive(),
+          quantidade: z.number().finite().positive().max(1e8),
+          // Interfaces antigas enviam só itemId/quantidade. O servidor resolve
+          // o preço pela cotação persistida para preservar o valor aprovado.
+          precoUnitario: z.number().finite().nonnegative().max(1e9).optional(),
+        })
+      )
+      .min(1)
+      .max(300),
+  })
+  .superRefine((v, ctx) => {
+    if (new Set(v.itens.map(i => i.itemId)).size !== v.itens.length)
+      ctx.addIssue({ code: "custom", message: "Item duplicado na ordem." });
+    if (v.pagamento === "faturado" && !v.condicaoPagamento.trim())
+      ctx.addIssue({
+        code: "custom",
+        path: ["condicaoPagamento"],
+        message: "Informe os prazos do faturamento.",
+      });
+  });
+export const editarOrdemCompraSchema = z
+  .object({
+    id: z.number().int().positive(),
+    nomeComprador: z.string().trim().min(3).max(256),
+    comprador: compradorSchema,
+    pagamento: z.enum(["a_vista", "faturado"]),
+    condicaoPagamento: z.string().max(256),
     observacoes: z.string().max(4000),
     itens: z
       .array(

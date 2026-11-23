@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   compradorSchema,
   dataCompraSchema,
+  editarOrdemCompraSchema,
   menorCotacaoDisponivel,
   ordemCompraSchema,
   precoConsumo,
@@ -112,6 +113,10 @@ describe("Compras: consumo, referências e emissão", () => {
     expect(
       ordemCompraSchema.safeParse({ ...ordem, nomeComprador: "" }).success
     ).toBe(false);
+    expect(
+      ordemCompraSchema.safeParse({ ...ordem, nomeComprador: undefined })
+        .success
+    ).toBe(false);
     expect(ordemCompraSchema.safeParse({ ...ordem, itens: [] }).success).toBe(
       false
     );
@@ -135,6 +140,25 @@ describe("Compras: consumo, referências e emissão", () => {
     ).toBe(false);
     expect(
       ordemCompraSchema.safeParse({ ...ordem, pagamento: "faturado" }).success
+    ).toBe(false);
+  });
+  it("valida os dados alterados em uma ordem existente", () => {
+    const dados = {
+      id: 12,
+      nomeComprador: "Daniel Jara",
+      comprador,
+      pagamento: "a_vista" as const,
+      condicaoPagamento: "",
+      observacoes: "",
+      itens: [{ itemId: 1, quantidade: 3, precoUnitario: 14.5 }],
+    };
+    expect(editarOrdemCompraSchema.safeParse(dados).success).toBe(true);
+    expect(
+      editarOrdemCompraSchema.safeParse({ ...dados, nomeComprador: "  " })
+        .success
+    ).toBe(false);
+    expect(
+      editarOrdemCompraSchema.safeParse({ ...dados, itens: [] }).success
     ).toBe(false);
   });
 });

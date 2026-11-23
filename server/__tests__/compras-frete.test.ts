@@ -6,12 +6,26 @@ import {
   validarFreteNf,
 } from "../../shared/compras-frete";
 import { medidasChapaMm, precoChapaM2 } from "../../shared/compras-chapas";
-import { fornecedorDaOrdemConfere, snapshotFreteNf } from "../services/comprasFrete";
+import {
+  fornecedorDaOrdemConfere,
+  snapshotFreteNf,
+} from "../services/comprasFrete";
 import { calcularNfCompra } from "../services/nfCalculo";
 
 describe("Ciclo da ordem para NF com frete", () => {
   it("usa a tarifa do servidor em vez de um total adulterado enviado pela tela", () => {
-    const ordem = { ordem: { frete: "250", freteModo: "por_kg", freteValorInformado: "2.5000", freteConfirmado: true, logisticaRevisao: 2, transportadora: "Transportadora A", numeroColeta: "COL-1" }, utilizado: 0 } as Parameters<typeof snapshotFreteNf>[0];
+    const ordem = {
+      ordem: {
+        frete: "250",
+        freteModo: "por_kg",
+        freteValorInformado: "2.5000",
+        freteConfirmado: true,
+        logisticaRevisao: 2,
+        transportadora: "Transportadora A",
+        numeroColeta: "COL-1",
+      },
+      utilizado: 0,
+    } as Parameters<typeof snapshotFreteNf>[0];
     const snapshot = snapshotFreteNf(ordem, 1, 150);
     expect(snapshot.freteAplicado).toBe(375);
     expect(snapshot.valorPorKg).toBe(2.5);
@@ -20,7 +34,18 @@ describe("Ciclo da ordem para NF com frete", () => {
     expect(() => snapshotFreteNf(ordem, 0, null)).toThrow(/peso/);
   });
   it("fixa zero no snapshot do frete grátis mesmo com valor enviado pela tela", () => {
-    const ordem = { ordem: { frete: "0", freteModo: "gratis", freteValorInformado: "0", freteConfirmado: true, logisticaRevisao: 1, transportadora: "", numeroColeta: "" }, utilizado: 0 } as Parameters<typeof snapshotFreteNf>[0];
+    const ordem = {
+      ordem: {
+        frete: "0",
+        freteModo: "gratis",
+        freteValorInformado: "0",
+        freteConfirmado: true,
+        logisticaRevisao: 1,
+        transportadora: "",
+        numeroColeta: "",
+      },
+      utilizado: 0,
+    } as Parameters<typeof snapshotFreteNf>[0];
     expect(snapshotFreteNf(ordem, 300, null).freteAplicado).toBe(0);
   });
   it("distingue frete fixo, por kg e grátis sem tratar tarifa como valor total", () => {
@@ -120,10 +145,14 @@ describe("Ciclo da ordem para NF com frete", () => {
       frete: 300,
       freteConfirmado: true,
       pesoPrevistoKg: 150,
+      volumePrevistoM3: 2.4,
       transportadora: "Manual",
       numeroColeta: "COL123",
     };
     expect(logisticaCompraSchema.safeParse(dados).success).toBe(true);
+    expect(
+      logisticaCompraSchema.safeParse({ ...dados, volumePrevistoM3: 0 }).success
+    ).toBe(false);
     expect(
       logisticaCompraSchema.safeParse({ ...dados, frete: -1 }).success
     ).toBe(false);

@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
-import { and, eq, desc, inArray, ilike, or, sql } from "drizzle-orm";
+import { and, eq, desc, inArray, ilike, isNull, or, sql } from "drizzle-orm";
 import { comprasLogisticaHistorico } from "../../drizzle/schema";
 import {
   calcularFreteCompra,
@@ -25,6 +25,7 @@ import {
 } from "../../drizzle/schema";
 import {
   cotacaoCompraSchema,
+  editarOrdemCompraSchema,
   ordemCompraSchema,
   precoConsumo,
   unidadeConsumo,
@@ -281,7 +282,13 @@ export const comprasRouter = router({
               message: "Item não pertence à cotação.",
             });
           const precoCotado = Number(origem.precoUnitario);
-          const preco = i.precoUnitario;
+          const preco = i.precoUnitario ?? precoCotado;
+          if (i.precoUnitario == null && !(precoCotado > 0))
+            throw new TRPCError({
+              code: "BAD_REQUEST",
+              message:
+                "O preço deste item não está disponível na cotação. Atualize o preço antes de emitir a ordem.",
+            });
           return {
             itemId: origem.id,
             materiaPrimaId: origem.materiaPrimaId,
@@ -317,6 +324,10 @@ export const comprasRouter = router({
               input.pesoPrevistoKg == null
                 ? null
                 : String(input.pesoPrevistoKg),
+            volumePrevistoM3:
+              input.volumePrevistoM3 == null
+                ? null
+                : String(input.volumePrevistoM3),
             total: total.toFixed(2),
             criadoPor: ctx.user.id,
           })
@@ -355,6 +366,7 @@ export const comprasRouter = router({
         .innerJoin(cotacoes, eq(cotacoes.id, ordens.cotacaoId))
         .where(
           and(
+            isNull(ordens.excluidaEm),
             input.busca
               ? or(
                   ilike(cotacoes.fornecedor, `%${input.busca}%`),
@@ -377,6 +389,126 @@ export const comprasRouter = router({
         .limit(50)
         .offset(input.pagina * 50)
     ),
+  editarOrdem: protectedProcedure
+    .input(editarOrdemCompraSchema)
+    .mutation(async ({ input, ctx }) => {
+      const db = await banco();
+      return db.transaction(async tx => {
+        const [atual] = await tx
+          .select()
+          .from(ordens)
+          .where(eq(ordens.id, input.id))
+          .for("update");
+        if (!atual || atual.excluidaEm)
+          throw new TRPCError({
+            code: "NOT_FOUND",
+            message: "Ordem de compra não encontrada.",
+          });
+        const [nfVinculada] = await tx
+          .select({ id: vinculos.id })
+          .from(vinculos)
+          .where(eq(vinculos.ordemId, input.id))
+          .limit(1);
+        if (nfVinculada)
+          throw new TRPCError({
+            code: "CONFLICT",
+            message:
+              "Esta ordem já tem NF vinculada e foi bloqueada para preservar a auditoria. Edite somente a logística.",
+          });
+        if (
+          input.comprador.tipo === "empresa" &&
+          !input.comprador.inscricaoEstadual.trim()
+        )
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: "Informe a inscrição estadual da empresa.",
+          });
+        const origens = await tx
+          .select()
+          .from(itens)
+          .where(eq(itens.cotacaoId, atual.cotacaoId));
+        const linhas: LinhaOrdemCompra[] = input.itens.map(i => {
+          const origem = origens.find(o => o.id === i.itemId);
+          if (!origem)
+            throw new TRPCError({
+              code: "BAD_REQUEST",
+              message: "Item não pertence à cotação desta ordem.",
+            });
+          const precoCotado = Number(origem.precoUnitario);
+          return {
+            itemId: origem.id,
+            materiaPrimaId: origem.materiaPrimaId,
+            codigo: origem.codigo,
+            descricao: origem.descricao,
+            unidade: origem.unidade,
+            quantidade: i.quantidade,
+            precoUnitario: i.precoUnitario,
+            precoCotadoUnitario: precoCotado,
+            total: Math.round(i.quantidade * i.precoUnitario * 100) / 100,
+            unidadeDestino: origem.unidadeDestino,
+            fatorConversao: origem.fatorConversao
+              ? Number(origem.fatorConversao)
+              : null,
+            formula: origem.formula,
+          };
+        });
+        const subtotal = linhas.reduce((s, linha) => s + linha.total, 0);
+        const frete = calcularFreteCompra(
+          atual.freteModo as "valor_total" | "por_kg" | "gratis",
+          atual.freteValorInformado == null
+            ? Number(atual.frete)
+            : Number(atual.freteValorInformado),
+          atual.pesoPrevistoKg == null ? null : Number(atual.pesoPrevistoKg)
+        ).total;
+        const [salva] = await tx
+          .update(ordens)
+          .set({
+            nomeComprador: input.nomeComprador,
+            comprador: input.comprador,
+            pagamento: input.pagamento,
+            condicaoPagamento: input.condicaoPagamento,
+            observacoes: input.observacoes,
+            itens: linhas,
+            total: (subtotal + (frete ?? 0)).toFixed(2),
+          })
+          .where(eq(ordens.id, input.id))
+          .returning();
+        return salva;
+      });
+    }),
+  excluirOrdem: protectedProcedure
+    .input(z.object({ id: z.number().int().positive() }))
+    .mutation(async ({ input, ctx }) => {
+      const db = await banco();
+      return db.transaction(async tx => {
+        const [atual] = await tx
+          .select()
+          .from(ordens)
+          .where(eq(ordens.id, input.id))
+          .for("update");
+        if (!atual || atual.excluidaEm)
+          throw new TRPCError({
+            code: "NOT_FOUND",
+            message: "Ordem de compra não encontrada.",
+          });
+        const [nfVinculada] = await tx
+          .select({ id: vinculos.id })
+          .from(vinculos)
+          .where(eq(vinculos.ordemId, input.id))
+          .limit(1);
+        if (nfVinculada)
+          throw new TRPCError({
+            code: "CONFLICT",
+            message:
+              "Esta ordem já tem NF vinculada. Remova o vínculo da NF antes de excluir a ordem.",
+          });
+        await tx
+          .update(ordens)
+          .set({ excluidaEm: new Date(), excluidaPor: ctx.user.id })
+          .where(eq(ordens.id, input.id));
+        return { ok: true };
+      });
+    }),
   obterOrdemFrete: protectedProcedure
     .input(z.object({ id: z.number().int().positive() }))
     .query(async ({ input }) => {
@@ -431,6 +563,10 @@ export const comprasRouter = router({
               input.pesoPrevistoKg == null
                 ? null
                 : String(input.pesoPrevistoKg),
+            volumePrevistoM3:
+              input.volumePrevistoM3 == null
+                ? null
+                : String(input.volumePrevistoM3),
             logisticaRevisao: revisao,
             total: (subtotal + (frete ?? 0)).toFixed(2),
           })
@@ -649,7 +785,7 @@ export const comprasRouter = router({
         .select()
         .from(ordens)
         .where(eq(ordens.id, input.id));
-      if (!ordem)
+      if (!ordem || ordem.excluidaEm)
         throw new TRPCError({
           code: "NOT_FOUND",
           message: "Ordem não encontrada.",

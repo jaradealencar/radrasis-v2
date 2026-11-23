@@ -25,6 +25,16 @@ import ChartTooltip from "@/components/ChartTooltip";
 import { chartColor } from "@/lib/chartColors";
 import { RotateCcw, Trash2 } from "lucide-react";
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import {
   Line,
   LineChart,
   CartesianGrid,
@@ -41,6 +51,7 @@ import {
   type ModoFreteCompra,
 } from "./ComprasLogistica";
 import { calcularFreteCompra } from "@shared/compras-frete";
+import { EditarOrdemModal, type CompraOrdemRegistro } from "./ComprasOrdemEdit";
 import {
   unidadeConsumo,
   compradorSchema,
@@ -350,6 +361,7 @@ function EditorOrdem({
   const [pesoFrete, setPesoFrete] = useState(
     cotacao.pesoFreteKg == null ? "" : String(cotacao.pesoFreteKg)
   );
+  const [volumeTotal, setVolumeTotal] = useState("");
   const freteCalculado = calcularFreteCompra(
     freteModo,
     frete.trim() ? Number(frete.replace(",", ".")) : null,
@@ -374,6 +386,11 @@ function EditorOrdem({
         quantidade != null && quantidade > 0 && preco != null && preco >= 0
       );
     });
+  const pesoInformado = numeroEditado(pesoFrete);
+  const volumeInformado = numeroEditado(volumeTotal);
+  const expedicaoValida =
+    (!pesoFrete.trim() || (pesoInformado != null && pesoInformado > 0)) &&
+    (!volumeTotal.trim() || (volumeInformado != null && volumeInformado > 0));
   const itens = linhasAtivas.flatMap(i => {
     const quantidade = numeroEditado(quantidades[i.id] ?? "");
     const precoUnitario = numeroEditado(precos[i.id] ?? "");
@@ -393,7 +410,7 @@ function EditorOrdem({
     valor: string
   ) => setDados(v => ({ ...v, [tipo]: { ...v[tipo], [campo]: valor } }));
   const gerar = async () => {
-    if (!nomeComprador.trim()) {
+    if (nomeComprador.trim().length < 3) {
       toast.error("Informe o nome de quem está fazendo a compra.");
       return;
     }
@@ -426,6 +443,12 @@ function EditorOrdem({
       );
       return;
     }
+    if (!expedicaoValida) {
+      toast.error(
+        "Informe peso e volume maiores que zero, ou deixe o campo vazio."
+      );
+      return;
+    }
     try {
       const entrada = {
         cotacaoId: cotacao.id,
@@ -439,9 +462,8 @@ function EditorOrdem({
         freteModo,
         freteValorInformado:
           freteModo === "gratis" ? 0 : Number(frete.replace(",", ".")),
-        pesoPrevistoKg: pesoFrete.trim()
-          ? Number(pesoFrete.replace(",", "."))
-          : null,
+        pesoPrevistoKg: pesoFrete.trim() ? pesoInformado : null,
+        volumePrevistoM3: volumeTotal.trim() ? volumeInformado : null,
         observacoes: obs,
         itens,
       };
@@ -672,6 +694,24 @@ function EditorOrdem({
           <Input value={obs} onChange={e => setObs(e.target.value)} />
         </Campo>
       </div>
+      <div className="grid gap-2 sm:grid-cols-2">
+        <Campo titulo="Peso total da carga (kg)">
+          <Input
+            inputMode="decimal"
+            value={pesoFrete}
+            onChange={e => setPesoFrete(e.target.value)}
+            placeholder="Opcional"
+          />
+        </Campo>
+        <Campo titulo="Volume total da carga (m³)">
+          <Input
+            inputMode="decimal"
+            value={volumeTotal}
+            onChange={e => setVolumeTotal(e.target.value)}
+            placeholder="Opcional"
+          />
+        </Campo>
+      </div>
       <FreteCompraCampos
         modo={freteModo}
         valor={frete}
@@ -679,6 +719,7 @@ function EditorOrdem({
         mudarModo={setFreteModo}
         mudarValor={setFrete}
         mudarPeso={setPesoFrete}
+        mostrarPeso={false}
       />
       <div className="flex flex-wrap items-center justify-between gap-3">
         <strong>
@@ -690,7 +731,12 @@ function EditorOrdem({
           {total == null ? "Revise quantidades e preços" : fmtBrl(total)}
         </strong>
         <Button
-          disabled={emitir.isPending || !itensValidos}
+          disabled={
+            emitir.isPending ||
+            !itensValidos ||
+            !expedicaoValida ||
+            nomeComprador.trim().length < 3
+          }
           onClick={() => void gerar()}
         >
           {emitir.isPending ? "Emitindo..." : "Emitir, salvar e baixar PDF"}
@@ -708,6 +754,7 @@ export function ComprasHistorico({
   onOrdem: (id: number) => void;
 }) {
   const utils = trpc.useUtils();
+  const removerOrdem = trpc.compras.excluirOrdem.useMutation();
   const [aba, setAba] = useState<"cotacoes" | "evolucao" | "ordens">(
     "cotacoes"
   );
@@ -719,6 +766,12 @@ export function ComprasHistorico({
   const [unidade, setUnidade] = useState("");
   const [auditar, setAuditar] = useState<number | null>(null);
   const [logisticaId, setLogisticaId] = useState<number | null>(null);
+  const [editarOrdem, setEditarOrdem] = useState<CompraOrdemRegistro | null>(
+    null
+  );
+  const [excluirOrdem, setExcluirOrdem] = useState<CompraOrdemRegistro | null>(
+    null
+  );
   const [buscaOrdem, setBuscaOrdem] = useState("");
   const [inicioOrdem, setInicioOrdem] = useState("");
   const [fimOrdem, setFimOrdem] = useState("");
@@ -766,6 +819,19 @@ export function ComprasHistorico({
           };
         })
       : [];
+  const confirmarExclusaoOrdem = async () => {
+    if (!excluirOrdem) return;
+    try {
+      await removerOrdem.mutateAsync({ id: excluirOrdem.ordem.id });
+      await utils.compras.listarOrdens.invalidate();
+      toast.success(`Ordem OC-${excluirOrdem.ordem.id} excluída da lista.`);
+      setExcluirOrdem(null);
+    } catch (e) {
+      toast.error(
+        e instanceof Error ? e.message : "Não foi possível excluir a ordem."
+      );
+    }
+  };
   return (
     <div className="space-y-4 min-w-0">
       <div className="flex flex-wrap gap-2">
@@ -1121,6 +1187,21 @@ export function ComprasHistorico({
                     <TableCell>
                       OC-{o.id}
                       <span className="block">{fmtDate(o.createdAt)}</span>
+                      {(o.pesoPrevistoKg != null ||
+                        o.volumePrevistoM3 != null) && (
+                        <span className="block text-slate-500">
+                          {o.pesoPrevistoKg != null
+                            ? `${fmtNum(Number(o.pesoPrevistoKg), 3)} kg`
+                            : ""}
+                          {o.pesoPrevistoKg != null &&
+                          o.volumePrevistoM3 != null
+                            ? " · "
+                            : ""}
+                          {o.volumePrevistoM3 != null
+                            ? `${fmtNum(Number(o.volumePrevistoM3), 3)} m³`
+                            : ""}
+                        </span>
+                      )}
                     </TableCell>
                     <TableCell>{f}</TableCell>
                     <TableCell>
@@ -1161,6 +1242,14 @@ export function ComprasHistorico({
                     <TableCell>
                       <button
                         className="block text-blue-600"
+                        onClick={() =>
+                          setEditarOrdem({ ordem: o, fornecedor: f })
+                        }
+                      >
+                        Abrir / editar
+                      </button>
+                      <button
+                        className="block text-blue-600"
                         onClick={() => setLogisticaId(o.id)}
                       >
                         Frete e coleta
@@ -1176,6 +1265,14 @@ export function ComprasHistorico({
                         onClick={() => setAuditar(o.id)}
                       >
                         Vincular NF / conferir
+                      </button>
+                      <button
+                        className="block text-red-600"
+                        onClick={() =>
+                          setExcluirOrdem({ ordem: o, fornecedor: f })
+                        }
+                      >
+                        Excluir ordem
                       </button>
                     </TableCell>
                   </TableRow>
@@ -1208,6 +1305,41 @@ export function ComprasHistorico({
         id={logisticaId}
         fechar={() => setLogisticaId(null)}
       />
+      <EditarOrdemModal
+        registro={editarOrdem}
+        fechar={() => setEditarOrdem(null)}
+      />
+      <AlertDialog
+        open={excluirOrdem != null}
+        onOpenChange={aberto => {
+          if (!aberto) setExcluirOrdem(null);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              Excluir ordem OC-{excluirOrdem?.ordem.id}?
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              A ordem sairá da lista e continuará preservada para
+              rastreabilidade. Ordens com NF vinculada não podem ser excluídas.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              disabled={removerOrdem.isPending}
+              className="bg-red-600 hover:bg-red-700"
+              onClick={event => {
+                event.preventDefault();
+                void confirmarExclusaoOrdem();
+              }}
+            >
+              {removerOrdem.isPending ? "Excluindo..." : "Excluir ordem"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
       <AuditoriaOrdem id={auditar} fechar={() => setAuditar(null)} />
     </div>
   );

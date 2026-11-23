@@ -4726,6 +4726,9 @@ export const comprasOrdens = pgTable("compras_ordens", {
   freteConfirmado: boolean("frete_confirmado").default(false).notNull(),
   freteModo: varchar("frete_modo", { length: 16 }).default("valor_total").notNull(), freteValorInformado: decimal("frete_valor_informado", { precision: 18, scale: 4 }),
   pesoPrevistoKg: decimal("peso_previsto_kg", { precision: 18, scale: 3 }),
+  volumePrevistoM3: decimal("volume_previsto_m3", { precision: 18, scale: 3 }),
+  excluidaEm: timestamp("excluida_em"),
+  excluidaPor: text("excluida_por"),
   logisticaRevisao: integer("logistica_revisao").default(0).notNull(),
 }, t => ({ cotacaoIdx: index("compras_ordens_cotacao_idx").on(t.cotacaoId) }));
 export const comprasOrdemNfs = pgTable("compras_ordem_nfs", {
@@ -4742,6 +4745,6 @@ export const comprasCompradores = pgTable("compras_compradores", {
 export const comprasLogisticaHistorico = pgTable("compras_logistica_historico", {
   id: serial("id").primaryKey(), ordemId: integer("ordem_id").notNull().references(() => comprasOrdens.id, { onDelete: "restrict" }),
   revisao: integer("revisao").notNull(),
-  dados: jsonb("dados").$type<{ frete: number; freteConfirmado: boolean; pesoPrevistoKg: number | null; transportadora: string; numeroColeta: string; freteModo: string; freteValorInformado: number | null }>().notNull(),
+  dados: jsonb("dados").$type<{ frete: number; freteConfirmado: boolean; pesoPrevistoKg: number | null; volumePrevistoM3?: number | null; transportadora: string; numeroColeta: string; freteModo: string; freteValorInformado: number | null }>().notNull(),
   criadoPor: text("criado_por"), createdAt: timestamp("created_at").defaultNow().notNull(),
 }, t => ({ revisaoUq: uniqueIndex("compras_logistica_ordem_revisao_uq").on(t.ordemId, t.revisao) }));

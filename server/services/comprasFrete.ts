@@ -51,7 +51,7 @@ export async function consultarOrdemFrete(
   const [dados] = await (travar
     ? query.for("update", { of: comprasOrdens })
     : query);
-  if (!dados)
+  if (!dados || dados.ordem.excluidaEm)
     throw new TRPCError({
       code: "NOT_FOUND",
       message: "Ordem de compra não encontrada.",

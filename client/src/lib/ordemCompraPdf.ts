@@ -20,6 +20,7 @@ export function criarOrdemCompraPdf(
     freteModo?: string;
     freteValorInformado?: string | number | null;
     pesoPrevistoKg?: string | number | null;
+    volumePrevistoM3?: string | number | null;
     total: string | number;
     observacoes: string;
     itens: LinhaOrdemCompra[];
@@ -46,6 +47,12 @@ export function criarOrdemCompraPdf(
     `${ordem.comprador.tipo === "empresa" ? "CNPJ" : "CPF"}: ${ordem.comprador.documento}${ordem.comprador.inscricaoEstadual ? ` | IE: ${ordem.comprador.inscricaoEstadual}` : ""}`
   );
   texto(`Endereço: ${ordem.comprador.endereco}`);
+  if (ordem.freteModo !== "por_kg" && ordem.pesoPrevistoKg != null)
+    texto(`Peso total da carga: ${fmtNum(Number(ordem.pesoPrevistoKg), 3)} kg`);
+  if (ordem.volumePrevistoM3 != null)
+    texto(
+      `Volume total da carga: ${fmtNum(Number(ordem.volumePrevistoM3), 3)} m³`
+    );
   texto(`Fornecedor: ${fornecedor}`);
   texto(
     `Pagamento: ${ordem.pagamento === "a_vista" ? "À vista" : "Faturado"}${ordem.condicaoPagamento ? ` - ${ordem.condicaoPagamento}` : ""}`

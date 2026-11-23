@@ -65,3 +65,11 @@ Validação: typecheck, build Vercel, testes puros de conversão/validade/quanti
 Antes de emitir, o comprador pode alterar quantidade e preço unitário de cada linha, excluir itens e restaurá-los. A ordem guarda o preço unitário efetivamente enviado e também o preço original da cotação para deixar alterações explícitas no PDF. A cotação salva permanece intacta. O campo manual **Nome do comprador** identifica a pessoa responsável pela compra, separado da razão social/CPF/CNPJ em nome de quem a ordem é emitida; o nome aparece no histórico e no PDF. Ordens anteriores à migration 0149 exibem esse campo vazio como não informado.
 
 Migration `0149_nome_comprador_ordem` adiciona `compras_ordens.nome_comprador`, com valor vazio para preservar as ordens existentes. Aplicada em produção pelo migrador protegido em 23/11/2026; recibo `1795466747333` conferido após a aplicação. Esta revisão passou no typecheck completo, build Vercel e 7 testes do contrato de compras.
+
+## Ordens salvas, edição e dados da carga
+
+A aba **Ordens de compra** mantém as ordens emitidas com busca por fornecedor/transportadora/número e filtros de data. **Abrir / editar** altera comprador responsável e dados fiscais, pagamento, condições, observações, quantidades e preços dos itens; a cotação de origem continua preservada. **Baixar PDF** gera o documento com os dados atuais da ordem, incluindo o nome do comprador, peso e volume quando informados. **Excluir ordem** usa exclusão lógica para manter rastreabilidade; uma ordem com NF vinculada não pode ser excluída nem ter seus itens/dados comerciais editados. A logística pode continuar sendo revisada pela ação **Frete e coleta**.
+
+O nome do comprador responsável é obrigatório, com pelo menos três caracteres, tanto na interface quanto na validação do servidor. Peso (kg) e volume (m³) são opcionais na emissão e podem ser completados ou atualizados em **Frete e coleta**. Valores preenchidos precisam ser maiores que zero. O peso previsto também participa da estimativa do frete por kg; o volume é armazenado para logística e aparece no histórico/PDF quando disponível.
+
+A migration `0150_ordens_itens_volume_exclusao` adiciona volume previsto e marcação de exclusão lógica em `compras_ordens`; não remove nem altera ordens existentes. O volume também entra no histórico de revisões logísticas.
