@@ -1,3 +1,4 @@
+import { integrarFornecedorDocumento } from "../services/fornecedorDocumentos";
 import { z } from "zod";
 import { router, protectedProcedure } from "../_core/trpc";
 import { TRPCError } from "@trpc/server";
@@ -231,6 +232,11 @@ export const nfCompraRouter = router({
       if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Banco indisponível." });
 
       const nf = parseNfXml(input.xmlConteudo);
+      const fornecedorCadastro = await integrarFornecedorDocumento({
+        cnpj: nf.cnpjFornecedor, nome: nf.nomeFornecedor,
+        nf: { chave: nf.chaveAcesso, numero: nf.numero, serie: nf.serie,
+          dataEmissao: nf.dataEmissao, valorProdutos: nf.valorProdutos, origem: "auditoria_xml" },
+      });
 
       // 1. Buscar memórias existentes para este fornecedor (aprendizado prévio)
       const codigos = nf.itens.map(i => i.codigoFornecedor);
@@ -375,6 +381,7 @@ export const nfCompraRouter = router({
       });
 
       return {
+        fornecedorCadastro,
         cabecalho: {
           numero: nf.numero,
           serie: nf.serie,
@@ -601,6 +608,11 @@ export const nfCompraRouter = router({
       }
 
       const userId = ctx.user?.id ? String(ctx.user.id) : null;
+      const fornecedorCadastro = await integrarFornecedorDocumento({
+        cnpj: input.cabecalho.cnpjFornecedor, nome: input.cabecalho.nomeFornecedor, criadoPor: ctx.user.name,
+        nf: { chave: input.cabecalho.chaveAcesso, numero: input.cabecalho.numero, serie: input.cabecalho.serie,
+          dataEmissao: input.cabecalho.dataEmissao, valorProdutos: input.cabecalho.valorProdutos, origem: "auditoria_salva" },
+      });
 
       // 1. Gravar cabeçalho
       const [importacao] = await db
@@ -686,7 +698,7 @@ export const nfCompraRouter = router({
         }
       }
 
-      return { importacaoId: importacao.id, ok: true };
+      return { importacaoId: importacao.id, ok: true, fornecedorCadastro };
     }),
 
   /**
@@ -876,6 +888,7 @@ export const nfCompraRouter = router({
 
       const buffer = Buffer.from(input.pdfBase64, "base64");
       const cotacao = await extrairCotacaoDePdf(buffer, input.nomeArquivo);
+      const fornecedorCadastro = await integrarFornecedorDocumento({ cnpj: cotacao.cnpjFornecedor, nome: cotacao.fornecedor });
 
       // Carregar todas as MPs para busca de correspondência por similaridade de nome
       const todasMps = await db
@@ -1078,6 +1091,7 @@ export const nfCompraRouter = router({
         })
       );
       return {
+        fornecedorCadastro,
         fornecedor: cotacao.fornecedor,
         cnpjFornecedor: cotacao.cnpjFornecedor,
         dataCotacao: cotacao.dataCotacao,

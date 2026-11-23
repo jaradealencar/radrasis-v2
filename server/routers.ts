@@ -1,3 +1,4 @@
+import { integrarFornecedorDocumento } from "./services/fornecedorDocumentos";
 import { z } from "zod";
 import { transportadorasRouter, cotacoesFreteRouter, cteRouter } from "./routers/logistica";
 import { acoesCorretivasRouter, metasRetrabalhoRouter, planosAcaoRouter, alertasRouter, desempenhoColaboradorRouter } from "./routers/qualidade";
@@ -787,7 +788,7 @@ Seja direto, técnico e prático. Use dados específicos dos números fornecidos
       .input(z.object({ name: z.string(), company: z.string().optional().nullable(), category: z.string(), supplies: z.string().optional().nullable(), contact: z.string().optional().nullable(), phone: z.string().optional().nullable(), email: z.string().optional().nullable(), paymentTerms: z.string().optional().nullable(), notes: z.string().optional().nullable() }))
       .mutation(({ input, ctx }) => createSupplier({ ...input, createdByNome: ctx.user.name ?? ctx.user.email ?? "sistema", updatedByNome: ctx.user.name ?? ctx.user.email ?? "sistema" } as any)),
     update: protectedProcedure
-      .input(z.object({ id: z.number(), data: z.object({ name: z.string().optional(), company: z.string().optional().nullable(), category: z.string().optional(), supplies: z.string().optional().nullable(), contact: z.string().optional().nullable(), phone: z.string().optional().nullable(), email: z.string().optional().nullable(), paymentTerms: z.string().optional().nullable(), notes: z.string().optional().nullable(), active: z.enum(["sim", "nao"]).optional() }) }))
+      .input(z.object({ id: z.number(), data: z.object({ name: z.string().optional(), company: z.string().optional().nullable(), category: z.string().optional(), supplies: z.string().optional().nullable(), contact: z.string().optional().nullable(), phone: z.string().optional().nullable(), email: z.string().optional().nullable(), paymentTerms: z.string().optional().nullable(), notes: z.string().optional().nullable(), cadastroConcluido: z.boolean().optional(), nfeCnpj: z.string().max(32).optional().nullable(), active: z.enum(["sim", "nao"]).optional() }) }))
       .mutation(({ input, ctx }) => updateSupplier(input.id, { ...input.data, updatedByNome: ctx.user.name ?? ctx.user.email ?? "sistema" } as any)),
     delete: protectedProcedure.input(z.object({ id: z.number() })).mutation(({ input }) => deleteSupplier(input.id)),
     }),
@@ -797,14 +798,19 @@ Seja direto, técnico e prático. Use dados específicos dos números fornecidos
     upload: protectedProcedure
       .input(fornecedorNfeUploadSchema)
       .mutation(async ({ input }) => {
-        if (!(await getSupplierById(input.id))) {
+        const fornecedor = await getSupplierById(input.id);
+        if (!fornecedor) {
           throw new TRPCError({
             code: "NOT_FOUND",
             message: "Fornecedor não encontrado.",
           });
         }
-        return updateSupplierNfe(input.id, {
-          nfeCnpj: input.nfeCnpj,
+        const fornecedorCadastro = await integrarFornecedorDocumento({
+          fornecedorId: input.id, cnpj: input.nfeCnpj, nome: input.nfeRazaoSocial || input.nfeNomeFantasia,
+          nf: { chave: input.nfeChaveAcesso, numero: input.nfeNumero, serie: input.nfeSerie, origem: "painel_pdf" },
+        });
+        await updateSupplierNfe(input.id, {
+          nfeCnpj: input.nfeCnpj || fornecedor.nfeCnpj,
           nfeRazaoSocial: input.nfeRazaoSocial,
           nfeNomeFantasia: input.nfeNomeFantasia,
           nfeNumero: input.nfeNumero,
@@ -817,6 +823,7 @@ Seja direto, técnico e prático. Use dados específicos dos números fornecidos
             ? new Date(input.nfeUltimaAtualizacao)
             : new Date(),
         });
+        return { fornecedorCadastro };
       }),
     extrair: protectedProcedure
       .input(z.object({

@@ -1,3 +1,5 @@
+import { fornecedorCompras } from "../../drizzle/schema";
+import { getTableColumns } from "drizzle-orm";
 import {
   and,
   asc,
@@ -652,7 +654,7 @@ export async function listSuppliers(search?: string, category?: string) {
     );
   const where = conditions.length > 0 ? and(...conditions) : undefined;
   return db
-    .select()
+    .select({ ...getTableColumns(suppliers), totalCompras: sql<number>`(SELECT count(*)::int FROM fornecedor_compras fc WHERE fc.fornecedor_id = ${suppliers.id})` })
     .from(suppliers)
     .where(where)
     .orderBy(asc(suppliers.category), asc(suppliers.name));
@@ -683,6 +685,8 @@ export async function updateSupplier(
 export async function deleteSupplier(id: number) {
   const db = await getDb();
   if (!db) throw new Error("DB not available");
+  const [compras] = await db.select({ quantidade: count() }).from(fornecedorCompras).where(eq(fornecedorCompras.fornecedorId, id));
+  if (compras.quantidade) throw new Error("Fornecedor com compras registradas: marque como inativo para preservar o histórico.");
   return db.delete(suppliers).where(eq(suppliers.id, id));
 }
 

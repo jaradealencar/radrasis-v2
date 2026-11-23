@@ -1009,6 +1009,13 @@
       "when": 1795433156223,
       "tag": "0143_silky_fixer",
       "breakpoints": true
+    },
+    {
+      "idx": 144,
+      "version": "7",
+      "when": 1795455613287,
+      "tag": "0146_fornecedor_compras_integracao",
+      "breakpoints": true
     }
   ]
 }

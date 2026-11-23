@@ -149,6 +149,7 @@ export default function NfCompraAuditoria() {
   const [mpHistoricoSelecionada, setMpHistoricoSelecionada] = useState<{ id: number; nome: string } | null>(null);
 
   // Estado para cotação em PDF
+  const [fornecedorCadastro, setFornecedorCadastro] = useState<{ id: number; nome: string; totalCompras: number; cadastroConcluido: boolean } | null>(null);
   const [arquivoPdfNome, setArquivoPdfNome] = useState<string>("");
   const [cotacaoPdfResultado, setCotacaoPdfResultado] = useState<any | null>(null);
   const [itemCotacaoEmEdicao, setItemCotacaoEmEdicao] = useState<number | null>(null);
@@ -284,7 +285,7 @@ export default function NfCompraAuditoria() {
         analisarCotacaoPdfMutation.mutate(
           { pdfBase64: base64, nomeArquivo: file.name },
           {
-            onSuccess: (data) => setCotacaoPdfResultado(data),
+            onSuccess: (data) => { setCotacaoPdfResultado(data); void utils.suppliers.list.invalidate(); },
           }
         );
       }
@@ -362,6 +363,8 @@ export default function NfCompraAuditoria() {
       {
         onSuccess: (data) => {
           setCabecalho(data.cabecalho);
+          setFornecedorCadastro(data.fornecedorCadastro);
+          void utils.suppliers.list.invalidate();
           setItens(
             data.itens.map((i) => ({
               numeroItem: i.numeroItem,
@@ -851,6 +854,7 @@ export default function NfCompraAuditoria() {
           </div>
 
           {/* Card 2: Resumo do Cabeçalho da NF */}
+          {fornecedorCadastro && <p className="text-xs text-blue-700"><a href="/fornecedores" className="underline">{fornecedorCadastro.nome}</a>: {fornecedorCadastro.totalCompras} compra(s) registrada(s){!fornecedorCadastro.cadastroConcluido && " - Cadastro não concluído"}</p>}
           {cabecalho && (
             <div className="p-4 bg-slate-50 rounded-xl border border-slate-200 grid grid-cols-2 md:grid-cols-6 gap-3 text-xs">
               <div>
@@ -1457,6 +1461,7 @@ export default function NfCompraAuditoria() {
                 </span>
               </div>
 
+              {cotacaoPdfResultado.fornecedorCadastro && <p className="text-xs text-blue-700"><a href="/fornecedores" className="underline">Cadastro do fornecedor</a>: {cotacaoPdfResultado.fornecedorCadastro.totalCompras} compra(s) registrada(s){!cotacaoPdfResultado.fornecedorCadastro.cadastroConcluido && " - Não concluído: complete os dados em Fornecedores"}</p>}
               <Table>
                 <TableHeader>
                   <TableRow>

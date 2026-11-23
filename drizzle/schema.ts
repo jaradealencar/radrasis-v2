@@ -172,11 +172,27 @@ export const suppliers = pgTable("suppliers", {
   nfeArquivoKey: varchar("nfe_arquivo_key", { length: 256 }), // chave do arquivo no UploadThing
   nfeArquivoUrl: varchar("nfe_arquivo_url", { length: 512 }), // URL do arquivo no UploadThing
   nfeUltimaAtualizacao: timestamp("nfe_ultima_atualizacao"), // quando a NF-e foi lida pela última vez
+  cadastroConcluido: boolean("cadastro_concluido").default(true).notNull(),
 }, table => ({
   nfeCnpjIdx: index("suppliers_nfe_cnpj_idx").on(table.nfeCnpj),
 }));
 export type Supplier = typeof suppliers.$inferSelect;
 export type InsertSupplier = typeof suppliers.$inferInsert;
+
+export const fornecedorCompras = pgTable("fornecedor_compras", {
+  id: serial("id").primaryKey(),
+  fornecedorId: integer("fornecedor_id").notNull().references(() => suppliers.id, { onDelete: "restrict" }),
+  documento: varchar("documento", { length: 128 }).notNull(),
+  numero: varchar("numero", { length: 64 }),
+  serie: varchar("serie", { length: 32 }),
+  dataEmissao: varchar("data_emissao", { length: 32 }),
+  valorProdutos: decimal("valor_produtos", { precision: 14, scale: 2 }),
+  origem: varchar("origem", { length: 32 }).notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, t => ({
+  documentoUq: uniqueIndex("fornecedor_compras_documento_uq").on(t.documento),
+  fornecedorIdx: index("fornecedor_compras_fornecedor_idx").on(t.fornecedorId),
+}));
 
 // Rotinas
 export const routines = pgTable("routines", {

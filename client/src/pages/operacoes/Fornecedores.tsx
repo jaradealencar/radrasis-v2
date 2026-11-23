@@ -12,7 +12,7 @@ import { enviarArquivo, type ArquivoEnviado } from "@/lib/upload";
 
 const CATEGORIES = ["Matéria-Prima", "Embalagem", "Serviços", "Tecnologia", "Logística", "Manutenção", "Outros"];
 
-const EMPTY_FORM = { name: "", company: "", category: "Matéria-Prima", supplies: "", contact: "", phone: "", email: "", paymentTerms: "", notes: "" };
+const EMPTY_FORM = { name: "", company: "", category: "Matéria-Prima", supplies: "", contact: "", phone: "", email: "", paymentTerms: "", notes: "", nfeCnpj: "", cadastroConcluido: true };
 const EMPTY_NFE = {
   nfeCnpj: "",
   nfeRazaoSocial: "",
@@ -45,7 +45,8 @@ export default function Fornecedores() {
   const updateMut = trpc.suppliers.update.useMutation({ onSuccess: () => { utils.suppliers.list.invalidate(); setEditId(null); setShowForm(false); setForm({ ...EMPTY_FORM }); toast.success("Fornecedor atualizado!"); } });
   const deleteMut = trpc.suppliers.delete.useMutation({ onSuccess: () => { utils.suppliers.list.invalidate(); toast.success("Fornecedor removido."); } });
   const uploadNfeMut = trpc.fornecedorNfe.upload.useMutation({
-    onSuccess: () => {
+    onSuccess: (resultado) => {
+      if (resultado.fornecedorCadastro?.nfSemIdentificacao) toast.warning("NF sem chave ou CNPJ/número/série: compra ainda não contada.");
       utils.suppliers.list.invalidate();
       fecharNfeDialog();
       toast.success("NF-e anexada ao fornecedor!");
@@ -57,7 +58,7 @@ export default function Fornecedores() {
   const nfeReady = nfeFile !== null || nfeUploadedFile !== null;
 
   function openEdit(item: typeof items[0]) {
-    setForm({ name: item.name, company: item.company ?? "", category: item.category, supplies: item.supplies ?? "", contact: item.contact ?? "", phone: item.phone ?? "", email: item.email ?? "", paymentTerms: item.paymentTerms ?? "", notes: item.notes ?? "" });
+    setForm({ name: item.name, company: item.company ?? "", category: item.category, supplies: item.supplies ?? "", contact: item.contact ?? "", phone: item.phone ?? "", email: item.email ?? "", paymentTerms: item.paymentTerms ?? "", notes: item.notes ?? "", nfeCnpj: item.nfeCnpj ?? "", cadastroConcluido: item.cadastroConcluido });
     setEditId(item.id);
     setShowForm(true);
   }
@@ -66,7 +67,8 @@ export default function Fornecedores() {
     if (editId) {
       updateMut.mutate({ id: editId, data: form });
     } else {
-      createMut.mutate(form);
+      const { cadastroConcluido, nfeCnpj, ...novo } = form;
+      createMut.mutate(novo);
     }
   }
 
@@ -273,6 +275,11 @@ export default function Fornecedores() {
             <label className="block text-xs font-bold uppercase tracking-wide text-gray-500 mb-1">Observações</label>
             <textarea className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-400 resize-none" rows={2} value={form.notes} onChange={e => setForm(p => ({ ...p, notes: e.target.value }))} />
           </div>
+          {editId && <div className="mb-4 space-y-2">
+            <Label>CNPJ</Label>
+            <Input value={form.nfeCnpj} onChange={e => setForm(p => ({ ...p, nfeCnpj: e.target.value }))} />
+            <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={form.cadastroConcluido} onChange={e => setForm(p => ({ ...p, cadastroConcluido: e.target.checked }))} />Cadastro concluído (dados revisados)</label>
+          </div>}
           <div className="flex gap-2 justify-end">
             <button onClick={() => { setShowForm(false); setEditId(null); }} className="px-4 py-2 text-sm rounded-lg border border-gray-200 hover:bg-gray-50">Cancelar</button>
             <button onClick={handleSave} disabled={!form.name} className="px-4 py-2 text-sm rounded-lg text-white font-semibold disabled:opacity-50" style={{ background: "oklch(0.52 0.18 240)" }}>
@@ -307,6 +314,8 @@ export default function Fornecedores() {
                   {item.contact && <span className="text-xs text-gray-500">· {item.contact}</span>}
                   {!item.company && item.name && <span className="text-xs text-gray-400">· {item.name}</span>}
                   <span className="text-xs px-2 py-0.5 rounded-full font-medium" style={{ background: "oklch(0.52 0.18 240 / 0.1)", color: "oklch(0.42 0.18 240)" }}>{item.category}</span>
+                  {!item.cadastroConcluido && <span className="text-xs rounded-full bg-amber-100 text-amber-800 px-2 py-0.5">Não concluído</span>}
+                  <span className="text-xs rounded-full bg-blue-50 text-blue-700 px-2 py-0.5">{item.totalCompras} compra(s) registrada(s)</span>
                   <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${item.active === "sim" ? "bg-green-50 text-green-700" : "bg-red-50 text-red-600"}`}>{item.active === "sim" ? "Ativo" : "Inativo"}</span>
                 </div>
                 {item.supplies && <p className="text-xs text-gray-500 mt-0.5">Insumos: {item.supplies}</p>}
