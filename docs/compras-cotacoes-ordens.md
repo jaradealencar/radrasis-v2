@@ -59,3 +59,9 @@ Migration `0148_compras_ciclo_frete`: modalidades/tarifas/peso da cotação e or
 Aplicada em produção pelo migrador protegido em 23/11/2026 (recibo `1795464834153`). Validação desta ampliação: typecheck, build Vercel, 24 testes puros/regressões e revisão local com APIs simuladas de conversão em m², fretes fixo/por kg/grátis, confirmação de logística e salvamento da NF com R$ 2,50/kg × 150 kg = R$ 375,00. PDF por kg renderizado e conferido visualmente.
 
 Validação: typecheck, build Vercel, testes puros de conversão/validade/quantidade/emissão e regressões de NF; fluxo local com API simulada para salvar, emitir e baixar PDF; inspeção visual do PDF renderizado e da tabela em 1366 px.
+
+## Ajustes da ordem de compra
+
+Antes de emitir, o comprador pode alterar quantidade e preço unitário de cada linha, excluir itens e restaurá-los. A ordem guarda o preço unitário efetivamente enviado e também o preço original da cotação para deixar alterações explícitas no PDF. A cotação salva permanece intacta. O campo manual **Nome do comprador** identifica a pessoa responsável pela compra, separado da razão social/CPF/CNPJ em nome de quem a ordem é emitida; o nome aparece no histórico e no PDF. Ordens anteriores à migration 0149 exibem esse campo vazio como não informado.
+
+Migration `0149_nome_comprador_ordem` adiciona `compras_ordens.nome_comprador`, com valor vazio para preservar as ordens existentes. Aplicada em produção pelo migrador protegido em 23/11/2026; recibo `1795466747333` conferido após a aplicação. Esta revisão passou no typecheck completo, build Vercel e 7 testes do contrato de compras.

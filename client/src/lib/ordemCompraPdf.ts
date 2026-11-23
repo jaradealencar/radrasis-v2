@@ -9,6 +9,7 @@ import type {
 export function criarOrdemCompraPdf(
   ordem: {
     id: number;
+    nomeComprador?: string;
     comprador: CompradorCompra;
     createdAt: Date | string;
     pagamento: string;
@@ -38,7 +39,9 @@ export function criarOrdemCompraPdf(
     y += linhas.length * 5 + 2;
   };
   texto(`Emissão: ${fmtDate(ordem.createdAt)}`);
-  texto(`Comprador: ${ordem.comprador.nome}`);
+  if (ordem.nomeComprador)
+    texto(`Responsável pela compra: ${ordem.nomeComprador}`);
+  texto(`Comprador legal: ${ordem.comprador.nome}`);
   texto(
     `${ordem.comprador.tipo === "empresa" ? "CNPJ" : "CPF"}: ${ordem.comprador.documento}${ordem.comprador.inscricaoEstadual ? ` | IE: ${ordem.comprador.inscricaoEstadual}` : ""}`
   );
@@ -58,7 +61,7 @@ export function criarOrdemCompraPdf(
       `${i.descricao}${i.codigo ? `\nCód.: ${i.codigo}` : ""}`,
       fmtNum(i.quantidade, 3),
       i.unidade,
-      fmtBrl(i.precoUnitario),
+      `${fmtBrl(i.precoUnitario)}${i.precoCotadoUnitario != null && i.precoCotadoUnitario !== i.precoUnitario ? `\nCotado: ${fmtBrl(i.precoCotadoUnitario)}` : ""}`,
       fmtBrl(i.total),
     ]),
     styles: {

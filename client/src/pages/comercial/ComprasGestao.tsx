@@ -23,6 +23,7 @@ import { Empty } from "@/components/ui/empty";
 import KpiCard from "@/components/KpiCard";
 import ChartTooltip from "@/components/ChartTooltip";
 import { chartColor } from "@/lib/chartColors";
+import { RotateCcw, Trash2 } from "lucide-react";
 import {
   Line,
   LineChart,
@@ -316,9 +317,21 @@ function EditorOrdem({
   const utils = trpc.useUtils();
   const [dados, setDados] = useState(cadastro);
   const [tipo, setTipo] = useState<"empresa" | "pessoa">("empresa");
+  const [nomeComprador, setNomeComprador] = useState("");
   const [quantidades, setQuantidades] = useState<Record<number, string>>(
-    Object.fromEntries(cotacao.itens.map(i => [i.id, String(i.quantidade)]))
+    Object.fromEntries(
+      cotacao.itens.map(i => [i.id, String(i.quantidade).replace(".", ",")])
+    )
   );
+  const [precos, setPrecos] = useState<Record<number, string>>(
+    Object.fromEntries(
+      cotacao.itens.map(i => [
+        i.id,
+        Number(i.precoUnitario).toFixed(2).replace(".", ","),
+      ])
+    )
+  );
+  const [excluidos, setExcluidos] = useState<Set<number>>(new Set());
   const [pagamento, setPagamento] = useState<"a_vista" | "faturado">(
     cotacao.condicaoPagamento &&
       !/vista|antecipado|pix/i.test(cotacao.condicaoPagamento)
@@ -347,30 +360,54 @@ function EditorOrdem({
   const salvarCadastro = trpc.compras.salvarCompradores.useMutation();
   const chave = useRef({ assinatura: "", valor: crypto.randomUUID() });
   const perfil = dados[tipo];
-  const itens = cotacao.itens
-    .map(i => ({
-      itemId: i.id,
-      quantidade: Number((quantidades[i.id] ?? "").replace(",", ".")),
-    }))
-    .filter(i => i.quantidade > 0);
-  const total =
-    itens.reduce(
-      (s, i) =>
-        s +
-        Math.round(
-          i.quantidade *
-            Number(cotacao.itens.find(l => l.id === i.itemId)!.precoUnitario) *
-            100
-        ) /
-          100,
-      0
-    ) + (freteCalculado.total ?? 0);
+  const linhasAtivas = cotacao.itens.filter(i => !excluidos.has(i.id));
+  const numeroEditado = (valor: string) => {
+    const numero = Number(valor.replace(",", "."));
+    return valor.trim() && Number.isFinite(numero) ? numero : null;
+  };
+  const itensValidos =
+    linhasAtivas.length > 0 &&
+    linhasAtivas.every(i => {
+      const quantidade = numeroEditado(quantidades[i.id] ?? "");
+      const preco = numeroEditado(precos[i.id] ?? "");
+      return (
+        quantidade != null && quantidade > 0 && preco != null && preco >= 0
+      );
+    });
+  const itens = linhasAtivas.flatMap(i => {
+    const quantidade = numeroEditado(quantidades[i.id] ?? "");
+    const precoUnitario = numeroEditado(precos[i.id] ?? "");
+    return quantidade != null && quantidade > 0 && precoUnitario != null
+      ? [{ itemId: i.id, quantidade, precoUnitario }]
+      : [];
+  });
+  const total = itensValidos
+    ? linhasAtivas.reduce((s, i) => {
+        const quantidade = numeroEditado(quantidades[i.id] ?? "")!;
+        const preco = numeroEditado(precos[i.id] ?? "")!;
+        return s + Math.round(quantidade * preco * 100) / 100;
+      }, 0) + (freteCalculado.total ?? 0)
+    : null;
   const definir = (
     campo: "nome" | "documento" | "inscricaoEstadual",
     valor: string
   ) => setDados(v => ({ ...v, [tipo]: { ...v[tipo], [campo]: valor } }));
   const gerar = async () => {
-    if (freteModo !== "gratis" && (!frete.trim() || !Number.isFinite(Number(frete.replace(",", "."))) || Number(frete.replace(",", ".")) < 0)) { toast.error("Informe o valor total ou a tarifa por kg do frete antes de emitir a ordem."); return; }
+    if (!nomeComprador.trim()) {
+      toast.error("Informe o nome de quem está fazendo a compra.");
+      return;
+    }
+    if (
+      freteModo !== "gratis" &&
+      (!frete.trim() ||
+        !Number.isFinite(Number(frete.replace(",", "."))) ||
+        Number(frete.replace(",", ".")) < 0)
+    ) {
+      toast.error(
+        "Informe o valor total ou a tarifa por kg do frete antes de emitir a ordem."
+      );
+      return;
+    }
     const comprador = compradorSchema.safeParse({
       tipo,
       ...perfil,
@@ -383,20 +420,16 @@ function EditorOrdem({
       );
       return;
     }
-    if (
-      Object.values(quantidades).some(
-        q =>
-          q.trim() === "" ||
-          !Number.isFinite(Number(q.replace(",", "."))) ||
-          Number(q.replace(",", ".")) < 0
-      )
-    ) {
-      toast.error("Confira as quantidades. Use zero para excluir um item.");
+    if (!itensValidos) {
+      toast.error(
+        "Revise os itens: informe quantidade maior que zero e preço válido, ou exclua a linha."
+      );
       return;
     }
     try {
       const entrada = {
         cotacaoId: cotacao.id,
+        nomeComprador: nomeComprador.trim(),
         comprador: comprador.data,
         pagamento,
         condicaoPagamento: condicao,
@@ -432,6 +465,14 @@ function EditorOrdem({
       <p className="text-sm">
         Cotação #{cotacao.id} · <strong>{cotacao.fornecedor}</strong>
       </p>
+      <Campo titulo="Nome do comprador (preenchimento manual)">
+        <Input
+          value={nomeComprador}
+          onChange={e => setNomeComprador(e.target.value)}
+          placeholder="Nome de quem está fazendo a compra"
+          maxLength={256}
+        />
+      </Campo>
       <div className="rounded-lg border p-3 space-y-3">
         <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
           <Campo titulo="Quem está comprando?">
@@ -505,42 +546,93 @@ function EditorOrdem({
             <TableHead>Quantidade</TableHead>
             <TableHead>Preço / un.</TableHead>
             <TableHead>Total</TableHead>
+            <TableHead>Ação</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
-          {cotacao.itens.map(i => (
-            <TableRow key={i.id}>
-              <TableCell>
-                {i.descricao}
-                <span className="block text-[10px] text-slate-400">
-                  {i.codigo} · {i.unidade}
-                </span>
-              </TableCell>
-              <TableCell>
-                <Input
-                  aria-label={`Quantidade de ${i.descricao}`}
-                  inputMode="decimal"
-                  value={quantidades[i.id]}
-                  onChange={e =>
-                    setQuantidades(v => ({ ...v, [i.id]: e.target.value }))
-                  }
-                />
-              </TableCell>
-              <TableCell>{fmtBrl(Number(i.precoUnitario))}</TableCell>
-              <TableCell>
-                {fmtBrl(
-                  Number((quantidades[i.id] ?? "0").replace(",", ".")) *
-                    Number(i.precoUnitario)
-                )}
-              </TableCell>
-            </TableRow>
-          ))}
+          {cotacao.itens.map(i => {
+            const excluido = excluidos.has(i.id);
+            const quantidade = numeroEditado(quantidades[i.id] ?? "");
+            const preco = numeroEditado(precos[i.id] ?? "");
+            return (
+              <TableRow
+                key={i.id}
+                className={excluido ? "bg-slate-50 opacity-60" : undefined}
+              >
+                <TableCell>
+                  <span className={excluido ? "line-through" : undefined}>
+                    {i.descricao}
+                  </span>
+                  <span className="block text-[10px] text-slate-400">
+                    {i.codigo} · {i.unidade}
+                  </span>
+                </TableCell>
+                <TableCell>
+                  <Input
+                    aria-label={`Quantidade de ${i.descricao}`}
+                    inputMode="decimal"
+                    value={quantidades[i.id]}
+                    disabled={excluido}
+                    onChange={e =>
+                      setQuantidades(v => ({ ...v, [i.id]: e.target.value }))
+                    }
+                  />
+                </TableCell>
+                <TableCell>
+                  <Input
+                    aria-label={`Preço unitário de ${i.descricao}`}
+                    inputMode="decimal"
+                    value={precos[i.id]}
+                    disabled={excluido}
+                    onChange={e =>
+                      setPrecos(v => ({ ...v, [i.id]: e.target.value }))
+                    }
+                  />
+                  {preco != null && preco !== Number(i.precoUnitario) && (
+                    <span className="mt-1 block text-[10px] text-slate-500">
+                      Cotado: {fmtBrl(Number(i.precoUnitario))}
+                    </span>
+                  )}
+                </TableCell>
+                <TableCell>
+                  {quantidade != null && quantidade > 0 && preco != null
+                    ? fmtBrl(Math.round(quantidade * preco * 100) / 100)
+                    : "—"}
+                </TableCell>
+                <TableCell>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    aria-label={`${excluido ? "Restaurar" : "Excluir"} ${i.descricao}`}
+                    onClick={() =>
+                      setExcluidos(v => {
+                        const proximo = new Set(v);
+                        if (proximo.has(i.id)) proximo.delete(i.id);
+                        else proximo.add(i.id);
+                        return proximo;
+                      })
+                    }
+                  >
+                    {excluido ? (
+                      <>
+                        <RotateCcw className="mr-1 h-3.5 w-3.5" /> Restaurar
+                      </>
+                    ) : (
+                      <>
+                        <Trash2 className="mr-1 h-3.5 w-3.5" /> Excluir
+                      </>
+                    )}
+                  </Button>
+                </TableCell>
+              </TableRow>
+            );
+          })}
         </TableBody>
       </Table>
       <p className="text-xs text-slate-500">
-        Use quantidade zero para retirar um item. Preços são os da cotação;
-        confirme com o fornecedor se mudar o volume ou a validade tiver
-        terminado.
+        Ajuste quantidade e preço, exclua ou restaure uma linha. Preços
+        diferentes da cotação ficam identificados no PDF para conferência.
       </p>
       <div className="grid grid-cols-2 gap-2 lg:grid-cols-4">
         <Campo titulo="Forma de pagamento">
@@ -595,10 +687,10 @@ function EditorOrdem({
             : freteModo === "por_kg"
               ? "Total estimado: "
               : "Total: "}
-          {fmtBrl(total)}
+          {total == null ? "Revise quantidades e preços" : fmtBrl(total)}
         </strong>
         <Button
-          disabled={emitir.isPending || !itens.length}
+          disabled={emitir.isPending || !itensValidos}
           onClick={() => void gerar()}
         >
           {emitir.isPending ? "Emitindo..." : "Emitir, salvar e baixar PDF"}
@@ -1032,7 +1124,12 @@ export function ComprasHistorico({
                     </TableCell>
                     <TableCell>{f}</TableCell>
                     <TableCell>
-                      {o.comprador.nome}
+                      <strong>
+                        {o.nomeComprador || "Comprador não informado"}
+                      </strong>
+                      <span className="block">
+                        Em nome de: {o.comprador.nome}
+                      </span>
                       <span className="block">
                         {o.pagamento === "a_vista" ? "À vista" : "Faturado"} ·{" "}
                         {o.condicaoPagamento}

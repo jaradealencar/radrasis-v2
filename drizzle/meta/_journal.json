@@ -1030,6 +1030,13 @@
       "when": 1795464834153,
       "tag": "0148_compras_ciclo_frete",
       "breakpoints": true
+    },
+    {
+      "idx": 147,
+      "version": "7",
+      "when": 1795466747333,
+      "tag": "0149_nome_comprador_ordem",
+      "breakpoints": true
     }
   ]
 }

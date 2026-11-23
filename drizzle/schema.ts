@@ -4717,6 +4717,7 @@ export const comprasOrdens = pgTable("compras_ordens", {
   id: serial("id").primaryKey(), chave: uuid("chave").notNull().unique(),
   cotacaoId: integer("cotacao_id").notNull().references(() => comprasCotacoes.id, { onDelete: "restrict" }),
   comprador: jsonb("comprador").$type<import("../shared/compras-cotacoes").CompradorCompra>().notNull(),
+  nomeComprador: varchar("nome_comprador", { length: 256 }).default("").notNull(),
   pagamento: varchar("pagamento", { length: 16 }).notNull(), condicaoPagamento: text("condicao_pagamento").notNull(),
   transportadora: text("transportadora").notNull(), numeroColeta: text("numero_coleta").notNull(),
   frete: decimal("frete", { precision: 18, scale: 2 }).notNull(), total: decimal("total", { precision: 18, scale: 2 }).notNull(),

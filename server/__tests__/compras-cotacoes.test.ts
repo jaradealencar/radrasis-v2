@@ -82,6 +82,7 @@ describe("Compras: consumo, referências e emissão", () => {
   const ordem = {
     chave: "a5f7e8aa-4de1-4237-b3e2-407beca2826c",
     cotacaoId: 1,
+    nomeComprador: "Daniel Jara",
     comprador,
     pagamento: "a_vista" as const,
     condicaoPagamento: "",
@@ -89,7 +90,7 @@ describe("Compras: consumo, referências e emissão", () => {
     numeroColeta: "",
     frete: 0,
     observacoes: "",
-    itens: [{ itemId: 1, quantidade: 2 }],
+    itens: [{ itemId: 1, quantidade: 2, precoUnitario: 10 }],
   };
   it("exige CPF/CNPJ compatível com o comprador e e-mail para a NF", () => {
     expect(compradorSchema.safeParse(comprador).success).toBe(true);
@@ -102,6 +103,15 @@ describe("Compras: consumo, referências e emissão", () => {
   });
   it("bloqueia ordem vazia, item duplicado, quantidade inválida e faturado sem prazo", () => {
     expect(ordemCompraSchema.safeParse(ordem).success).toBe(true);
+    expect(
+      ordemCompraSchema.safeParse({
+        ...ordem,
+        itens: [{ itemId: 1, quantidade: 2, precoUnitario: 15 }],
+      }).success
+    ).toBe(true);
+    expect(
+      ordemCompraSchema.safeParse({ ...ordem, nomeComprador: "" }).success
+    ).toBe(false);
     expect(ordemCompraSchema.safeParse({ ...ordem, itens: [] }).success).toBe(
       false
     );
@@ -114,7 +124,13 @@ describe("Compras: consumo, referências e emissão", () => {
     expect(
       ordemCompraSchema.safeParse({
         ...ordem,
-        itens: [{ itemId: 1, quantidade: -1 }],
+        itens: [{ itemId: 1, quantidade: -1, precoUnitario: 10 }],
+      }).success
+    ).toBe(false);
+    expect(
+      ordemCompraSchema.safeParse({
+        ...ordem,
+        itens: [{ itemId: 1, quantidade: 2, precoUnitario: -1 }],
       }).success
     ).toBe(false);
     expect(

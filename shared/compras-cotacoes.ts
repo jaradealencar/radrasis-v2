@@ -95,6 +95,7 @@ export const ordemCompraSchema = z
   .object({
     chave: z.string().uuid(),
     cotacaoId: z.number().int().positive(),
+    nomeComprador: z.string().trim().min(3).max(256),
     comprador: compradorSchema,
     pagamento: z.enum(["a_vista", "faturado"]),
     condicaoPagamento: z.string().max(256),
@@ -118,6 +119,7 @@ export const ordemCompraSchema = z
         z.object({
           itemId: z.number().int().positive(),
           quantidade: z.number().finite().positive().max(1e8),
+          precoUnitario: z.number().finite().nonnegative().max(1e9),
         })
       )
       .min(1)
@@ -142,6 +144,7 @@ export type LinhaOrdemCompra = {
   unidade: string;
   quantidade: number;
   precoUnitario: number;
+  precoCotadoUnitario?: number;
   total: number;
   unidadeDestino: string | null;
   fatorConversao: number | null;

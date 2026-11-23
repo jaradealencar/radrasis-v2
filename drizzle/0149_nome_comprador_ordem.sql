@@ -1,0 +1,1 @@
+ALTER TABLE "compras_ordens" ADD COLUMN "nome_comprador" varchar(256) DEFAULT '' NOT NULL;

@@ -280,7 +280,8 @@ export const comprasRouter = router({
               code: "BAD_REQUEST",
               message: "Item não pertence à cotação.",
             });
-          const preco = Number(origem.precoUnitario);
+          const precoCotado = Number(origem.precoUnitario);
+          const preco = i.precoUnitario;
           return {
             itemId: origem.id,
             materiaPrimaId: origem.materiaPrimaId,
@@ -289,6 +290,7 @@ export const comprasRouter = router({
             unidade: origem.unidade,
             quantidade: i.quantidade,
             precoUnitario: preco,
+            precoCotadoUnitario: precoCotado,
             total: Math.round(i.quantidade * preco * 100) / 100,
             unidadeDestino: origem.unidadeDestino,
             fatorConversao: origem.fatorConversao
