@@ -4700,6 +4700,7 @@ export const comprasCotacoes = pgTable("compras_cotacoes", {
   condicaoPagamento: text("condicao_pagamento"), prazoEntrega: text("prazo_entrega"),
   frete: decimal("frete", { precision: 18, scale: 2 }), total: decimal("total", { precision: 18, scale: 2 }).notNull(),
   nomeArquivo: text("nome_arquivo"), observacoes: text("observacoes"),
+  freteModo: varchar("frete_modo", { length: 16 }), freteValorInformado: decimal("frete_valor_informado", { precision: 18, scale: 4 }), pesoFreteKg: decimal("peso_frete_kg", { precision: 18, scale: 3 }),
   criadoPor: text("criado_por"), createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 export const comprasCotacaoItens = pgTable("compras_cotacao_itens", {
@@ -4721,14 +4722,25 @@ export const comprasOrdens = pgTable("compras_ordens", {
   frete: decimal("frete", { precision: 18, scale: 2 }).notNull(), total: decimal("total", { precision: 18, scale: 2 }).notNull(),
   observacoes: text("observacoes").notNull(), itens: jsonb("itens").$type<import("../shared/compras-cotacoes").LinhaOrdemCompra[]>().notNull(),
   criadoPor: text("criado_por"), createdAt: timestamp("created_at").defaultNow().notNull(),
+  freteConfirmado: boolean("frete_confirmado").default(false).notNull(),
+  freteModo: varchar("frete_modo", { length: 16 }).default("valor_total").notNull(), freteValorInformado: decimal("frete_valor_informado", { precision: 18, scale: 4 }),
+  pesoPrevistoKg: decimal("peso_previsto_kg", { precision: 18, scale: 3 }),
+  logisticaRevisao: integer("logistica_revisao").default(0).notNull(),
 }, t => ({ cotacaoIdx: index("compras_ordens_cotacao_idx").on(t.cotacaoId) }));
 export const comprasOrdemNfs = pgTable("compras_ordem_nfs", {
   id: serial("id").primaryKey(), ordemId: integer("ordem_id").notNull().references(() => comprasOrdens.id, { onDelete: "restrict" }),
   importacaoId: integer("importacao_id").notNull().references(() => nfCompraImportacoes.id, { onDelete: "restrict" }),
   criadoPor: text("criado_por"), createdAt: timestamp("created_at").defaultNow().notNull(),
+  logisticaSnapshot: jsonb("logistica_snapshot").$type<import("../shared/compras-frete").FreteCompraSnapshot>(),
 }, t => ({ nfUq: uniqueIndex("compras_ordem_nfs_nf_uq").on(t.importacaoId) }));
 export const comprasCompradores = pgTable("compras_compradores", {
   id: integer("id").primaryKey(),
   dados: jsonb("dados").$type<{ empresa: { nome: string; documento: string; inscricaoEstadual: string }; pessoa: { nome: string; documento: string; inscricaoEstadual: string }; endereco: string; emailNf: string }>().notNull(),
   atualizadoPor: text("atualizado_por"), updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
+export const comprasLogisticaHistorico = pgTable("compras_logistica_historico", {
+  id: serial("id").primaryKey(), ordemId: integer("ordem_id").notNull().references(() => comprasOrdens.id, { onDelete: "restrict" }),
+  revisao: integer("revisao").notNull(),
+  dados: jsonb("dados").$type<{ frete: number; freteConfirmado: boolean; pesoPrevistoKg: number | null; transportadora: string; numeroColeta: string; freteModo: string; freteValorInformado: number | null }>().notNull(),
+  criadoPor: text("criado_por"), createdAt: timestamp("created_at").defaultNow().notNull(),
+}, t => ({ revisaoUq: uniqueIndex("compras_logistica_ordem_revisao_uq").on(t.ordemId, t.revisao) }));

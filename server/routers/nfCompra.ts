@@ -11,6 +11,7 @@ import {
   nfCompraImportacoes,
   nfCompraItens,
   nfMpVinculos,
+  comprasOrdemNfs,
 } from "../../drizzle/schema";
 import { eq, inArray, ilike, or, and, desc, sql, isNotNull } from "drizzle-orm";
 import { parseNfXml } from "../services/nfXmlParser";
@@ -23,6 +24,7 @@ import {
 } from "../services/nfSugestaoVinculo";
 import { calcularNfCompra, type ItemCalculoEntrada } from "../services/nfCalculo";
 import { sincronizarCatalogoMubiSys } from "../services/mubisysEspelho";
+import { consultarOrdemFrete, fornecedorDaOrdemConfere, snapshotFreteNf } from "../services/comprasFrete";
 
 function digitosCnpj(valor: string | null | undefined): string {
   return (valor ?? "").replace(/\D/g, "");
@@ -98,6 +100,7 @@ function mapearCompraHistorica(row: {
   dataImportacao: Date;
   fornecedorNome: string | null;
   fornecedorCnpj: string;
+  fatorConversao?: unknown; unidadeErp?: string | null; custoRealErp?: unknown; baseCalculoTexto?: string | null;
 }) {
   return {
     precoUnitario: Number(row.valorUnitarioOriginal),
@@ -105,6 +108,10 @@ function mapearCompraHistorica(row: {
     data: row.dataEmissao || row.dataImportacao.toISOString().slice(0, 10),
     fornecedor: row.fornecedorNome || "Fornecedor sem nome",
     cnpjFornecedor: row.fornecedorCnpj,
+    fatorConversao: row.fatorConversao == null ? null : Number(row.fatorConversao),
+    unidadeErp: row.unidadeErp ?? null,
+    custoRealErp: row.custoRealErp == null ? null : Number(row.custoRealErp),
+    baseCalculoTexto: row.baseCalculoTexto ?? null,
   };
 }
 
@@ -126,6 +133,7 @@ function resumirComprasCotacao(
     dataImportacao: Date;
     fornecedorNome: string | null;
     fornecedorCnpj: string;
+    fatorConversao?: unknown; unidadeErp?: string | null; custoRealErp?: unknown; baseCalculoTexto?: string | null;
   }>,
   fornecedorAtual: { cnpjFornecedor?: string | null; nomeFornecedor?: string | null },
   precoCotado: number,
@@ -137,6 +145,7 @@ function resumirComprasCotacao(
     dataImportacao: Date;
     fornecedorNome: string | null;
     fornecedorCnpj: string;
+    fatorConversao?: unknown; unidadeErp?: string | null; custoRealErp?: unknown; baseCalculoTexto?: string | null;
   }>
 ) {
   const compraAtual = compras[0] ?? null;
@@ -165,6 +174,10 @@ async function buscarHistoricoComprasCotacao(
   const selecionarCompras = () => db
     .select({
       valorUnitarioOriginal: nfCompraItens.valorUnitario,
+      fatorConversao: nfCompraItens.fatorConversao,
+      unidadeErp: nfCompraItens.unidadeErp,
+      custoRealErp: nfCompraItens.custoRealErp,
+      baseCalculoTexto: nfCompraItens.baseCalculoTexto,
       unidadeCompra: nfCompraItens.unidadeCompra,
       dataEmissao: nfCompraImportacoes.dataEmissao,
       dataImportacao: nfCompraImportacoes.createdAt,
@@ -533,6 +546,9 @@ export const nfCompraRouter = router({
   salvarEGravarMemoria: protectedProcedure
     .input(
       z.object({
+        ordemCompraId: z.number().int().positive("Selecione a ordem de compra antes de concluir a NF."),
+        logisticaRevisao: z.number().int().nonnegative(),
+        freteAplicadoOrdem: z.number().finite().nonnegative(),
         cabecalho: z.object({
           numero: z.string().optional(),
           serie: z.string().optional(),
@@ -545,7 +561,7 @@ export const nfCompraRouter = router({
           pesoLiquidoTotalKg: z.number().optional().nullable(),
           modoRateioFrete: z.enum(["gratis", "por_kg", "valor_total", "total_peso", "total_qtd", "total_valor", "total_valor_ipi"]),
           freteValorPorKg: z.number().optional().nullable(),
-          percentualIcms: z.number().default(10),
+          percentualIcms: z.number().min(0).max(100).default(10),
           arquivoOriginalUrl: z.string().optional().nullable(),
           arquivoTipo: z.string().optional().nullable(),
         }),
@@ -557,9 +573,11 @@ export const nfCompraRouter = router({
             ncm: z.string().optional().nullable(),
             unidadeCompra: z.string(),
             unidadeCompraConversao: z.string().optional().nullable(),
-            quantidade: z.number(),
-            valorUnitario: z.number(),
-            valorTotalItem: z.number(),
+            quantidade: z.number().finite().positive(),
+            valorUnitario: z.number().finite().nonnegative(),
+            valorTotalItem: z.number().finite().nonnegative(),
+            valorIpi: z.number().nonnegative().optional(),
+            pesoFreteKg: z.number().nonnegative().optional().nullable(),
             materiaPrimaId: z.number().optional().nullable(),
             origemVinculo: z.string().optional().nullable(),
             unidadeErp: z.string().optional().nullable(),
@@ -614,8 +632,24 @@ export const nfCompraRouter = router({
           dataEmissao: input.cabecalho.dataEmissao, valorProdutos: input.cabecalho.valorProdutos, origem: "auditoria_salva" },
       });
 
+      return db.transaction(async tx => {
+        const ordem = await consultarOrdemFrete(tx, input.ordemCompraId, true);
+        if (!fornecedorDaOrdemConfere(ordem, input.cabecalho)) throw new TRPCError({ code: "BAD_REQUEST", message: "O fornecedor da NF não corresponde à ordem de compra." });
+        const identidade = input.cabecalho.chaveAcesso || [input.cabecalho.cnpjFornecedor.replace(/\D/g, ""), input.cabecalho.numero, input.cabecalho.serie].join(":");
+        if (!input.cabecalho.chaveAcesso && (!input.cabecalho.numero || !input.cabecalho.serie)) throw new TRPCError({ code: "BAD_REQUEST", message: "Informe a chave da NF ou seu número e série para evitar duplicações." });
+        await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${identidade}))`);
+        const [existente] = await tx.select({ id: nfCompraImportacoes.id, ordemId: comprasOrdemNfs.ordemId }).from(nfCompraImportacoes).leftJoin(comprasOrdemNfs, eq(comprasOrdemNfs.importacaoId, nfCompraImportacoes.id)).where(input.cabecalho.chaveAcesso ? eq(nfCompraImportacoes.chaveAcesso, input.cabecalho.chaveAcesso) : and(eq(nfCompraImportacoes.cnpjFornecedor, input.cabecalho.cnpjFornecedor), eq(nfCompraImportacoes.numero, input.cabecalho.numero!), eq(nfCompraImportacoes.serie, input.cabecalho.serie!))).limit(1);
+        if (existente) {
+          if (existente.ordemId === input.ordemCompraId) return { importacaoId: existente.id, ok: true, fornecedorCadastro };
+          throw new TRPCError({ code: "CONFLICT", message: "Esta NF já foi salva. Use Vincular NF / conferir no histórico de ordens para associar uma nota antiga." });
+        }
+        if (input.logisticaRevisao !== ordem.ordem.logisticaRevisao) throw new TRPCError({ code: "CONFLICT", message: "O frete da ordem mudou. Selecione novamente a ordem antes de salvar." });
+        const freteSnapshot = snapshotFreteNf(ordem, input.freteAplicadoOrdem, input.cabecalho.pesoLiquidoTotalKg ?? null);
+        const definitivo = calcularNfCompra({ valorMercadoria: input.cabecalho.valorProdutos, valorFrete: freteSnapshot.freteAplicado, modoFrete: "valor_total", criterioRateioFrete: input.cabecalho.modoRateioFrete === "total_peso" ? "peso" : input.cabecalho.modoRateioFrete === "total_qtd" ? "quantidade" : "valor", baseValorRateioFrete: input.cabecalho.modoRateioFrete === "total_valor_ipi" ? "valor_total_ipi" : "valor_total", percentualIcms: input.cabecalho.percentualIcms,
+          itens: input.itens.map(i => ({ descricao: i.descricaoNf, quantidade: i.quantidade, unidadeCompra: (normalizarUnidadeErp(i.unidadeCompra) ?? "UN") as ItemCalculoEntrada["unidadeCompra"], valorUnitario: i.valorUnitario, valorTotalItem: i.valorTotalItem, valorIpi: i.valorIpi, pesoKg: i.pesoFreteKg ?? undefined, materiaPrimaId: i.materiaPrimaId ?? undefined, unidadeErp: normalizarUnidadeErp(i.unidadeErp ?? "") ?? undefined, fatorConversao: i.fatorConversao ?? undefined, custoCadastrado: i.custoCadastradoErp ?? undefined })) });
+
       // 1. Gravar cabeçalho
-      const [importacao] = await db
+      const [importacao] = await tx
         .insert(nfCompraImportacoes)
         .values({
           numero: input.cabecalho.numero ?? null,
@@ -625,10 +659,10 @@ export const nfCompraRouter = router({
           nomeFornecedor: input.cabecalho.nomeFornecedor ?? null,
           dataEmissao: input.cabecalho.dataEmissao ?? null,
           valorProdutos: String(input.cabecalho.valorProdutos),
-          valorFreteNf: String(input.cabecalho.valorFreteNf),
+          valorFreteNf: String(freteSnapshot.freteAplicado),
           pesoLiquidoTotalKg: input.cabecalho.pesoLiquidoTotalKg ? String(input.cabecalho.pesoLiquidoTotalKg) : null,
-          modoRateioFrete: input.cabecalho.modoRateioFrete,
-          freteValorPorKg: input.cabecalho.freteValorPorKg ? String(input.cabecalho.freteValorPorKg) : null,
+          modoRateioFrete: input.cabecalho.modoRateioFrete.startsWith("total_") ? input.cabecalho.modoRateioFrete : "total_valor",
+          freteValorPorKg: freteSnapshot.valorPorKg == null ? null : String(freteSnapshot.valorPorKg),
           percentualIcms: String(input.cabecalho.percentualIcms),
           arquivoOriginalUrl: input.cabecalho.arquivoOriginalUrl ?? null,
           arquivoTipo: input.cabecalho.arquivoTipo ?? null,
@@ -639,8 +673,10 @@ export const nfCompraRouter = router({
         .returning();
 
       // 2. Gravar itens da importação
-      for (const item of input.itens) {
-        await db.insert(nfCompraItens).values({
+      for (const [indice, original] of input.itens.entries()) {
+        const calculado = definitivo.itens[indice];
+        const item = { ...original, ...calculado, unidadeCompra: original.unidadeCompra, quantidadeErp: calculado.quantidadeErp ?? null, custoCadastradoErp: original.custoCadastradoErp };
+        await tx.insert(nfCompraItens).values({
           importacaoId: importacao.id,
           numeroItem: item.numeroItem,
           codigoFornecedor: item.codigoFornecedor,
@@ -685,7 +721,7 @@ export const nfCompraRouter = router({
           };
 
           // Upsert por (cnpjFornecedor, codigoFornecedor)
-          await db
+          await tx
             .insert(nfMpVinculos)
             .values({ ...valoresMemoria, vezesUsado: 1 })
             .onConflictDoUpdate({
@@ -698,7 +734,9 @@ export const nfCompraRouter = router({
         }
       }
 
+      await tx.insert(comprasOrdemNfs).values({ ordemId: input.ordemCompraId, importacaoId: importacao.id, criadoPor: userId, logisticaSnapshot: freteSnapshot });
       return { importacaoId: importacao.id, ok: true, fornecedorCadastro };
+      });
     }),
 
   /**

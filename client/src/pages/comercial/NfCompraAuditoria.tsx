@@ -2,6 +2,9 @@ import { useState, useMemo } from "react";
 import PageHeader from "@/components/PageHeader";
 import ModalCalculadoraFator from "@/components/ModalCalculadoraFator";
 import { ComprasHistorico, OrdemCompraModal, SalvarCotacaoCompra } from "./ComprasGestao";
+import { SelecionarOrdemNf, type OrdemFrete } from "./ComprasLogistica";
+import { CotacaoComparativoConsumo } from "./CotacaoComparativoConsumo";
+import { medidasChapaMm } from "@shared/compras-chapas";
 import { calcularRateioFrete, type BaseValorRateioFrete, type CriterioRateioFrete, type ModoFreteNf } from "@shared/nf-frete";
 import { trpc } from "@/lib/trpc";
 import { fmtBrl, fmtNum, fmtPct } from "@/lib/format";
@@ -178,15 +181,16 @@ export default function NfCompraAuditoria() {
     return Number.isFinite(n) ? n : fallback;
   };
 
+  const [cabecalho, setCabecalho] = useState<CabecalhoNf | null>(null);
+  const [ordemNf, setOrdemNf] = useState<OrdemFrete | null>(null);
   const valorFreteLido = parseNumSeguro(freteValorStr, 0);
   const freteValor = modoFrete === "gratis"
     ? 0
-    : Number(valorFreteLido.toFixed(modoFrete === "por_kg" ? 4 : 2));
+    : ordemNf?.ordem.freteModo === "gratis" ? 0 : ordemNf?.ordem.freteModo === "por_kg" ? Number((Number(ordemNf.ordem.freteValorInformado ?? 0) * (cabecalho?.pesoLiquidoTotalKg ?? 0)).toFixed(2)) : Number(valorFreteLido.toFixed(modoFrete === "por_kg" ? 4 : 2));
   const percentualIcms = Number(parseNumSeguro(percentualIcmsStr, 0).toFixed(2));
 
   // Estado da NF carregada
   const [xmlTexto, setXmlTexto] = useState<string>("");
-  const [cabecalho, setCabecalho] = useState<CabecalhoNf | null>(null);
 
   const [itens, setItens] = useState<ItemEditavel[]>([]);
   const [itemEmEdicao, setItemEmEdicao] = useState<number | null>(null);
@@ -372,6 +376,7 @@ export default function NfCompraAuditoria() {
       {
         onSuccess: (data) => {
           setCabecalho(data.cabecalho);
+          setOrdemNf(null);
           setFornecedorCadastro(data.fornecedorCadastro);
           void utils.suppliers.list.invalidate();
           setItens(
@@ -564,6 +569,10 @@ export default function NfCompraAuditoria() {
 
   const salvarAuditoria = () => {
     if (!cabecalho || !calculoAoVivo) return;
+    if (!ordemNf) { toast.error("Selecione a ordem de compra vinculada à cotação antes de concluir a NF."); return; }
+    if (!ordemNf.ordem.freteConfirmado) { toast.error("Confirme o frete na ordem de compra, inclusive se for grátis."); return; }
+    if (ordemNf.ordem.freteModo !== "por_kg" && freteValor > ordemNf.saldo + 0.001) { toast.error("O frete desta NF não pode exceder o saldo da ordem."); return; }
+    if ((freteValor > 0 || ordemNf.ordem.freteModo === "por_kg") && !(cabecalho.pesoLiquidoTotalKg && cabecalho.pesoLiquidoTotalKg > 0)) { toast.error("Informe o peso definitivo da NF para calcular R$/kg."); return; }
     const itensSemConversao = calculoAoVivo.itens.filter((item) => {
       const origem = normalizarUnidadeAuditoria(item.unidadeCompraConversao);
       const destino = normalizarUnidadeAuditoria(item.unidadeErp);
@@ -586,6 +595,9 @@ export default function NfCompraAuditoria() {
     }
     salvarMutation.mutate(
       {
+        ordemCompraId: ordemNf.ordem.id,
+        logisticaRevisao: ordemNf.ordem.logisticaRevisao,
+        freteAplicadoOrdem: freteValor,
         cabecalho: {
           numero: cabecalho.numero,
           serie: cabecalho.serie,
@@ -620,6 +632,8 @@ export default function NfCompraAuditoria() {
           quantidade: i.quantidade,
           valorUnitario: i.valorUnitario,
           valorTotalItem: i.valorTotalItem,
+          valorIpi: i.valorIpi,
+          pesoFreteKg: i.pesoFreteKg,
           materiaPrimaId: i.materiaPrimaId,
           origemVinculo: i.origemFator === "memoria" ? "memoria" : "manual",
           unidadeErp: i.unidadeErp,
@@ -638,8 +652,12 @@ export default function NfCompraAuditoria() {
       },
       {
         onSuccess: () => {
+          void utils.compras.obterOrdemFrete.invalidate();
+          void utils.compras.auditarOrdem.invalidate();
+          void utils.compras.painel.invalidate();
           alert("Auditoria salva com sucesso! Os vínculos foram memorizados para as próximas NFs deste fornecedor.");
         },
+        onError: error => toast.error(error.message),
       }
     );
   };
@@ -723,7 +741,7 @@ export default function NfCompraAuditoria() {
                   onClick={() => {
                     setOrigemCompra("interestadual");
                     setPercentualIcmsStr("10");
-                    if (parseNumSeguro(freteValorStr) === 0) setFreteValorStr("2,50");
+                    if (!ordemNf && parseNumSeguro(freteValorStr) === 0) setFreteValorStr("2,50");
                   }}
                   className={`px-3 py-1 rounded-md text-xs font-medium border transition-all ${
                     origemCompra === "interestadual"
@@ -738,7 +756,7 @@ export default function NfCompraAuditoria() {
                   onClick={() => {
                     setOrigemCompra("local");
                     setPercentualIcmsStr("0");
-                    setFreteValorStr("0,00");
+                    if (!ordemNf) setFreteValorStr("0,00");
                   }}
                   className={`px-3 py-1 rounded-md text-xs font-medium border transition-all ${
                     origemCompra === "local"
@@ -746,10 +764,15 @@ export default function NfCompraAuditoria() {
                       : "bg-white text-slate-600 border-slate-300 hover:bg-slate-100"
                   }`}
                 >
-                  📍 Compra Interna / Local (Dentro de MS) — Só valor da NF
+                  📍 Compra Interna / Local (Dentro de MS) — Sem ICMS adicional
                 </button>
               </div>
             </div>
+
+            {cabecalho && <SelecionarOrdemNf selecionada={ordemNf} selecionar={dados => {
+              setOrdemNf(dados);
+              if (dados) { setModoFrete("valor_total"); setFreteValorStr(String(dados.saldo)); }
+            }} pesoKg={cabecalho.pesoLiquidoTotalKg} alterarPeso={peso => setCabecalho(v => v ? { ...v, pesoLiquidoTotalKg: peso } : v)} freteAplicado={freteValor} />}
 
             <div className="grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
               <div className="md:col-span-2">
@@ -770,6 +793,7 @@ export default function NfCompraAuditoria() {
                 </label>
                 <select
                   value={modoFrete}
+                  disabled={ordemNf != null}
                   onChange={(e) => setModoFrete(e.target.value as ModoFreteNf)}
                   className="w-full text-sm border border-slate-300 rounded-md px-3 py-2 bg-white"
                 >
@@ -785,10 +809,10 @@ export default function NfCompraAuditoria() {
                 </label>
                 <input
                   type="text"
-                  value={modoFrete === "gratis" ? "0,00" : freteValorStr}
+                  value={ordemNf && ordemNf.ordem.freteModo !== "valor_total" ? String(freteValor) : modoFrete === "gratis" ? "0,00" : freteValorStr}
                   onChange={(e) => setFreteValorStr(e.target.value)}
                   placeholder="0,00"
-                  disabled={modoFrete === "gratis"}
+                  disabled={modoFrete === "gratis" || (ordemNf != null && ordemNf.ordem.freteModo !== "valor_total")}
                   className="w-full text-sm border border-slate-300 rounded-md px-3 py-2 font-mono font-bold text-slate-800 disabled:bg-slate-100 disabled:text-slate-500"
                 />
               </div>
@@ -1476,12 +1500,11 @@ export default function NfCompraAuditoria() {
               <Table className="table-fixed text-[11px] [&_th]:whitespace-normal [&_th]:px-1.5 [&_td]:whitespace-normal [&_td]:break-words [&_td]:p-1.5 [&_td]:align-top">
                 <TableHeader>
                   <TableRow>
-                    <TableHead className="w-[20%]">Item do PDF</TableHead>
+                    <TableHead className="w-[19%]">Item do PDF</TableHead>
                     <TableHead className="w-[12%] text-right">Cotado</TableHead>
                     <TableHead className="w-[17%]">Matéria-prima</TableHead>
-                    <TableHead className="w-[18%] text-right">Últimas compras</TableHead>
-                    <TableHead className="w-[11%] text-right">Variação por unidade original</TableHead>
-                    <TableHead className="w-[22%] text-right">Comparativo na unidade de consumo</TableHead>
+                    <TableHead className="w-[15%] text-right">Últimas compras (origem)</TableHead>
+                    <TableHead className="w-[37%] text-right">Cotação × compra anterior × MubiSys — mesma unidade</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -1617,30 +1640,12 @@ export default function NfCompraAuditoria() {
                           <span className="mt-2 block text-[9px] text-slate-400">Mais recente (todos)</span>
                           {formatarCompra(compraGeral, true)}
                         </TableCell>
-                        <TableCell className="text-right font-mono text-xs font-bold">
-                          {!semVariacao ? (
-                            <div className="space-y-1">
-                              {variacaoFornecedor != null && (
-                                <span className={`block ${variacaoFornecedor > 0 ? "text-red-700" : "text-emerald-700"}`}>
-                                  Fornecedor: {variacaoFornecedor > 0 ? "+" : ""}{fmtPct(variacaoFornecedor, 2)}
-                                </span>
-                              )}
-                              {variacaoGeral != null && (!mesmaCompra || variacaoFornecedor == null) && (
-                                <span className={`block ${variacaoGeral > 0 ? "text-red-700" : "text-emerald-700"}`}>
-                                  Geral: {variacaoGeral > 0 ? "+" : ""}{fmtPct(variacaoGeral, 2)}
-                                </span>
-                              )}
-                            </div>
-                          ) : item.semHistoricoCompras ? (
-                            <span className="text-slate-400 text-[11px]">Sem compras anteriores</span>
-                          ) : item.ultimaCompraGeral && !item.historicoUnidadeCompativel ? (
-                            <span className="text-amber-600 text-[11px]">Unidade diferente</span>
-                          ) : (
-                            <span className="text-slate-400 text-[11px]">—</span>
-                          )}
-                        </TableCell>
                         <TableCell className="text-right font-mono text-xs text-slate-600">
-                          <div className="space-y-1.5">
+                          {(medidasChapaMm(item.descricao) || normalizarUnidadeAuditoria(unidadeMubisys) === "M2" || normalizarUnidadeAuditoria(item.unidade) === "M2") ? <CotacaoComparativoConsumo key={`${i}-${item.codigo}-${item.materiaPrimaVinculada?.id ?? "sem-mp"}`} item={item} fornecedor={cotacaoPdfResultado.fornecedor} alterar={(fator, formula) => setCotacaoPdfResultado((atual: any) => {
+                            const linha = atual?.itens[i];
+                            if (!linha || (linha.fatorConversaoCotacao === fator && linha.baseCalculoConversaoCotacao === formula && linha.unidadeDestinoConversaoCotacao === "M2")) return atual;
+                            return { ...atual, itens: atual.itens.map((l: any, indice: number) => indice === i ? { ...l, fatorConversaoCotacao: fator, unidadeDestinoConversaoCotacao: "M2", unidadeOrigemConversaoCotacao: item.unidade, baseCalculoConversaoCotacao: formula } : l) };
+                          })} /> : <div className="space-y-1.5">
                             <span className="block">
                               {custoAtualMubisys != null
                                 ? `MubiSys: ${fmtBrl(custoAtualMubisys)}/${unidadeMubisys}`
@@ -1676,7 +1681,7 @@ export default function NfCompraAuditoria() {
                                 {fatorConversaoCotacao ? "Ver/ajustar conversão" : "Calcular preço por unidade de consumo"}
                               </button>
                             )}
-                          </div>
+                          </div>}
                         </TableCell>
                       </TableRow>
                     );

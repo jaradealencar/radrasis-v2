@@ -16,6 +16,9 @@ export function criarOrdemCompraPdf(
     transportadora: string;
     numeroColeta: string;
     frete: string | number;
+    freteModo?: string;
+    freteValorInformado?: string | number | null;
+    pesoPrevistoKg?: string | number | null;
     total: string | number;
     observacoes: string;
     itens: LinhaOrdemCompra[];
@@ -77,7 +80,9 @@ export function criarOrdemCompraPdf(
     (doc as jsPDF & { lastAutoTable: { finalY: number } }).lastAutoTable
       .finalY + 9;
   const bloco = [
-    `Frete: ${fmtBrl(Number(ordem.frete))} | TOTAL: ${fmtBrl(Number(ordem.total))}`,
+    ordem.freteModo === "por_kg"
+      ? `Frete: ${fmtBrl(Number(ordem.freteValorInformado))}/kg. Peso previsto: ${ordem.pesoPrevistoKg == null ? "a definir na NF" : `${fmtNum(Number(ordem.pesoPrevistoKg), 3)} kg`}. ${ordem.pesoPrevistoKg == null ? "Subtotal sem frete" : "Total estimado"}: ${fmtBrl(Number(ordem.total))}`
+      : `Frete: ${ordem.freteModo === "gratis" ? "Grátis" : fmtBrl(Number(ordem.frete))} | TOTAL: ${fmtBrl(Number(ordem.total))}`,
     ...(ordem.observacoes ? [`Observações: ${ordem.observacoes}`] : []),
   ];
   for (const s of bloco) {

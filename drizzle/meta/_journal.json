@@ -1023,6 +1023,13 @@
       "when": 1795457812781,
       "tag": "0147_compras_cotacoes_ordens",
       "breakpoints": true
+    },
+    {
+      "idx": 146,
+      "version": "7",
+      "when": 1795464834153,
+      "tag": "0148_compras_ciclo_frete",
+      "breakpoints": true
     }
   ]
 }

@@ -35,6 +35,12 @@ import {
 } from "recharts";
 import { baixarOrdemCompraPdf } from "@/lib/ordemCompraPdf";
 import {
+  FreteCompraCampos,
+  LogisticaOrdemModal,
+  type ModoFreteCompra,
+} from "./ComprasLogistica";
+import { calcularFreteCompra } from "@shared/compras-frete";
+import {
   unidadeConsumo,
   compradorSchema,
   cotacaoCompraSchema,
@@ -91,7 +97,17 @@ export function SalvarCotacaoCompra({
   const [pagamento, setPagamento] = useState(resultado.condicaoPagamento ?? "");
   const [prazo, setPrazo] = useState(resultado.prazoEntrega ?? "");
   const [frete, setFrete] = useState(
-    resultado.valorFrete == null ? "" : String(resultado.valorFrete)
+    resultado.freteValorInformado != null
+      ? String(resultado.freteValorInformado)
+      : resultado.valorFrete == null
+        ? ""
+        : String(resultado.valorFrete)
+  );
+  const [freteModo, setFreteModo] = useState<ModoFreteCompra>(
+    resultado.freteModo ?? "valor_total"
+  );
+  const [pesoFrete, setPesoFrete] = useState(
+    resultado.pesoFreteKg == null ? "" : String(resultado.pesoFreteKg)
   );
   const [observacoes, setObservacoes] = useState(resultado.observacoes ?? "");
   const [salvo, setSalvo] = useState<{ id: number; assinatura: string } | null>(
@@ -107,6 +123,14 @@ export function SalvarCotacaoCompra({
     condicaoPagamento: pagamento,
     prazoEntrega: prazo,
     frete: frete === "" ? null : Number(frete.replace(",", ".")),
+    freteModo,
+    freteValorInformado:
+      freteModo === "gratis"
+        ? 0
+        : frete === ""
+          ? null
+          : Number(frete.replace(",", ".")),
+    pesoFreteKg: pesoFrete === "" ? null : Number(pesoFrete.replace(",", ".")),
     observacoes,
     nomeArquivo,
     itens: resultado.itens.map((i: any) => {
@@ -194,14 +218,6 @@ export function SalvarCotacaoCompra({
         <Campo titulo="Prazo de entrega">
           <Input value={prazo} onChange={e => setPrazo(e.target.value)} />
         </Campo>
-        <Campo titulo="Frete cotado (R$)">
-          <Input
-            inputMode="decimal"
-            placeholder="Não informado"
-            value={frete}
-            onChange={e => setFrete(e.target.value)}
-          />
-        </Campo>
         <Campo titulo="Observações">
           <Input
             value={observacoes}
@@ -209,6 +225,14 @@ export function SalvarCotacaoCompra({
           />
         </Campo>
       </div>
+      <FreteCompraCampos
+        modo={freteModo}
+        valor={frete}
+        peso={pesoFrete}
+        mudarModo={setFreteModo}
+        mudarValor={setFrete}
+        mudarPeso={setPesoFrete}
+      />
       <div className="flex flex-wrap items-center gap-2">
         <Button
           size="sm"
@@ -304,7 +328,20 @@ function EditorOrdem({
   const [condicao, setCondicao] = useState(cotacao.condicaoPagamento ?? "");
   const [transportadora, setTransportadora] = useState("");
   const [coleta, setColeta] = useState("");
-  const [frete, setFrete] = useState(String(cotacao.frete ?? "0"));
+  const [frete, setFrete] = useState(
+    String(cotacao.freteValorInformado ?? cotacao.frete ?? "")
+  );
+  const [freteModo, setFreteModo] = useState<ModoFreteCompra>(
+    (cotacao.freteModo ?? "valor_total") as ModoFreteCompra
+  );
+  const [pesoFrete, setPesoFrete] = useState(
+    cotacao.pesoFreteKg == null ? "" : String(cotacao.pesoFreteKg)
+  );
+  const freteCalculado = calcularFreteCompra(
+    freteModo,
+    frete.trim() ? Number(frete.replace(",", ".")) : null,
+    pesoFrete.trim() ? Number(pesoFrete.replace(",", ".")) : null
+  );
   const [obs, setObs] = useState("");
   const emitir = trpc.compras.emitirOrdem.useMutation();
   const salvarCadastro = trpc.compras.salvarCompradores.useMutation();
@@ -327,12 +364,13 @@ function EditorOrdem({
         ) /
           100,
       0
-    ) + Number(frete.replace(",", "."));
+    ) + (freteCalculado.total ?? 0);
   const definir = (
     campo: "nome" | "documento" | "inscricaoEstadual",
     valor: string
   ) => setDados(v => ({ ...v, [tipo]: { ...v[tipo], [campo]: valor } }));
   const gerar = async () => {
+    if (freteModo !== "gratis" && (!frete.trim() || !Number.isFinite(Number(frete.replace(",", "."))) || Number(frete.replace(",", ".")) < 0)) { toast.error("Informe o valor total ou a tarifa por kg do frete antes de emitir a ordem."); return; }
     const comprador = compradorSchema.safeParse({
       tipo,
       ...perfil,
@@ -364,7 +402,13 @@ function EditorOrdem({
         condicaoPagamento: condicao,
         transportadora,
         numeroColeta: coleta,
-        frete: Number(frete.replace(",", ".")),
+        frete: freteCalculado.total ?? 0,
+        freteModo,
+        freteValorInformado:
+          freteModo === "gratis" ? 0 : Number(frete.replace(",", ".")),
+        pesoPrevistoKg: pesoFrete.trim()
+          ? Number(pesoFrete.replace(",", "."))
+          : null,
         observacoes: obs,
         itens,
       };
@@ -532,19 +576,27 @@ function EditorOrdem({
         <Campo titulo="Número da coleta">
           <Input value={coleta} onChange={e => setColeta(e.target.value)} />
         </Campo>
-        <Campo titulo="Frete da ordem (R$)">
-          <Input
-            inputMode="decimal"
-            value={frete}
-            onChange={e => setFrete(e.target.value)}
-          />
-        </Campo>
         <Campo titulo="Observações para o fornecedor">
           <Input value={obs} onChange={e => setObs(e.target.value)} />
         </Campo>
       </div>
+      <FreteCompraCampos
+        modo={freteModo}
+        valor={frete}
+        peso={pesoFrete}
+        mudarModo={setFreteModo}
+        mudarValor={setFrete}
+        mudarPeso={setPesoFrete}
+      />
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <strong>Total: {fmtBrl(total)}</strong>
+        <strong>
+          {freteCalculado.pendente
+            ? "Subtotal (frete aguardando peso): "
+            : freteModo === "por_kg"
+              ? "Total estimado: "
+              : "Total: "}
+          {fmtBrl(total)}
+        </strong>
         <Button
           disabled={emitir.isPending || !itens.length}
           onClick={() => void gerar()}
@@ -574,8 +626,18 @@ export function ComprasHistorico({
   const [fornecedor, setFornecedor] = useState("");
   const [unidade, setUnidade] = useState("");
   const [auditar, setAuditar] = useState<number | null>(null);
+  const [logisticaId, setLogisticaId] = useState<number | null>(null);
+  const [buscaOrdem, setBuscaOrdem] = useState("");
+  const [inicioOrdem, setInicioOrdem] = useState("");
+  const [fimOrdem, setFimOrdem] = useState("");
+  const [paginaOrdem, setPaginaOrdem] = useState(0);
   const cotacoes = trpc.compras.listarCotacoes.useQuery();
-  const ordens = trpc.compras.listarOrdens.useQuery();
+  const ordens = trpc.compras.listarOrdens.useQuery({
+    busca: buscaOrdem || undefined,
+    inicio: inicioOrdem || undefined,
+    fim: fimOrdem || undefined,
+    pagina: paginaOrdem,
+  });
   const materias = trpc.nfCompra.buscarMateriasPrimas.useQuery(
     { busca, limite: 20 },
     { enabled: busca.length >= 2 }
@@ -911,6 +973,37 @@ export function ComprasHistorico({
       )}
       {aba === "ordens" && (
         <>
+          <div className="grid gap-2 sm:grid-cols-3">
+            <Campo titulo="Fornecedor, transportadora ou número da ordem">
+              <Input
+                value={buscaOrdem}
+                onChange={e => {
+                  setBuscaOrdem(e.target.value);
+                  setPaginaOrdem(0);
+                }}
+              />
+            </Campo>
+            <Campo titulo="Data inicial">
+              <Input
+                type="date"
+                value={inicioOrdem}
+                onChange={e => {
+                  setInicioOrdem(e.target.value);
+                  setPaginaOrdem(0);
+                }}
+              />
+            </Campo>
+            <Campo titulo="Data final">
+              <Input
+                type="date"
+                value={fimOrdem}
+                onChange={e => {
+                  setFimOrdem(e.target.value);
+                  setPaginaOrdem(0);
+                }}
+              />
+            </Campo>
+          </div>
           {ordens.isLoading ? (
             <Spinner />
           ) : ordens.error ? (
@@ -926,7 +1019,7 @@ export function ComprasHistorico({
                   <TableHead>Ordem / data</TableHead>
                   <TableHead>Fornecedor</TableHead>
                   <TableHead>Comprador / pagamento</TableHead>
-                  <TableHead>Total</TableHead>
+                  <TableHead>Frete / total</TableHead>
                   <TableHead>Ações</TableHead>
                 </TableRow>
               </TableHeader>
@@ -945,8 +1038,36 @@ export function ComprasHistorico({
                         {o.condicaoPagamento}
                       </span>
                     </TableCell>
-                    <TableCell>{fmtBrl(Number(o.total))}</TableCell>
                     <TableCell>
+                      <span className="block">
+                        Frete:{" "}
+                        {o.freteModo === "por_kg"
+                          ? `${fmtBrl(Number(o.freteValorInformado))}/kg`
+                          : o.freteModo === "gratis"
+                            ? "Grátis"
+                            : fmtBrl(Number(o.frete))}{" "}
+                        {o.freteConfirmado ? "(confirmado)" : "(a confirmar)"}
+                      </span>
+                      <span className="block text-slate-500">
+                        {o.transportadora || "Transportadora pendente"} · coleta{" "}
+                        {o.numeroColeta || "pendente"}
+                      </span>
+                      <strong>
+                        {o.freteModo === "por_kg"
+                          ? o.pesoPrevistoKg == null
+                            ? "Subtotal sem frete: "
+                            : "Total estimado: "
+                          : "Total: "}
+                        {fmtBrl(Number(o.total))}
+                      </strong>
+                    </TableCell>
+                    <TableCell>
+                      <button
+                        className="block text-blue-600"
+                        onClick={() => setLogisticaId(o.id)}
+                      >
+                        Frete e coleta
+                      </button>
                       <button
                         className="block text-blue-600"
                         onClick={() => baixarOrdemCompraPdf(o, f)}
@@ -965,8 +1086,31 @@ export function ComprasHistorico({
               </TableBody>
             </Table>
           )}
+          <div className="flex items-center justify-between text-xs">
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={paginaOrdem === 0 || ordens.isFetching}
+              onClick={() => setPaginaOrdem(p => p - 1)}
+            >
+              Anterior
+            </Button>
+            <span>Página {paginaOrdem + 1}</span>
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={(ordens.data?.length ?? 0) < 50 || ordens.isFetching}
+              onClick={() => setPaginaOrdem(p => p + 1)}
+            >
+              Próxima
+            </Button>
+          </div>
         </>
       )}
+      <LogisticaOrdemModal
+        id={logisticaId}
+        fechar={() => setLogisticaId(null)}
+      />
       <AuditoriaOrdem id={auditar} fechar={() => setAuditar(null)} />
     </div>
   );

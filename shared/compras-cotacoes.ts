@@ -60,6 +60,15 @@ export const cotacaoCompraSchema = z.object({
   condicaoPagamento: z.string().max(256).nullable(),
   prazoEntrega: z.string().max(256).nullable(),
   frete: z.number().finite().nonnegative().max(1e9).nullable(),
+  freteModo: z.enum(["valor_total", "por_kg", "gratis"]).default("valor_total"),
+  freteValorInformado: z
+    .number()
+    .finite()
+    .nonnegative()
+    .max(1e9)
+    .nullable()
+    .default(null),
+  pesoFreteKg: z.number().finite().positive().nullable().default(null),
   nomeArquivo: z.string().max(256).nullable(),
   observacoes: z.string().max(4000).default(""),
   itens: z.array(itemCotacaoCompraSchema).min(1).max(300),
@@ -92,6 +101,17 @@ export const ordemCompraSchema = z
     transportadora: z.string().max(256),
     numeroColeta: z.string().max(128),
     frete: z.number().finite().nonnegative().max(1e9),
+    freteModo: z
+      .enum(["valor_total", "por_kg", "gratis"])
+      .default("valor_total"),
+    freteValorInformado: z
+      .number()
+      .finite()
+      .nonnegative()
+      .max(1e9)
+      .nullable()
+      .default(null),
+    pesoPrevistoKg: z.number().finite().positive().nullable().default(null),
     observacoes: z.string().max(4000),
     itens: z
       .array(

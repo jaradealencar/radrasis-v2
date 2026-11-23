@@ -1,6 +1,16 @@
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
-import { and, eq, desc, inArray } from "drizzle-orm";
+import { and, eq, desc, inArray, ilike, or, sql } from "drizzle-orm";
+import { comprasLogisticaHistorico } from "../../drizzle/schema";
+import {
+  calcularFreteCompra,
+  logisticaCompraSchema,
+} from "../../shared/compras-frete";
+import {
+  consultarOrdemFrete,
+  fornecedorDaOrdemConfere,
+  snapshotFreteNf,
+} from "../services/comprasFrete";
 import { router, protectedProcedure } from "../_core/trpc";
 import { getDb } from "../db/db";
 import {
@@ -128,7 +138,11 @@ export const comprasRouter = router({
               code: "BAD_REQUEST",
               message: "Matéria-prima não encontrada.",
             });
-          const destino = mp ? unidadeConsumo(mp.unidadeMedida) : null;
+          const destino = mp
+            ? unidadeConsumo(mp.unidadeMedida)
+            : i.unidadeDestino
+              ? unidadeConsumo(i.unidadeDestino)
+              : null;
           const identica = destino && unidadeConsumo(i.unidade) === destino;
           const fator = i.fatorConversao ?? (identica ? 1 : null);
           if (
@@ -157,18 +171,31 @@ export const comprasRouter = router({
             custoMubisys: mp?.custoUnitario,
           };
         });
+        const freteCalculado = calcularFreteCompra(
+          input.freteModo,
+          input.freteValorInformado ?? input.frete,
+          input.pesoFreteKg
+        ).total;
         const total =
           input.itens.reduce(
             (s, i) =>
               s + Math.round(i.quantidade * i.precoUnitario * 100) / 100,
             0
-          ) + (input.frete ?? 0);
+          ) + (freteCalculado ?? 0);
         const [cotacao] = await tx
           .insert(cotacoes)
           .values({
             ...input,
             total: total.toFixed(2),
-            frete: input.frete == null ? null : input.frete.toFixed(2),
+            frete: freteCalculado == null ? null : freteCalculado.toFixed(2),
+            freteValorInformado:
+              input.freteValorInformado == null
+                ? input.frete == null
+                  ? null
+                  : String(input.frete)
+                : String(input.freteValorInformado),
+            pesoFreteKg:
+              input.pesoFreteKg == null ? null : String(input.pesoFreteKg),
             criadoPor: ctx.user.id,
           })
           .onConflictDoNothing({ target: cotacoes.chave })
@@ -270,13 +297,24 @@ export const comprasRouter = router({
             formula: origem.formula,
           };
         });
-        const total = linhas.reduce((s, l) => s + l.total, 0) + input.frete;
+        const valorInformado = input.freteValorInformado ?? input.frete;
+        const frete = calcularFreteCompra(
+          input.freteModo,
+          valorInformado,
+          input.pesoPrevistoKg
+        ).total;
+        const total = linhas.reduce((s, l) => s + l.total, 0) + (frete ?? 0);
         const [ordem] = await tx
           .insert(ordens)
           .values({
             ...input,
             itens: linhas,
-            frete: input.frete.toFixed(2),
+            frete: (frete ?? 0).toFixed(2),
+            freteValorInformado: String(valorInformado),
+            pesoPrevistoKg:
+              input.pesoPrevistoKg == null
+                ? null
+                : String(input.pesoPrevistoKg),
             total: total.toFixed(2),
             criadoPor: ctx.user.id,
           })
@@ -290,14 +328,117 @@ export const comprasRouter = router({
         return outra;
       });
     }),
-  listarOrdens: protectedProcedure.query(async () =>
-    (await banco())
-      .select({ ordem: ordens, fornecedor: cotacoes.fornecedor })
-      .from(ordens)
-      .innerJoin(cotacoes, eq(cotacoes.id, ordens.cotacaoId))
-      .orderBy(desc(ordens.id))
-      .limit(200)
-  ),
+  listarOrdens: protectedProcedure
+    .input(
+      z
+        .object({
+          busca: z.string().max(256).optional(),
+          inicio: z
+            .string()
+            .regex(/^\d{4}-\d{2}-\d{2}$/)
+            .optional(),
+          fim: z
+            .string()
+            .regex(/^\d{4}-\d{2}-\d{2}$/)
+            .optional(),
+          pagina: z.number().int().nonnegative().default(0),
+          cnpjFornecedor: z.string().optional(),
+        })
+        .default({ pagina: 0 })
+    )
+    .query(async ({ input }) =>
+      (await banco())
+        .select({ ordem: ordens, fornecedor: cotacoes.fornecedor })
+        .from(ordens)
+        .innerJoin(cotacoes, eq(cotacoes.id, ordens.cotacaoId))
+        .where(
+          and(
+            input.busca
+              ? or(
+                  ilike(cotacoes.fornecedor, `%${input.busca}%`),
+                  ilike(ordens.transportadora, `%${input.busca}%`),
+                  sql`cast(${ordens.id} as text) = ${input.busca}`
+                )
+              : undefined,
+            input.inicio
+              ? sql`(${ordens.createdAt} at time zone 'UTC' at time zone 'America/Campo_Grande')::date >= ${input.inicio}::date`
+              : undefined,
+            input.fim
+              ? sql`(${ordens.createdAt} at time zone 'UTC' at time zone 'America/Campo_Grande')::date <= ${input.fim}::date`
+              : undefined,
+            input.cnpjFornecedor
+              ? sql`regexp_replace(coalesce(${cotacoes.cnpjFornecedor}, ''), '[^0-9]', '', 'g') = ${input.cnpjFornecedor.replace(/\D/g, "")}`
+              : undefined
+          )
+        )
+        .orderBy(desc(ordens.id))
+        .limit(50)
+        .offset(input.pagina * 50)
+    ),
+  obterOrdemFrete: protectedProcedure
+    .input(z.object({ id: z.number().int().positive() }))
+    .query(async ({ input }) => {
+      const db = await banco();
+      return {
+        ...(await consultarOrdemFrete(db, input.id)),
+        historico: await db
+          .select()
+          .from(comprasLogisticaHistorico)
+          .where(eq(comprasLogisticaHistorico.ordemId, input.id))
+          .orderBy(desc(comprasLogisticaHistorico.revisao)),
+      };
+    }),
+  atualizarLogistica: protectedProcedure
+    .input(logisticaCompraSchema)
+    .mutation(async ({ input, ctx }) => {
+      const db = await banco();
+      return db.transaction(async tx => {
+        const atual = await consultarOrdemFrete(tx, input.ordemId, true);
+        if (atual.ordem.logisticaRevisao !== input.revisao)
+          throw new TRPCError({
+            code: "CONFLICT",
+            message:
+              "A logística foi alterada. Reabra a ordem para atualizar os dados.",
+          });
+        const frete = calcularFreteCompra(
+          input.freteModo,
+          input.freteValorInformado ?? input.frete,
+          input.pesoPrevistoKg
+        ).total;
+        if (
+          input.freteModo !== "por_kg" &&
+          (frete ?? 0) + 0.001 < atual.utilizado
+        )
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message:
+              "O frete total não pode ser menor que o valor já aplicado às NFs.",
+          });
+        const revisao = input.revisao + 1;
+        const { ordemId, revisao: _, ...dados } = input;
+        const subtotal = atual.ordem.itens.reduce((s, i) => s + i.total, 0);
+        await tx
+          .update(ordens)
+          .set({
+            ...dados,
+            frete: (frete ?? 0).toFixed(2),
+            freteValorInformado: String(
+              input.freteValorInformado ?? input.frete
+            ),
+            pesoPrevistoKg:
+              input.pesoPrevistoKg == null
+                ? null
+                : String(input.pesoPrevistoKg),
+            logisticaRevisao: revisao,
+            total: (subtotal + (frete ?? 0)).toFixed(2),
+          })
+          .where(eq(ordens.id, ordemId));
+        await tx
+          .insert(comprasLogisticaHistorico)
+          .values({ ordemId, revisao, dados, criadoPor: ctx.user.id });
+        return { ok: true };
+      });
+    }),
   vincularNf: protectedProcedure
     .input(
       z.object({
@@ -307,50 +448,70 @@ export const comprasRouter = router({
     )
     .mutation(async ({ input, ctx }) => {
       const db = await banco();
-      const [registro] = await db
-        .select({ cnpj: cotacoes.cnpjFornecedor, nome: cotacoes.fornecedor })
-        .from(ordens)
-        .innerJoin(cotacoes, eq(cotacoes.id, ordens.cotacaoId))
-        .where(eq(ordens.id, input.ordemId));
-      const [nf] = await db
-        .select()
-        .from(nfs)
-        .where(eq(nfs.id, input.importacaoId));
-      if (!registro || !nf || nf.status !== "concluida")
-        throw new TRPCError({
-          code: "BAD_REQUEST",
-          message: "Selecione uma ordem e uma NF concluída.",
-        });
-      const digitos = (s: string | null) => (s ?? "").replace(/\D/g, "");
-      const nome = (s: string | null) =>
-        (s ?? "")
-          .normalize("NFD")
-          .replace(/[\u0300-\u036f]/g, "")
-          .toUpperCase()
-          .replace(/[^A-Z0-9]/g, "");
-      if (
-        registro.cnpj
-          ? digitos(registro.cnpj) !== digitos(nf.cnpjFornecedor)
-          : nome(registro.nome) !== nome(nf.nomeFornecedor)
-      )
-        throw new TRPCError({
-          code: "BAD_REQUEST",
-          message: "A NF pertence a outro fornecedor.",
-        });
-      const [existente] = await db
-        .select()
-        .from(vinculos)
-        .where(eq(vinculos.importacaoId, input.importacaoId));
-      if (existente && existente.ordemId !== input.ordemId)
-        throw new TRPCError({
-          code: "CONFLICT",
-          message: "Esta NF já está associada a outra ordem.",
-        });
-      await db
-        .insert(vinculos)
-        .values({ ...input, criadoPor: ctx.user.id })
-        .onConflictDoNothing();
-      return { ok: true };
+      return db.transaction(async tx => {
+        const ordemFrete = await consultarOrdemFrete(tx, input.ordemId, true);
+        const [registro] = await tx
+          .select({ cnpj: cotacoes.cnpjFornecedor, nome: cotacoes.fornecedor })
+          .from(ordens)
+          .innerJoin(cotacoes, eq(cotacoes.id, ordens.cotacaoId))
+          .where(eq(ordens.id, input.ordemId));
+        const [nf] = await tx
+          .select()
+          .from(nfs)
+          .where(eq(nfs.id, input.importacaoId))
+          .for("update");
+        if (!registro || !nf || nf.status !== "concluida")
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: "Selecione uma ordem e uma NF concluída.",
+          });
+        const digitos = (s: string | null) => (s ?? "").replace(/\D/g, "");
+        const nome = (s: string | null) =>
+          (s ?? "")
+            .normalize("NFD")
+            .replace(/[\u0300-\u036f]/g, "")
+            .toUpperCase()
+            .replace(/[^A-Z0-9]/g, "");
+        if (
+          registro.cnpj
+            ? digitos(registro.cnpj) !== digitos(nf.cnpjFornecedor)
+            : nome(registro.nome) !== nome(nf.nomeFornecedor)
+        )
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: "A NF pertence a outro fornecedor.",
+          });
+        const [existente] = await tx
+          .select()
+          .from(vinculos)
+          .where(eq(vinculos.importacaoId, input.importacaoId));
+        if (existente && existente.ordemId !== input.ordemId)
+          throw new TRPCError({
+            code: "CONFLICT",
+            message: "Esta NF já está associada a outra ordem.",
+          });
+        if (existente) return { ok: true };
+        const snapshot = snapshotFreteNf(
+          ordemFrete,
+          Number(nf.valorFreteNf),
+          nf.pesoLiquidoTotalKg ? Number(nf.pesoLiquidoTotalKg) : null
+        );
+        if (Math.abs(snapshot.freteAplicado - Number(nf.valorFreteNf)) > 0.005)
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message:
+              "O frete desta NF já auditada difere da tarifa da ordem. Revise os valores antes de vincular; o custo antigo não será alterado silenciosamente.",
+          });
+        await tx
+          .insert(vinculos)
+          .values({
+            ...input,
+            criadoPor: ctx.user.id,
+            logisticaSnapshot: snapshot,
+          })
+          .onConflictDoNothing();
+        return { ok: true };
+      });
     }),
   painel: protectedProcedure.input(filtrosSchema).query(async ({ input }) => {
     const db = await banco();
