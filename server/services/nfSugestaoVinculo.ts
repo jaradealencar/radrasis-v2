@@ -223,17 +223,23 @@ export function sugerirVinculoItem(
 ): SugestaoVinculo {
   if (memoria) {
     const mp = candidatos.find(c => c.id === memoria.materiaPrimaId);
+    const unidadeErpAtual = mp ? normalizarUnidadeErp(mp.unidadeMedida) : null;
+    const unidadeErp = unidadeErpAtual ?? memoria.unidadeErp;
+    const unidadeMudou = unidadeErp !== memoria.unidadeErp;
     return {
       materiaPrimaId: memoria.materiaPrimaId,
       nomeMateriaPrima: mp?.nome ?? null,
-      unidadeErp: memoria.unidadeErp,
-      fatorConversao: memoria.fatorConversao,
-      origemFator: "memoria",
-      baseCalculoTexto:
-        (memoria.baseCalculoTexto ?? "Vínculo salvo de uma confirmação anterior.") +
-        ` (usado ${memoria.vezesUsado}× com este fornecedor)`,
-      confianca: "alta",
-      pendencias: [],
+      unidadeErp,
+      fatorConversao: unidadeMudou ? null : memoria.fatorConversao,
+      origemFator: unidadeMudou ? null : "memoria",
+      baseCalculoTexto: unidadeMudou
+        ? `A unidade desta matéria-prima mudou no MubiSys de ${memoria.unidadeErp} para ${unidadeErp}; o fator salvo foi descartado para evitar custo em unidade incorreta. Recalcule a conversão.`
+        : (memoria.baseCalculoTexto ?? "Vínculo salvo de uma confirmação anterior.") +
+          ` (usado ${memoria.vezesUsado}× com este fornecedor)`,
+      confianca: unidadeMudou ? "media" : "alta",
+      pendencias: unidadeMudou
+        ? [`A unidade MubiSys foi atualizada para ${unidadeErp}; confirme um novo fator de conversão.`]
+        : [],
     };
   }
 
