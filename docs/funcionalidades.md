@@ -296,6 +296,14 @@ Aba ao lado de "ROI Marketing" (Inteligência de Clientes › Crescimento e Resu
 semáforo de prazo, **quarentena anti-spam por telefone**, pós-venda por data da venda, calendário e webhooks REST
 (`/api/v1/campaigns/:id/log-send`, `/api/v1/contacts/check-quarantine`). Detalhes em `docs/campanhas-whatsapp.md`.
 
+### Desempenho de novos clientes por Estado
+No ROI Marketing, ranqueia a UF registrada na primeira O.S. normal do cliente no período, com clientes únicos, O.S.,
+faturamento após descontos do ERP e média por cliente; também mostra propostas anteriores à compra e um pipeline
+separado por UF de proposta. O cruzamento de proposta com comprador usa o nome normalizado, pois o histórico não
+fornece uma chave direta proposta→O.S. O relatório usa apenas o histórico local, sem depender da API do ERP; compras
+ainda não sincronizadas não entram. O histórico disponível começa em março de 2023, UF pode estar ausente ou
+desatualizada e investimento de campanha não é rateado por Estado; esses valores não representam lucro ou ROI estadual.
+
 ---
 
 ## 9. Logística

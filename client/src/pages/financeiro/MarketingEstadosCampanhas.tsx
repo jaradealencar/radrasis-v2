@@ -1,4 +1,5 @@
-import { MapPin, Trophy } from "lucide-react";
+import { AlertTriangle, MapPin, RotateCcw, Trophy } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { fmtBrl, fmtDate, fmtNum } from "@/lib/format";
 import { trpc } from "@/lib/trpc";
@@ -18,7 +19,7 @@ function dataIsoLocal(data: string): Date {
 }
 
 export default function MarketingEstadosCampanhas({ dataInicial, dataFinal }: { dataInicial: string; dataFinal: string }) {
-  const { data, isLoading, isError } = trpc.marketingFinanceiro.rankingEstadosCampanhas.useQuery(
+  const { data, isLoading, isError, refetch } = trpc.marketingFinanceiro.rankingEstadosCampanhas.useQuery(
     { dataInicial, dataFinal },
     { staleTime: 5 * 60 * 1000 },
   );
@@ -39,7 +40,10 @@ export default function MarketingEstadosCampanhas({ dataInicial, dataFinal }: { 
         {isLoading ? (
           <p className="text-sm text-muted-foreground">Calculando estados…</p>
         ) : isError || !data ? (
-          <p className="text-sm text-red-600">Não foi possível carregar o ranking de estados.</p>
+          <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+            <span className="flex items-center gap-2"><AlertTriangle size={16} /> Não foi possível carregar o ranking de estados.</span>
+            <Button size="sm" variant="outline" onClick={() => refetch()}><RotateCcw size={14} className="mr-1.5" /> Tentar novamente</Button>
+          </div>
         ) : data.topEstados.length === 0 ? (
           <p className="text-sm text-muted-foreground">
             {data.vendasSemEstado > 0
@@ -67,6 +71,12 @@ export default function MarketingEstadosCampanhas({ dataInicial, dataFinal }: { 
             </p>
           </>
         )}
+        {!isError && data?.fontesIndisponiveis?.length ? (
+          <div role="status" className="mt-3 flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900">
+            <AlertTriangle size={15} className="mt-0.5 shrink-0" />
+            <span>Fontes indisponíveis: {data.fontesIndisponiveis.join(", ")}. Os números exibidos podem estar incompletos.</span>
+          </div>
+        ) : null}
       </CardContent>
     </Card>
   );
