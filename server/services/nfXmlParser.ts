@@ -14,6 +14,7 @@ export interface NfXmlItem {
   quantidade: number; // qCom
   valorUnitario: number; // vUnCom
   valorTotalItem: number; // vProd
+  valorIpi: number; // vIPI do imposto do item (zero quando ausente)
 }
 
 export interface NfXmlParseada {
@@ -101,6 +102,7 @@ export function parseNfXml(xmlRaw: string): NfXmlParseada {
   const itens: NfXmlItem[] = detsRaw.map((detBloco, idx) => {
     const prod = extrairBloco(detBloco, "prod");
     if (!prod) throw new NfXmlParseError(`Item ${idx + 1}: bloco <prod> ausente.`);
+    const imposto = extrairBloco(detBloco, "imposto");
     return {
       numeroItem: idx + 1,
       codigoFornecedor: textoOuErro(extrairTag(prod, "cProd"), `item ${idx + 1}: código do produto (cProd)`),
@@ -110,6 +112,7 @@ export function parseNfXml(xmlRaw: string): NfXmlParseada {
       quantidade: numeroOuErro(extrairTag(prod, "qCom"), `item ${idx + 1}: quantidade (qCom)`),
       valorUnitario: numeroOuErro(extrairTag(prod, "vUnCom"), `item ${idx + 1}: valor unitário (vUnCom)`),
       valorTotalItem: numeroOuErro(extrairTag(prod, "vProd"), `item ${idx + 1}: valor total do produto (vProd)`),
+      valorIpi: imposto ? Number(extrairTag(imposto, "vIPI") ?? "0") || 0 : 0,
     };
   });
 

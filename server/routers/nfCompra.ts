@@ -32,7 +32,7 @@ export const nfCompraRouter = router({
     .input(
       z.object({
         xmlConteudo: z.string().min(20, "XML vazio ou inválido"),
-        freteModo: z.enum(["por_kg", "valor_total"]).default("por_kg"),
+        freteModo: z.enum(["gratis", "por_kg", "valor_total"]).default("por_kg"),
         freteValor: z.number().nonnegative().default(0), // se por_kg: R$/kg; se valor_total: R$ total
         percentualIcms: z.number().min(0).max(100).default(10),
       })
@@ -96,6 +96,7 @@ export const nfCompraRouter = router({
               perfilFormato: materiaPrimaCadastros.perfilFormato,
               perfilAlturaMm: materiaPrimaCadastros.perfilAlturaMm,
               perfilLarguraMm: materiaPrimaCadastros.perfilLarguraMm,
+              pesoEspecificoKg: materiaPrimaCadastros.pesoEspecificoKg,
             })
             .from(materiasPrimas)
             .leftJoin(materiaPrimaCadastros, eq(materiaPrimaCadastros.mubisysMateriaPrimaId, materiasPrimas.mubisysMateriaPrimaId))
@@ -153,6 +154,12 @@ export const nfCompraRouter = router({
           quantidade: item.quantidade,
           valorUnitario: item.valorUnitario,
           valorTotalItem: item.valorTotalItem,
+          valorIpi: item.valorIpi,
+          pesoUnitarioFreteKg:
+            sugestao.unidadeErp === "UN" && sugestao.fatorConversao === 1 &&
+            /^(UN|UND|UNID|PC|PÇ)$/i.test(item.unidadeCompra.trim())
+              ? Number(cadPorMpId.get(sugestao.materiaPrimaId ?? -1)?.pesoEspecificoKg ?? 0) || null
+              : null,
           // Sugestão resolvida (memória ou vazio)
           materiaPrimaId: sugestao.materiaPrimaId,
           nomeMateriaPrima: sugestao.nomeMateriaPrima,
@@ -217,6 +224,7 @@ export const nfCompraRouter = router({
           perfilFormato: materiaPrimaCadastros.perfilFormato,
           perfilAlturaMm: materiaPrimaCadastros.perfilAlturaMm,
           perfilLarguraMm: materiaPrimaCadastros.perfilLarguraMm,
+          pesoEspecificoKg: materiaPrimaCadastros.pesoEspecificoKg,
         })
         .from(materiasPrimas)
         .leftJoin(materiaPrimaCadastros, eq(materiaPrimaCadastros.mubisysMateriaPrimaId, materiasPrimas.mubisysMateriaPrimaId))
@@ -240,6 +248,7 @@ export const nfCompraRouter = router({
           perfilFormato: r.perfilFormato,
           perfilAlturaMm: r.perfilAlturaMm ? Number(r.perfilAlturaMm) : null,
           perfilLarguraMm: r.perfilLarguraMm ? Number(r.perfilLarguraMm) : null,
+          pesoEspecificoKg: r.pesoEspecificoKg ? Number(r.pesoEspecificoKg) : null,
         },
       }));
     }),
@@ -252,8 +261,10 @@ export const nfCompraRouter = router({
     .input(
       z.object({
         valorMercadoria: z.number().positive(),
-        modoRateioFrete: z.enum(["por_kg", "valor_total"]),
+        modoRateioFrete: z.enum(["gratis", "por_kg", "valor_total", "total_peso", "total_qtd", "total_valor", "total_valor_ipi"]),
         freteValor: z.number().nonnegative(),
+        criterioRateioFrete: z.enum(["peso", "quantidade", "valor"]).optional(),
+        baseValorRateioFrete: z.enum(["valor_total", "valor_total_ipi"]).optional(),
         percentualIcms: z.number().min(0).max(100).default(10),
         itens: z.array(
           z.object({
@@ -262,6 +273,7 @@ export const nfCompraRouter = router({
             unidadeCompra: z.enum(["KG", "UN", "LT", "ML", "M2"]),
             valorUnitario: z.number().nonnegative(),
             valorTotalItem: z.number().nonnegative(),
+            valorIpi: z.number().nonnegative().optional(),
             materiaPrimaId: z.number().optional().nullable(),
             unidadeErp: z.enum(["ML", "M2", "UN", "LT"]).optional().nullable(),
             fatorConversao: z.number().positive().optional().nullable(),
@@ -272,12 +284,27 @@ export const nfCompraRouter = router({
       })
     )
     .mutation(({ input }) => {
-      const freteValorPorKg = input.modoRateioFrete === "por_kg" ? input.freteValor : undefined;
-      const valorFrete = input.modoRateioFrete === "valor_total" ? input.freteValor : 0;
+      const criterioRateioFrete = input.criterioRateioFrete ?? (
+        input.modoRateioFrete === "total_peso" ? "peso" :
+        input.modoRateioFrete === "total_qtd" ? "quantidade" : "valor"
+      );
+      const baseValorRateioFrete = input.baseValorRateioFrete ?? (
+        input.modoRateioFrete === "total_valor_ipi" ? "valor_total_ipi" : "valor_total"
+      );
+      const modoFrete = input.modoRateioFrete === "gratis"
+        ? "gratis"
+        : input.modoRateioFrete === "por_kg"
+          ? "por_kg"
+          : "valor_total";
+      const freteValorPorKg = modoFrete === "por_kg" ? input.freteValor : undefined;
+      const valorFrete = modoFrete === "valor_total" ? input.freteValor : 0;
 
       const entradaCalculo: Parameters<typeof calcularNfCompra>[0] = {
         valorMercadoria: input.valorMercadoria,
         valorFrete,
+        modoFrete,
+        criterioRateioFrete,
+        baseValorRateioFrete,
         freteValorPorKg,
         percentualIcms: input.percentualIcms,
         itens: input.itens.map(i => ({
@@ -286,6 +313,7 @@ export const nfCompraRouter = router({
           unidadeCompra: i.unidadeCompra,
           valorUnitario: i.valorUnitario,
           valorTotalItem: i.valorTotalItem,
+          valorIpi: i.valorIpi,
           materiaPrimaId: i.materiaPrimaId ?? undefined,
           unidadeErp: i.unidadeErp ?? undefined,
           fatorConversao: i.fatorConversao ?? undefined,
@@ -315,7 +343,7 @@ export const nfCompraRouter = router({
           valorProdutos: z.number(),
           valorFreteNf: z.number().default(0),
           pesoLiquidoTotalKg: z.number().optional().nullable(),
-          modoRateioFrete: z.enum(["por_kg", "valor_total"]),
+          modoRateioFrete: z.enum(["gratis", "por_kg", "valor_total", "total_peso", "total_qtd", "total_valor", "total_valor_ipi"]),
           freteValorPorKg: z.number().optional().nullable(),
           percentualIcms: z.number().default(10),
           arquivoOriginalUrl: z.string().optional().nullable(),

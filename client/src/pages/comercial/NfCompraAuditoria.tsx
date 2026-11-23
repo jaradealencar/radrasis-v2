@@ -1,6 +1,7 @@
 import { useState, useMemo } from "react";
 import PageHeader from "@/components/PageHeader";
 import ModalCalculadoraFator from "@/components/ModalCalculadoraFator";
+import { calcularRateioFrete, type BaseValorRateioFrete, type CriterioRateioFrete, type ModoFreteNf } from "@shared/nf-frete";
 import { trpc } from "@/lib/trpc";
 import { fmtBrl, fmtNum, fmtPct } from "@/lib/format";
 import { toast } from "sonner";
@@ -44,6 +45,8 @@ interface ItemEditavel {
   quantidade: number;
   valorUnitario: number;
   valorTotalItem: number;
+  valorIpi: number;
+  pesoUnitarioFreteKg: number | null;
   materiaPrimaId: number | null;
   nomeMateriaPrima: string | null;
   unidadeErp: "ML" | "M2" | "UN" | "LT" | null;
@@ -72,14 +75,6 @@ interface CabecalhoNf {
   valorProdutos: number;
   valorFreteNf: number;
   pesoLiquidoTotalKg: number | null;
-}
-
-/** Palavras que identificam módulos de LED (peso rateado por quantidade, não por valor) */
-const PALAVRAS_LED = ["LED", "MODULO", "MÓDULO", "FITA", "DIODE", "DRIVER"];
-
-function ehModuloLed(item: ItemEditavel): boolean {
-  const texto = `${item.descricaoNf} ${item.nomeMateriaPrima ?? ""}`.toUpperCase();
-  return PALAVRAS_LED.some((p) => texto.includes(p));
 }
 
 function normalizarUnidadeAuditoria(unidade: string | null | undefined): string {
@@ -123,96 +118,13 @@ function formatarCustoUnitarioAuditoria(valor: number | null | undefined): strin
   return Math.abs(valor) < 0.01 ? "R$ " + fmtNum(valor, 6) : fmtBrl(valor);
 }
 
-/**
- * Estima o peso em kg de um item para rateio do frete por kg.
- *
- * Regras (conforme solicitado):
- * 1. Item já em KG -> peso direto (quantidade).
- * 2. Itens com dados de densidade (chapa/perfil/bobina) -> densidade × volume,
- *    quando esses dados estiverem disponíveis no cadastro da MP.
- * 3. Módulos de LED -> distribuem o peso restante proporcional à quantidade.
- * 4. Acessórios sem peso e sem como calcular -> recebem um peso estimado
- *    sobre os itens pesados que compõem a maioria da compra.
- */
-function estimarPesoItemKg(
-  item: ItemEditavel,
-  cabecalho: CabecalhoNf,
-  todos: ItemEditavel[]
-): number {
-  const pesoTotalKg = cabecalho.pesoLiquidoTotalKg ?? 0;
+function formatarRateioFrete(valor: number): string {
+  return "R$ " + fmtNum(valor, 4);
+}
 
-  // Regra 1: item já vem em kg — peso direto.
-  if (item.unidadeCompra === "KG") return Math.max(0, item.quantidade);
-
-  // Regra 2: MP com dados de densidade (chapa/perfil/bobina cadastrada)
-  // -> peso = volume da caixa envolvente (m³) × densidade (kg/m³), vezes a
-  // quantidade. Usa largura × altura × espessura quando disponíveis.
-  if (
-    item.densidadeKgM3 &&
-    item.densidadeKgM3 > 0 &&
-    item.larguraMm &&
-    item.espessuraMm
-  ) {
-    const alturaMm = item.alturaMm ?? item.larguraMm; // sem altura, assume quadrado
-    const volumeM3 =
-      (item.larguraMm / 1000) * (alturaMm / 1000) * (item.espessuraMm / 1000);
-    return Math.max(0, volumeM3 * item.densidadeKgM3) * Math.max(0, item.quantidade);
-  }
-
-  // Peso já consumido por itens com peso direto (KG ou densidade).
-  let pesoDireto = 0;
-  const naoKg: ItemEditavel[] = [];
-  for (const t of todos) {
-    if (t.unidadeCompra === "KG") {
-      pesoDireto += Math.max(0, t.quantidade);
-    } else if (
-      t.densidadeKgM3 &&
-      t.densidadeKgM3 > 0 &&
-      t.larguraMm &&
-      t.espessuraMm
-    ) {
-      const alturaMm = t.alturaMm ?? t.larguraMm;
-      const volumeM3 =
-        (t.larguraMm / 1000) * (alturaMm / 1000) * (t.espessuraMm / 1000);
-      pesoDireto += Math.max(0, volumeM3 * t.densidadeKgM3) * Math.max(0, t.quantidade);
-    } else {
-      naoKg.push(t);
-    }
-  }
-  const pesoRestante = Math.max(0, pesoTotalKg - pesoDireto);
-
-  // Não há peso total informado nem sobrou nada para distribuir.
-  if (pesoRestante <= 0) return 0;
-
-  const leds = naoKg.filter(ehModuloLed);
-  const outros = naoKg.filter((t) => !ehModuloLed(t));
-
-  // Regra 3: módulos de LED distribuem o peso restante proporcional à
-  // quantidade (não ao valor).
-  if (ehModuloLed(item)) {
-    const totalQtdLeds = leds.reduce((s, t) => s + Math.max(0, t.quantidade), 0);
-    if (totalQtdLeds > 0) {
-      return pesoRestante * (Math.max(0, item.quantidade) / totalQtdLeds);
-    }
-    // Se é o único LED e não há outros, fica com todo o peso restante.
-    return pesoRestante;
-  }
-
-  // Regra 4: outros itens (incluindo acessórios sem peso). Rateia o peso
-  // restante proporcionalmente ao valor do item — itens mais caros/pesados
-  // (chapa, perfil) puxam mais peso; acessórios baratos puxam pouco.
-  const totalValorOutros = outros.reduce((s, t) => s + t.valorTotalItem, 0);
-  if (totalValorOutros > 0) {
-    return pesoRestante * (item.valorTotalItem / totalValorOutros);
-  }
-
-  // Fallback: rateia por quantidade quando não há valor para basear.
-  const totalQtdOutros = outros.reduce((s, t) => s + Math.max(0, t.quantidade), 0);
-  if (totalQtdOutros > 0) {
-    return pesoRestante * (Math.max(0, item.quantidade) / totalQtdOutros);
-  }
-
-  return 0;
+function pesoLinhaFreteKg(item: ItemEditavel): number {
+  if (normalizarUnidadeAuditoria(item.unidadeCompra) === "KG") return Math.max(0, item.quantidade);
+  return Math.max(0, item.quantidade) * Math.max(0, item.pesoUnitarioFreteKg ?? 0);
 }
 
 export default function NfCompraAuditoria() {
@@ -230,20 +142,26 @@ export default function NfCompraAuditoria() {
   const [origemCompra, setOrigemCompra] = useState<"interestadual" | "local">("interestadual");
 
   // Configurações do frete e ICMS (strings no estado para permitir digitação livre de vírgula/ponto)
-  const [modoFrete, setModoFrete] = useState<"por_kg" | "valor_total">("por_kg");
+  const [modoFrete, setModoFrete] = useState<ModoFreteNf>("por_kg");
+  const [criterioRateioFrete, setCriterioRateioFrete] = useState<CriterioRateioFrete>("valor");
+  const [baseValorRateioFrete, setBaseValorRateioFrete] = useState<BaseValorRateioFrete>("valor_total");
   const [freteValorStr, setFreteValorStr] = useState<string>("2,50");
   const [percentualIcmsStr, setPercentualIcmsStr] = useState<string>("10");
 
-  // Conversor seguro de string com vírgula ou ponto para número
+  // Aceita tanto decimal brasileiro (1.234,56) quanto ponto decimal (1234.56).
   const parseNumSeguro = (val: string, fallback = 0) => {
     if (!val) return fallback;
-    const limpo = val.trim().replace(/\./g, "").replace(",", ".");
-    const n = parseFloat(limpo);
+    let limpo = val.trim().replace(/[^\d,.-]/g, "");
+    if (limpo.includes(",")) limpo = limpo.replace(/\./g, "").replace(",", ".");
+    const n = Number(limpo);
     return Number.isFinite(n) ? n : fallback;
   };
 
-  const freteValor = parseNumSeguro(freteValorStr, 0);
-  const percentualIcms = parseNumSeguro(percentualIcmsStr, 0);
+  const valorFreteLido = parseNumSeguro(freteValorStr, 0);
+  const freteValor = modoFrete === "gratis"
+    ? 0
+    : Number(valorFreteLido.toFixed(modoFrete === "por_kg" ? 4 : 2));
+  const percentualIcms = Number(parseNumSeguro(percentualIcmsStr, 0).toFixed(2));
 
   // Estado da NF carregada
   const [xmlTexto, setXmlTexto] = useState<string>("");
@@ -388,6 +306,8 @@ export default function NfCompraAuditoria() {
               quantidade: i.quantidade,
               valorUnitario: i.valorUnitario,
               valorTotalItem: i.valorTotalItem,
+              valorIpi: i.valorIpi ?? 0,
+              pesoUnitarioFreteKg: i.pesoUnitarioFreteKg ?? null,
               materiaPrimaId: i.materiaPrimaId,
               nomeMateriaPrima: i.nomeMateriaPrima,
               unidadeErp: i.unidadeErp as any,
@@ -413,24 +333,30 @@ export default function NfCompraAuditoria() {
   // Cálculo ao vivo derivado
   const calculoAoVivo = useMemo(() => {
     if (!cabecalho || itens.length === 0) return null;
-    const freteValorPorKg = modoFrete === "por_kg" ? freteValor : undefined;
-    const freteValorTotal = modoFrete === "valor_total" ? freteValor : 0;
+    const rateio = calcularRateioFrete({
+      modo: modoFrete,
+      valor: freteValor,
+      criterio: criterioRateioFrete,
+      baseValor: baseValorRateioFrete,
+      itens: itens.map((item) => ({
+        quantidade: item.quantidade,
+        unidadeCompra: normalizarUnidadeAuditoria(item.unidadeCompra),
+        valorTotalItem: item.valorTotalItem,
+        valorIpi: item.valorIpi,
+        pesoKg: pesoLinhaFreteKg(item),
+      })),
+    });
 
     let totalFrete = 0;
     let totalIcms = 0;
     let totalCustoGeral = 0;
 
-    const itensCalculados = itens.map((item) => {
-      const pesoItem = estimarPesoItemKg(item, cabecalho!, itens);
-      const rateioFrete =
-        freteValorPorKg !== undefined
-          ? pesoItem * freteValorPorKg
-          : cabecalho.valorProdutos > 0
-          ? freteValorTotal * (item.valorTotalItem / cabecalho.valorProdutos)
-          : 0;
+    const itensCalculados = itens.map((item, idx) => {
+      const pesoItemKg = pesoLinhaFreteKg(item);
+      const rateioFrete = rateio.itens[idx] ?? 0;
 
-      const rateioIcms = (item.valorTotalItem + rateioFrete) * (percentualIcms / 100);
-      const custoItemTotal = item.valorTotalItem + rateioFrete + rateioIcms;
+      const rateioIcms = Number(((item.valorTotalItem + rateioFrete) * (percentualIcms / 100)).toFixed(4));
+      const custoItemTotal = Number((item.valorTotalItem + rateioFrete + rateioIcms).toFixed(4));
 
       totalFrete += rateioFrete;
       totalIcms += rateioIcms;
@@ -448,9 +374,9 @@ export default function NfCompraAuditoria() {
         custoRealErp = 0;
       } else if (item.fatorConversao && item.fatorConversao > 0) {
         const qtdErp = item.quantidade * item.fatorConversao;
-        custoRealErp = qtdErp > 0 ? custoItemTotal / qtdErp : 0;
+        custoRealErp = qtdErp > 0 ? Number((custoItemTotal / qtdErp).toFixed(6)) : 0;
       } else {
-        custoRealErp = item.quantidade > 0 ? custoItemTotal / item.quantidade : 0;
+        custoRealErp = item.quantidade > 0 ? Number((custoItemTotal / item.quantidade).toFixed(6)) : 0;
       }
 
       if (!conversaoPendente && item.custoCadastrado && item.custoCadastrado > 0 && custoRealErp > 0) {
@@ -460,6 +386,7 @@ export default function NfCompraAuditoria() {
 
       return {
         ...item,
+        pesoFreteKg: pesoItemKg,
         rateioFrete,
         rateioIcms,
         custoItemTotal,
@@ -472,11 +399,20 @@ export default function NfCompraAuditoria() {
 
     return {
       totalFrete,
+      freteTotalInformado: modoFrete === "gratis" ? 0 : modoFrete === "valor_total" ? freteValor : totalFrete,
+      criterioRateioAplicado: rateio.criterioAplicado,
+      usouFallbackFinanceiro: rateio.usouFallbackFinanceiro,
+      pesoElegivelKg: itens.reduce((soma, item) => soma + pesoLinhaFreteKg(item), 0),
       totalIcms,
       totalCustoGeral,
       itens: itensCalculados,
     };
-  }, [cabecalho, itens, modoFrete, freteValor, percentualIcms]);
+  }, [cabecalho, itens, modoFrete, criterioRateioFrete, baseValorRateioFrete, freteValor, percentualIcms]);
+
+  const temItensMistosKgUn = useMemo(() => {
+    const unidades = new Set(itens.map((item) => normalizarUnidadeAuditoria(item.unidadeCompra)));
+    return unidades.has("KG") && unidades.has("UN");
+  }, [itens]);
 
   // Ação de vincular uma matéria-prima selecionada a um item da NF
   const selecionarMpParaItem = (idxItem: number, mp: any) => {
@@ -509,6 +445,12 @@ export default function NfCompraAuditoria() {
         baseTexto = "Perfil (tira): " + mp.tecnico.perfilLarguraMm + " mm largura × " + mp.tecnico.espessuraMm + " mm espessura × " + mp.tecnico.densidadeGCm3 + " g/cm³ = " + kgPorM.toFixed(8) + " kg/ML → 1 kg = " + fator + " ML.";
       }
 
+      const pesoUnitarioFreteKg = mesmoVinculo && alvo.pesoUnitarioFreteKg != null
+        ? alvo.pesoUnitarioFreteKg
+        : unidadeCompra === "UN" && unidadeErp === "UN" && fator === 1
+          ? mp.tecnico?.pesoEspecificoKg ?? null
+          : null;
+
       copia[idxItem] = {
         ...alvo,
         materiaPrimaId: mp.id,
@@ -519,6 +461,7 @@ export default function NfCompraAuditoria() {
         origemFator,
         baseCalculoTexto: baseTexto,
         custoCadastrado: mp.custoUnitario,
+        pesoUnitarioFreteKg,
         confianca: "media",
         pendencias: [],
       };
@@ -553,9 +496,19 @@ export default function NfCompraAuditoria() {
           nomeFornecedor: cabecalho.nomeFornecedor,
           dataEmissao: cabecalho.dataEmissao ?? undefined,
           valorProdutos: cabecalho.valorProdutos,
-          valorFreteNf: cabecalho.valorFreteNf,
+          valorFreteNf: calculoAoVivo.totalFrete,
           pesoLiquidoTotalKg: cabecalho.pesoLiquidoTotalKg,
-          modoRateioFrete: modoFrete,
+          modoRateioFrete: modoFrete === "gratis"
+            ? "gratis"
+            : modoFrete === "por_kg"
+              ? "por_kg"
+              : criterioRateioFrete === "peso"
+                ? "total_peso"
+                : criterioRateioFrete === "quantidade"
+                  ? "total_qtd"
+                  : baseValorRateioFrete === "valor_total_ipi"
+                    ? "total_valor_ipi"
+                    : "total_valor",
           freteValorPorKg: modoFrete === "por_kg" ? freteValor : null,
           percentualIcms,
         },
@@ -717,26 +670,75 @@ export default function NfCompraAuditoria() {
                 </label>
                 <select
                   value={modoFrete}
-                  onChange={(e) => setModoFrete(e.target.value as any)}
+                  onChange={(e) => setModoFrete(e.target.value as ModoFreteNf)}
                   className="w-full text-sm border border-slate-300 rounded-md px-3 py-2 bg-white"
                 >
+                  <option value="gratis">Frete grátis (R$ 0,00)</option>
                   <option value="por_kg">Por KG (transportadora cobra R$/kg)</option>
-                  <option value="valor_total">Valor total na NF (rateio por R$)</option>
+                  <option value="valor_total">Valor total do frete (R$)</option>
                 </select>
               </div>
 
               <div>
                 <label className="block text-xs font-medium text-slate-600 mb-1">
-                  {modoFrete === "por_kg" ? "Frete por KG (R$/kg)" : "Frete Total (R$)"}
+                  {modoFrete === "gratis" ? "Frete informado" : modoFrete === "por_kg" ? "Frete por KG (R$/kg)" : "Frete Total (R$)"}
                 </label>
                 <input
                   type="text"
-                  value={freteValorStr}
+                  value={modoFrete === "gratis" ? "0,00" : freteValorStr}
                   onChange={(e) => setFreteValorStr(e.target.value)}
                   placeholder="0,00"
-                  className="w-full text-sm border border-slate-300 rounded-md px-3 py-2 font-mono font-bold text-slate-800"
+                  disabled={modoFrete === "gratis"}
+                  className="w-full text-sm border border-slate-300 rounded-md px-3 py-2 font-mono font-bold text-slate-800 disabled:bg-slate-100 disabled:text-slate-500"
                 />
               </div>
+
+              {modoFrete === "valor_total" && (
+                <div className="md:col-span-4 grid grid-cols-1 md:grid-cols-2 gap-4 rounded-lg border border-blue-100 bg-blue-50/60 p-3">
+                  <label className="block text-xs font-medium text-slate-600">
+                    Critério de rateio do total
+                    <select
+                      value={criterioRateioFrete}
+                      onChange={(e) => setCriterioRateioFrete(e.target.value as CriterioRateioFrete)}
+                      className="mt-1 w-full text-sm border border-slate-300 rounded-md px-3 py-2 bg-white"
+                    >
+                      <option value="peso">Por peso elegível (KG)</option>
+                      <option value="quantidade">Por quantidade faturada (QTD)</option>
+                      <option value="valor">Por valor financeiro do item</option>
+                    </select>
+                  </label>
+                  {criterioRateioFrete === "valor" ? (
+                    <label className="block text-xs font-medium text-slate-600">
+                      Base financeira
+                      <select
+                        value={baseValorRateioFrete}
+                        onChange={(e) => setBaseValorRateioFrete(e.target.value as BaseValorRateioFrete)}
+                        className="mt-1 w-full text-sm border border-slate-300 rounded-md px-3 py-2 bg-white"
+                      >
+                        <option value="valor_total">V.TOTAL</option>
+                        <option value="valor_total_ipi">V.TOTAL + IPI</option>
+                      </select>
+                    </label>
+                  ) : (
+                    <div className="self-center text-xs text-slate-600">
+                      {criterioRateioFrete === "peso"
+                        ? "Usa KG da linha ou peso unitário informado em itens UN. Sem peso elegível, usa V.TOTAL."
+                        : temItensMistosKgUn
+                          ? "Atenção: o rateio compara quantidades em KG e UN, que são grandezas diferentes."
+                          : "O total será proporcional à quantidade faturada de cada linha."}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+
+            <div className="flex items-start gap-2 rounded-md bg-slate-50 px-3 py-2 text-xs text-slate-600">
+              <Info className="w-3.5 h-3.5 mt-0.5 shrink-0 text-blue-500" />
+              {modoFrete === "gratis"
+                ? "Frete grátis está definido explicitamente; todos os itens recebem R$ 0,00 de frete."
+                : modoFrete === "por_kg"
+                  ? "No modo R$/kg, linhas em KG usam o peso da NF. Linhas em UN ficam com frete zero até terem peso unitário cadastrado ou informado na tabela."
+                  : "O frete total será distribuído pelo critério escolhido e o resumo abaixo confere o valor rateado."}
             </div>
 
             <div className="flex items-center gap-4 pt-2 border-t border-slate-100 text-xs text-slate-500">
@@ -826,6 +828,30 @@ export default function NfCompraAuditoria() {
                 Atualiza o cadastro local com os dados atuais do MubiSys e aplica nome e custo aos itens já vinculados. Mantém a matéria-prima escolhida, o fator e a unidade.
               </p>
 
+              <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-950">
+                <div className="flex flex-wrap items-center justify-between gap-2 font-semibold">
+                  <span>Resumo do frete rateado</span>
+                  <span>Total aplicado: {formatarRateioFrete(calculoAoVivo.totalFrete)}</span>
+                </div>
+                <p className="mt-1 text-xs text-emerald-800">
+                  {modoFrete === "gratis"
+                    ? "Frete grátis: R$ 0,00 informado; cada item recebe R$ 0,00."
+                    : modoFrete === "por_kg"
+                      ? `${formatarRateioFrete(freteValor)} / kg × ${fmtNum(calculoAoVivo.pesoElegivelKg, 4)} kg elegíveis = ${formatarRateioFrete(calculoAoVivo.totalFrete)}. Itens sem peso recebem R$ 0,00.`
+                      : `Informado ${formatarRateioFrete(calculoAoVivo.freteTotalInformado)} · rateado ${formatarRateioFrete(calculoAoVivo.totalFrete)} · diferença ${formatarRateioFrete(calculoAoVivo.freteTotalInformado - calculoAoVivo.totalFrete)} · critério ${calculoAoVivo.criterioRateioAplicado === "peso" ? "peso (KG)" : calculoAoVivo.criterioRateioAplicado === "quantidade" ? "quantidade (QTD)" : `valor (${criterioRateioFrete === "peso" ? "V.TOTAL no fallback" : baseValorRateioFrete === "valor_total_ipi" ? "V.TOTAL + IPI" : "V.TOTAL"})`}.`}
+                </p>
+                {modoFrete === "valor_total" && criterioRateioFrete === "peso" && calculoAoVivo.usouFallbackFinanceiro && (
+                  <p className="mt-1 text-xs font-semibold text-amber-800">
+                    Nenhum peso elegível foi informado; o total foi rateado proporcionalmente ao V.TOTAL dos itens.
+                  </p>
+                )}
+                {modoFrete === "valor_total" && criterioRateioFrete === "quantidade" && temItensMistosKgUn && (
+                  <p className="mt-1 text-xs font-semibold text-amber-800">
+                    Atenção: a quantidade compara KG e UN como valores numéricos, apesar de serem grandezas diferentes.
+                  </p>
+                )}
+              </div>
+
               <Table>
                 <TableHeader>
                   <TableRow>
@@ -833,6 +859,8 @@ export default function NfCompraAuditoria() {
                     <TableHead className="w-64">Item na NF (Fornecedor)</TableHead>
                     <TableHead className="w-72">Matéria-Prima no Radrasys / Mubisys</TableHead>
                     <TableHead className="text-right w-24">Qtd / Un. Compra</TableHead>
+                    <TableHead className="text-right w-36">Peso por unidade de compra</TableHead>
+                    <TableHead className="text-right w-28">Frete rateado</TableHead>
                     <TableHead className="text-right w-28">Fator (1 Un = X ERP)</TableHead>
                     <TableHead className="text-right w-28">Custo Real (NF)</TableHead>
                     <TableHead className="text-right w-28">Custo Mubisys</TableHead>
@@ -945,6 +973,35 @@ export default function NfCompraAuditoria() {
                         </TableCell>
                         <TableCell className="text-right font-mono text-xs">
                           {fmtNum(item.quantidade, 2)} {item.unidadeCompra}
+                        </TableCell>
+                        <TableCell className="text-right font-mono text-xs">
+                          {normalizarUnidadeAuditoria(item.unidadeCompra) === "KG" ? (
+                            <span>{fmtNum(item.pesoFreteKg, 4)} kg <span className="block text-[10px] text-slate-400">da linha da NF</span></span>
+                          ) : (
+                            <div className="flex flex-col items-end gap-1">
+                              <div className="flex items-center gap-1">
+                                <input
+                                  type="text"
+                                  inputMode="decimal"
+                                  value={item.pesoUnitarioFreteKg == null ? "" : String(item.pesoUnitarioFreteKg)}
+                                  onChange={(e) => {
+                                    const texto = e.target.value;
+                                    const numero = texto.trim() === "" ? null : parseNumSeguro(texto, Number.NaN);
+                                    setItens((prev) => prev.map((linha, linhaIdx) => linhaIdx === idx
+                                      ? { ...linha, pesoUnitarioFreteKg: numero != null && Number.isFinite(numero) && numero >= 0 ? numero : null }
+                                      : linha));
+                                  }}
+                                  placeholder="0,0000"
+                                  className="w-24 px-2 py-1 text-right text-xs border border-slate-300 rounded font-mono"
+                                />
+                                <span>kg/{normalizarUnidadeAuditoria(item.unidadeCompra)}</span>
+                              </div>
+                              <span className="text-[10px] text-slate-400">linha: {fmtNum(item.pesoFreteKg, 4)} kg</span>
+                            </div>
+                          )}
+                        </TableCell>
+                        <TableCell className="text-right font-mono text-xs font-semibold text-slate-800">
+                          {formatarRateioFrete(item.rateioFrete)}
                         </TableCell>
                         <TableCell className="text-right font-mono text-xs">
                           <div className="flex items-center justify-end gap-1">

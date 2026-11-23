@@ -2,6 +2,8 @@
 // Zero dependência de I/O. Recebe dados brutos e devolve o cálculo pronto.
 // Ideal para testar com vitest antes de conectar ao banco.
 
+import { calcularRateioFrete, type BaseValorRateioFrete, type CriterioRateioFrete, type ModoFreteNf } from "../../shared/nf-frete";
+
 export type UnidadeCompra = "KG" | "UN" | "LT" | "ML" | "M2";
 export type UnidadeErp = "ML" | "M2" | "UN" | "LT";
 
@@ -11,6 +13,7 @@ export interface ItemCalculoEntrada {
   unidadeCompra: UnidadeCompra;
   valorUnitario: number;      // valor unitário da NF (sem rateio)
   valorTotalItem: number;     // valor total do item na NF (sem rateio)
+  valorIpi?: number;
   materiaPrimaId?: number;
   unidadeErp?: UnidadeErp;
   fatorConversao?: number;    // 1 unidade_compra = fator unidade_erp
@@ -42,15 +45,10 @@ export interface ItemCalculoSaida {
 /**
  * Calcula custo real por item de NF de compra e compara com custo cadastrado.
  *
- * Dois modos de rateio de frete, escolhidos pela entrada:
- *
- * 1) `freteValorPorKg` informado (ex: transportadora cobra R$/kg): o frete de
- *    cada item é `pesoKg (ou quantidade, se unidadeCompra="KG") × freteValorPorKg`.
- *    Este é o caso real de transporte rodoviário de chapa/perfil — o valor pago
- *    já é por kg transportado, não proporcional ao valor da mercadoria.
- * 2) Caso contrário, `valorFrete` total é rateado proporcional ao valor de cada
- *    item sobre o valor total da mercadoria (modo antigo, para fretes fixos
- *    sem base de peso).
+ * O rateio compartilhado aceita frete grátis, valor por KG ou total da NF.
+ * No total, distribui por peso, quantidade ou valor financeiro; o peso sem
+ * linhas elegíveis cai para a proporção por V.TOTAL. Itens em UN só contam
+ * como peso se vierem com peso unitário explícito.
  *
  * Fórmula do ICMS (conforme definido pelo usuário): por item,
  *   ICMS = (valor do item + frete do item) × percentualIcms / 100   (default 10%)
@@ -65,7 +63,10 @@ export function calcularNfCompra(
   entrada: {
     valorMercadoria: number;
     valorFrete: number;
-    freteValorPorKg?: number; // ex: 2.21 — se informado, ignora rateio por valor
+    modoFrete?: ModoFreteNf;
+    criterioRateioFrete?: CriterioRateioFrete;
+    baseValorRateioFrete?: BaseValorRateioFrete;
+    freteValorPorKg?: number;
     percentualIcms?: number;
     itens: ItemCalculoEntrada[];
   }
@@ -75,32 +76,27 @@ export function calcularNfCompra(
   custoTotalNf: number;
   itens: ItemCalculoSaida[];
 } {
-  const { valorMercadoria, valorFrete, itens } = entrada;
+  const { valorMercadoria, itens } = entrada;
   const percentualIcms = entrada.percentualIcms ?? 10;
-  const freteValorPorKg = entrada.freteValorPorKg;
-
-  const baseNf = valorMercadoria + valorFrete;
+  const modoFrete = entrada.modoFrete ?? (entrada.freteValorPorKg != null ? "por_kg" : "valor_total");
+  const valorFreteInformado = modoFrete === "por_kg" ? entrada.freteValorPorKg ?? 0 : entrada.valorFrete;
+  const rateio = calcularRateioFrete({
+    itens,
+    modo: modoFrete,
+    valor: valorFreteInformado,
+    criterio: entrada.criterioRateioFrete,
+    baseValor: entrada.baseValorRateioFrete,
+  });
+  const baseNf = valorMercadoria + rateio.totalRateado;
   const valorIcms = baseNf * (percentualIcms / 100);
   const custoTotalNf = baseNf + valorIcms;
 
-  const totalValorItens = itens.reduce((sum, i) => sum + i.valorTotalItem, 0);
-
-  const itensCalculados: ItemCalculoSaida[] = itens.map((item) => {
-    let rateioFrete: number;
-
-    if (freteValorPorKg && freteValorPorKg > 0) {
-      // Rateio por peso: usa pesoKg explícito, ou a própria quantidade quando
-      // a unidade de compra já é KG.
-      const pesoKg = item.pesoKg ?? (item.unidadeCompra === "KG" ? item.quantidade : 0);
-      rateioFrete = pesoKg * freteValorPorKg;
-    } else {
-      const proporcao = totalValorItens > 0 ? item.valorTotalItem / totalValorItens : 0;
-      rateioFrete = valorFrete * proporcao;
-    }
+  const itensCalculados: ItemCalculoSaida[] = itens.map((item, indice) => {
+    const rateioFrete = rateio.itens[indice] ?? 0;
 
     // ICMS item a item: (valor do item + frete do item) × percentual
-    const rateioIcms = (item.valorTotalItem + rateioFrete) * (percentualIcms / 100);
-    const custoItemTotal = item.valorTotalItem + rateioFrete + rateioIcms;
+    const rateioIcms = Number(((item.valorTotalItem + rateioFrete) * (percentualIcms / 100)).toFixed(4));
+    const custoItemTotal = Number((item.valorTotalItem + rateioFrete + rateioIcms).toFixed(4));
 
     const custoPorUnidadeCompra = item.quantidade > 0 ? custoItemTotal / item.quantidade : 0;
 
@@ -113,10 +109,10 @@ export function calcularNfCompra(
       unidadeErp = item.unidadeErp;
       fatorConversao = item.fatorConversao;
       quantidadeErp = item.quantidade * fatorConversao;
-      custoRealErp = quantidadeErp > 0 ? custoItemTotal / quantidadeErp : 0;
+      custoRealErp = quantidadeErp > 0 ? Number((custoItemTotal / quantidadeErp).toFixed(6)) : 0;
     } else {
       // Sem conversão: custo real = custo por unidade de compra
-      custoRealErp = custoPorUnidadeCompra;
+      custoRealErp = Number(custoPorUnidadeCompra.toFixed(6));
     }
 
     let divergenciaPct: number | undefined;

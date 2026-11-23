@@ -4546,8 +4546,9 @@ export const nfCompraImportacoes = pgTable(
     valorProdutos: decimal("valor_produtos", { precision: 14, scale: 2 }).notNull(),
     valorFreteNf: decimal("valor_frete_nf", { precision: 14, scale: 2 }).default("0").notNull(),
     pesoLiquidoTotalKg: decimal("peso_liquido_total_kg", { precision: 12, scale: 3 }),
-    // Como o frete foi informado nesta NF: "valor_total" (rateia proporcional ao
-    // valor do item) ou "por_kg" (rateia pelo peso do item ? freteValorPorKg).
+    // Modo/critério do frete. Mantém os códigos antigos "valor_total" e
+    // "por_kg"; os novos são "gratis", "total_peso", "total_qtd",
+    // "total_valor" ou "total_valor_ipi".
     modoRateioFrete: varchar("modo_rateio_frete", { length: 16 })
       .default("valor_total")
       .notNull(),
