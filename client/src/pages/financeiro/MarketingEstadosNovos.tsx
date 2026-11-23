@@ -41,7 +41,7 @@ export default function MarketingEstadosNovos({ dataInicial, dataFinal }: { data
   return (
     <div className="space-y-2">
       <p className="text-xs text-muted-foreground">
-        Desempenho de clientes cuja primeira O.S. normal registrada ocorreu no período ({periodoTexto}). O faturamento soma as O.S. normais desses mesmos clientes no intervalo; o investimento de campanha não é rateado por Estado.
+        Desempenho de clientes cuja primeira O.S. normal registrada ocorreu no período ({periodoTexto}), calculado pelo histórico local até a última sincronização. A consulta não depende da API do ERP; compras ainda não sincronizadas não entram. O faturamento soma as O.S. normais desses mesmos clientes no intervalo; o investimento de campanha não é rateado por Estado.
       </p>
       <div role="note" className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-xs text-slate-700">
         “Novo cliente” significa primeira O.S. normal encontrada no histórico disponível, que começa em março de 2023. A UF é a registrada no histórico da primeira O.S.; compras anteriores ao início da base e mudanças de endereço não podem ser confirmadas por este relatório.
