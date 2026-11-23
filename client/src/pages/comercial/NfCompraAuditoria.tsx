@@ -48,6 +48,7 @@ interface ItemEditavel {
   nomeMateriaPrima: string | null;
   unidadeErp: "ML" | "M2" | "UN" | "LT" | null;
   fatorConversao: number | null;
+  fatorConversaoTexto?: string;
   origemFator: string | null;
   baseCalculoTexto: string | null;
   confianca: "alta" | "media" | "baixa" | "nenhuma";
@@ -79,6 +80,47 @@ const PALAVRAS_LED = ["LED", "MODULO", "MÓDULO", "FITA", "DIODE", "DRIVER"];
 function ehModuloLed(item: ItemEditavel): boolean {
   const texto = `${item.descricaoNf} ${item.nomeMateriaPrima ?? ""}`.toUpperCase();
   return PALAVRAS_LED.some((p) => texto.includes(p));
+}
+
+function normalizarUnidadeAuditoria(unidade: string | null | undefined): string {
+  const texto = (unidade ?? "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .trim()
+    .toLowerCase();
+  if (texto.includes("metro linear") || texto === "ml" || texto === "m") return "ML";
+  if (texto.includes("metro quadrado") || texto === "m2" || texto === "m²") return "M2";
+  if (texto.includes("litro") || texto === "lt" || texto === "l") return "LT";
+  if (texto.includes("unidade") || texto === "un" || texto === "und" || texto === "pc") return "UN";
+  return texto.toUpperCase();
+}
+
+function lerFatorManual(texto: string): number | null {
+  const normalizado = texto.trim().replace(/\s/g, "").replace(",", ".");
+  if (!normalizado || !/^[+]?(?:\d+(?:\.\d*)?|\.\d+)$/.test(normalizado)) return null;
+  const valor = Number(normalizado);
+  if (!Number.isFinite(valor) || valor <= 0) return null;
+  const fator = Number(valor.toFixed(8));
+  return fator > 0 ? fator : null;
+}
+
+function normalizarUnidadeErpMateriaPrima(unidade: string | null | undefined): "ML" | "M2" | "UN" | "LT" {
+  const normalizada = normalizarUnidadeAuditoria(unidade);
+  if (normalizada === "ML" || normalizada === "M2" || normalizada === "LT") return normalizada;
+  return "UN";
+}
+
+function descricaoIndicaPacote(texto: string): boolean {
+  const normalizada = texto
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase();
+  return /\b(caixa|cx|pacote|pct|kit|fardo|conjunto|rolos?|unidades? por|c\s*\/\s*\d+|com\s+\d+\s*(?:rolos?|unidades?|pecas?))\b/.test(normalizada);
+}
+
+function formatarCustoUnitarioAuditoria(valor: number | null | undefined): string {
+  if (valor == null || !Number.isFinite(valor)) return "—";
+  return Math.abs(valor) < 0.01 ? "R$ " + fmtNum(valor, 6) : fmtBrl(valor);
 }
 
 /**
@@ -350,6 +392,7 @@ export default function NfCompraAuditoria() {
               nomeMateriaPrima: i.nomeMateriaPrima,
               unidadeErp: i.unidadeErp as any,
               fatorConversao: i.fatorConversao,
+              fatorConversaoTexto: i.fatorConversao != null ? String(i.fatorConversao) : "",
               origemFator: i.origemFator,
               baseCalculoTexto: i.baseCalculoTexto,
               confianca: i.confianca,
@@ -393,18 +436,24 @@ export default function NfCompraAuditoria() {
       totalIcms += rateioIcms;
       totalCustoGeral += custoItemTotal;
 
+      const origemNormalizada = normalizarUnidadeAuditoria(item.unidadeCompra);
+      const destinoNormalizado = normalizarUnidadeAuditoria(item.unidadeErp);
+      const exigeConversao = Boolean(item.unidadeErp && origemNormalizada !== destinoNormalizado);
+      const conversaoPendente = exigeConversao && !(item.fatorConversao && item.fatorConversao > 0);
       let custoRealErp = 0;
       let divergenciaPct: number | null = null;
       let defasado = false;
 
-      if (item.fatorConversao && item.fatorConversao > 0) {
+      if (conversaoPendente) {
+        custoRealErp = 0;
+      } else if (item.fatorConversao && item.fatorConversao > 0) {
         const qtdErp = item.quantidade * item.fatorConversao;
         custoRealErp = qtdErp > 0 ? custoItemTotal / qtdErp : 0;
       } else {
         custoRealErp = item.quantidade > 0 ? custoItemTotal / item.quantidade : 0;
       }
 
-      if (item.custoCadastrado && item.custoCadastrado > 0 && custoRealErp > 0) {
+      if (!conversaoPendente && item.custoCadastrado && item.custoCadastrado > 0 && custoRealErp > 0) {
         divergenciaPct = ((custoRealErp - item.custoCadastrado) / item.custoCadastrado) * 100;
         defasado = Math.abs(divergenciaPct) > 0.005;
       }
@@ -415,6 +464,7 @@ export default function NfCompraAuditoria() {
         rateioIcms,
         custoItemTotal,
         custoRealErp,
+        conversaoPendente,
         divergenciaPct,
         defasado,
       };
@@ -433,22 +483,30 @@ export default function NfCompraAuditoria() {
     setItens((prev) => {
       const copia = [...prev];
       const alvo = copia[idxItem];
-      const unidadeErp = mp.unidadeMedida?.toLowerCase().includes("metro linear")
-        ? "ML"
-        : mp.unidadeMedida?.toLowerCase().includes("quadrad")
-        ? "M2"
-        : "UN";
+      const unidadeErp = normalizarUnidadeErpMateriaPrima(mp.unidadeMedida);
+      const unidadeCompra = normalizarUnidadeAuditoria(alvo.unidadeCompra);
+      const pacoteUnParaUn = unidadeCompra === "UN" && unidadeErp === "UN" &&
+        descricaoIndicaPacote(alvo.descricaoNf + " " + (mp.nome ?? ""));
+      const mesmoVinculo = alvo.materiaPrimaId === mp.id && alvo.unidadeErp === unidadeErp;
+      let fator = mesmoVinculo && alvo.fatorConversao && alvo.fatorConversao > 0
+        ? alvo.fatorConversao
+        : null;
+      let fatorTexto = fator != null ? String(fator) : "";
+      let baseTexto = fator != null ? alvo.baseCalculoTexto : null;
+      let origemFator = fator != null ? alvo.origemFator : "manual";
 
-      // Tentar calcular fator teórico se tiver espessura+largura+densidade (formato tira)
-      let fator = alvo.fatorConversao;
-      let baseTexto = alvo.baseCalculoTexto;
-      let origemFator = "manual";
-
-      if (alvo.unidadeCompra === "KG" && unidadeErp === "ML" && mp.tecnico?.densidadeGCm3 && mp.tecnico?.espessuraMm && mp.tecnico?.perfilLarguraMm) {
+      if (fator == null && unidadeCompra === unidadeErp && !pacoteUnParaUn) {
+        fator = 1;
+        fatorTexto = "1";
+        origemFator = "unidade_identica";
+        baseTexto = "Unidade de compra e unidade do MubiSys são iguais (" + unidadeErp + ") — fator 1:1.";
+      } else if (fator == null && unidadeCompra === "KG" && unidadeErp === "ML" && mp.tecnico?.tipo === "perfil" && mp.tecnico?.densidadeGCm3 && mp.tecnico?.espessuraMm && mp.tecnico?.perfilLarguraMm) {
+        // Não sobrescrever uma conversão humana já confirmada para o mesmo vínculo.
         const kgPorM = (mp.tecnico.perfilLarguraMm * mp.tecnico.espessuraMm * mp.tecnico.densidadeGCm3) / 1000;
-        fator = Number((1 / kgPorM).toFixed(6));
+        fator = Number((1 / kgPorM).toFixed(8));
+        fatorTexto = String(fator);
         origemFator = "cadastro_densidade_perfil";
-        baseTexto = `Perfil (tira): ${mp.tecnico.perfilLarguraMm}mm larg × ${mp.tecnico.espessuraMm}mm esp × ${mp.tecnico.densidadeGCm3} g/cm³ = ${kgPorM.toFixed(4)} kg/m → 1 kg = ${fator} ml.`;
+        baseTexto = "Perfil (tira): " + mp.tecnico.perfilLarguraMm + " mm largura × " + mp.tecnico.espessuraMm + " mm espessura × " + mp.tecnico.densidadeGCm3 + " g/cm³ = " + kgPorM.toFixed(8) + " kg/ML → 1 kg = " + fator + " ML.";
       }
 
       copia[idxItem] = {
@@ -457,6 +515,7 @@ export default function NfCompraAuditoria() {
         nomeMateriaPrima: mp.nome,
         unidadeErp,
         fatorConversao: fator,
+        fatorConversaoTexto: fatorTexto,
         origemFator,
         baseCalculoTexto: baseTexto,
         custoCadastrado: mp.custoUnitario,
@@ -471,6 +530,19 @@ export default function NfCompraAuditoria() {
 
   const salvarAuditoria = () => {
     if (!cabecalho || !calculoAoVivo) return;
+    const itensSemConversao = calculoAoVivo.itens.filter((item) => {
+      const origem = normalizarUnidadeAuditoria(item.unidadeCompra);
+      const destino = normalizarUnidadeAuditoria(item.unidadeErp);
+      return Boolean(item.unidadeErp && origem !== destino && !(item.fatorConversao && item.fatorConversao > 0));
+    });
+    if (itensSemConversao.length > 0) {
+      toast.error(
+        "Informe um fator de conversão válido para " +
+          itensSemConversao.length +
+          " item(ns) antes de salvar. A unidade do custo precisa corresponder à unidade do MubiSys."
+      );
+      return;
+    }
     salvarMutation.mutate(
       {
         cabecalho: {
@@ -877,26 +949,39 @@ export default function NfCompraAuditoria() {
                         <TableCell className="text-right font-mono text-xs">
                           <div className="flex items-center justify-end gap-1">
                             <input
-                              type="number"
-                              step="0.000001"
-                              value={item.fatorConversao ?? ""}
+                              type="text"
+                              inputMode="decimal"
+                              value={item.fatorConversaoTexto ?? (item.fatorConversao != null ? String(item.fatorConversao) : "")}
                               onChange={(e) => {
-                                const valor = Number(e.target.value);
+                                const texto = e.target.value;
+                                const valor = lerFatorManual(texto);
                                 setItens((prev) => {
                                   const c = [...prev];
-                                  c[idx].fatorConversao = valor > 0 ? valor : null;
+                                  c[idx].fatorConversaoTexto = texto;
+                                  c[idx].fatorConversao = valor;
                                   c[idx].origemFator = "manual";
+                                  c[idx].baseCalculoTexto =
+                                    valor != null
+                                      ? "Fator manual: 1 " +
+                                        normalizarUnidadeAuditoria(c[idx].unidadeCompra) +
+                                        " = " +
+                                        fmtNum(valor, 8) +
+                                        " " +
+                                        (c[idx].unidadeErp ?? "—") +
+                                        "."
+                                      : null;
                                   return c;
                                 });
                               }}
-                              placeholder="ex: 0.216"
+                              placeholder="ex.: 0,21645"
                               className="w-24 px-2 py-1 text-right text-xs border border-slate-300 rounded font-mono font-bold"
                             />
                             <button
                               type="button"
-                              title="Abrir assistente de fórmulas de conversão (KG→M², KG→ML, UN→M²)"
+                              title={item.unidadeErp ? "Abrir assistente de conversão para " + item.unidadeErp : "Vincule uma matéria-prima para definir a unidade de destino"}
+                              disabled={!item.unidadeErp}
                               onClick={() => setItemCalculadoraFator(idx)}
-                              className="p-1 text-blue-600 hover:bg-blue-50 border border-blue-200 rounded transition-colors"
+                              className="p-1 text-blue-600 hover:bg-blue-50 border border-blue-200 rounded transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
                             >
                               <Calculator className="w-3.5 h-3.5" />
                             </button>
@@ -904,20 +989,21 @@ export default function NfCompraAuditoria() {
                           <div className="flex items-center justify-end gap-1 mt-0.5">
                             <button
                               type="button"
+                              disabled={!item.unidadeErp}
                               onClick={() => setItemCalculadoraFator(idx)}
-                              className="text-[10px] text-blue-600 hover:underline"
+                              className="text-[10px] text-blue-600 hover:underline disabled:text-slate-300 disabled:no-underline"
                             >
-                              📐 Fórmulas
+                              📐 Assistente
                             </button>
                             <span className="text-[10px] text-slate-400">({item.unidadeErp ?? "—"})</span>
                           </div>
                         </TableCell>
                         <TableCell className="text-right font-mono text-xs font-semibold text-slate-800">
-                          {fmtBrl(item.custoRealErp)}
+                          {item.conversaoPendente ? "—" : formatarCustoUnitarioAuditoria(item.custoRealErp)}
                           <span className="text-[10px] text-slate-400 block font-normal">/{item.unidadeErp ?? item.unidadeCompra}</span>
                         </TableCell>
                         <TableCell className="text-right font-mono text-xs text-slate-600">
-                          {item.custoCadastrado ? fmtBrl(item.custoCadastrado) : "—"}
+                          {item.custoCadastrado ? formatarCustoUnitarioAuditoria(item.custoCadastrado) : "—"}
                           <span className="text-[10px] text-slate-400 block font-normal">/{item.unidadeErp ?? "—"}</span>
                         </TableCell>
                         <TableCell className="text-right font-mono text-xs font-bold">
@@ -1534,12 +1620,15 @@ export default function NfCompraAuditoria() {
       {/* Modal Assistente de Fórmulas de Conversão */}
       {itemCalculadoraFator !== null && calculoAoVivo?.itens[itemCalculadoraFator] && (
         <ModalCalculadoraFator
+          key={itemCalculadoraFator + "-" + (calculoAoVivo.itens[itemCalculadoraFator].unidadeErp ?? "")}
           aberto={itemCalculadoraFator !== null}
           onFechar={() => setItemCalculadoraFator(null)}
           unidadeCompra={calculoAoVivo.itens[itemCalculadoraFator].unidadeCompra}
-          unidadeErp={calculoAoVivo.itens[itemCalculadoraFator].unidadeErp ?? "M2"}
+          unidadeErp={calculoAoVivo.itens[itemCalculadoraFator].unidadeErp ?? ""}
           descricaoNf={calculoAoVivo.itens[itemCalculadoraFator].descricaoNf}
           nomeMp={calculoAoVivo.itens[itemCalculadoraFator].nomeMateriaPrima ?? ""}
+          fatorInicial={calculoAoVivo.itens[itemCalculadoraFator].fatorConversao}
+          baseCalculoTextoInicial={calculoAoVivo.itens[itemCalculadoraFator].baseCalculoTexto}
           onAplicar={(fator, baseCalculoTexto) => {
             const idx = itemCalculadoraFator;
             setItens((prev) => {
@@ -1547,6 +1636,7 @@ export default function NfCompraAuditoria() {
               c[idx] = {
                 ...c[idx],
                 fatorConversao: fator,
+                fatorConversaoTexto: String(fator),
                 origemFator: "calculadora_modal",
                 baseCalculoTexto,
               };

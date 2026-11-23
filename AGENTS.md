@@ -293,7 +293,7 @@ assumir que continua certo.
 client/src/          frontend (Vite root = client/)
   pages/              uma pasta por módulo (logistica/, admin/, comercial/, ...)
                        operacoes/Treinamento.tsx é a Escola Corporativa em /treinamento
-                       comercial/NfCompraAuditoria.tsx confere NF-e de compra, vincula itens às matérias-primas, guarda a memória dos vínculos e permite atualizar o espelho do MubiSys
+                       comercial/NfCompraAuditoria.tsx confere NF-e de compra, vincula itens às matérias-primas, guarda a memória dos vínculos, permite atualizar o espelho do MubiSys e mostra o custo na unidade de destino somente quando o fator é válido
   components/         componentes compartilhados entre páginas
   hooks/               hooks do app, incluindo useAuth.ts (identidade/permissões)
   lib/                 trpc.ts, auth-client.ts (client do Better Auth)
@@ -332,7 +332,7 @@ server/
                        campanhaFilaWorker.ts (fila WhatsApp persistente por contato, controle de lotes,
                        reconciliação de status e pausa/retomada por QStash)
                        treinamentoPop.ts (leitura de PDFs, DOCX e TXT e OCR de PDFs escaneados sob demanda para criar rascunhos de treinamento)
-                       nfCalculo.ts, nfXmlParser.ts, nfSugestaoVinculo.ts e nfCotacaoPdf.ts apoiam a auditoria de custos por NF-e (rateio de frete/ICMS, conversão de unidade, memória do vínculo e análise de cotação)
+                       nfCalculo.ts, nfXmlParser.ts, nfSugestaoVinculo.ts e nfCotacaoPdf.ts apoiam a auditoria de custos por NF-e (rateio de frete/ICMS, conversão de unidade, memória do vínculo e análise de cotação); nfSugestaoVinculo.ts deixa conversões UN → UN descritas como caixa/pacote pendentes de conteúdo, e ModalCalculadoraFator.tsx auxilia pacotes por unidade/metro e rendimento de bobina em KG → ML/M², com fator decimal de até 8 casas
                        (telefones das campanhas: `server/sync/clientes-mubisys.ts` espelha o cadastro
                        de clientes do MubiSys em `mubisys_clientes_cache`, atualizado sozinho ao abrir
                        o painel de Campanhas; 429 da API tem retentativa e o lote tem orçamento de 40s),

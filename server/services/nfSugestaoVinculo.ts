@@ -82,6 +82,14 @@ const normalizarUnidadeErp = (bruta: string): UnidadeErp | null => {
   return null;
 };
 
+function descricaoIndicaEmbalagemComMultiplos(texto: string): boolean {
+  const normalizada = texto
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase();
+  return /\b(caixa|cx|pacote|pct|kit|fardo|conjunto|rolos?|unidades? por|c\s*\/\s*\d+|com\s+\d+\s*(?:rolos?|unidades?|pecas?))\b/.test(normalizada);
+}
+
 function arredondar(valor: number, casas: number): number {
   return Number(valor.toFixed(casas));
 }
@@ -140,7 +148,7 @@ function resolverFatorPorCadastroTecnico(
     if (kgPorM == null || kgPorM <= 0)
       return { pendencias: ["Medidas do perfil incompatíveis (a parede/espessura não forma uma seção válida) — confira o cadastro técnico."] };
 
-    const fator = arredondar(1 / kgPorM, 6);
+    const fator = arredondar(1 / kgPorM, 8);
     return {
       unidadeErp: "ML",
       fatorConversao: fator,
@@ -165,7 +173,7 @@ function resolverFatorPorCadastroTecnico(
     const kgPorM2 = pesoChapaKg(1, tecnico.espessuraMm as number, tecnico.densidadeGCm3 as number);
     if (!(kgPorM2 > 0)) return { pendencias: ["Espessura/densidade da chapa resultaram em peso por m² inválido."] };
 
-    const fator = arredondar(1 / kgPorM2, 6);
+    const fator = arredondar(1 / kgPorM2, 8);
     return {
       unidadeErp: "M2",
       fatorConversao: fator,
@@ -196,7 +204,7 @@ export function resolverFatorUnidadeParaChapaM2(params: {
   const areaM2 = (params.alturaMm * params.larguraMm) / 1_000_000;
   return {
     unidadeErp: "M2",
-    fatorConversao: arredondar(areaM2, 6),
+    fatorConversao: arredondar(areaM2, 8),
     baseCalculoTexto: `Chapa de ${params.alturaMm}×${params.larguraMm}mm = ${arredondar(areaM2, 4)} m² por unidade comprada.`,
   };
 }
@@ -245,6 +253,27 @@ export function sugerirVinculoItem(
   // Sem memória: usa o 1º candidato (a tela deixa o usuário trocar) e tenta
   // resolver o fator pelo cadastro técnico dele.
   const mp = candidatos[0];
+  const unidadeErpCandidata = normalizarUnidadeErp(mp.unidadeMedida);
+  // UN na NF pode representar uma caixa/pacote com várias unidades internas.
+  // Nesse caso, a igualdade do código da unidade não é prova de equivalência;
+  // exige que o usuário informe o conteúdo no assistente. Memórias confirmadas
+  // continuam sendo tratadas acima e preservam o fator já aprovado.
+  if (
+    item.unidadeCompra === "UN" &&
+    unidadeErpCandidata === "UN" &&
+    descricaoIndicaEmbalagemComMultiplos(item.descricao + " " + mp.nome)
+  ) {
+    return {
+      materiaPrimaId: mp.id,
+      nomeMateriaPrima: mp.nome,
+      unidadeErp: "UN",
+      fatorConversao: null,
+      origemFator: null,
+      baseCalculoTexto: null,
+      confianca: "baixa",
+      pendencias: ["A descrição indica embalagem com múltiplas unidades — informe quantas unidades internas correspondem a 1 UN da NF."],
+    };
+  }
   const resolucao = resolverFatorPorCadastroTecnico(item.unidadeCompra, mp);
 
   if ("pendencias" in resolucao) {
