@@ -30,6 +30,11 @@ export default function MarketingEstadosNovos({ dataInicial, dataFinal }: { data
   );
   const periodoTexto = `${fmtDate(dataIsoLocal(dataInicial))} a ${fmtDate(dataIsoLocal(dataFinal))}`;
 
+  function conversaoPct(clientes: number, propostas: number): number | null {
+    if (!propostas || propostas === 0) return null;
+    return (clientes / propostas) * 100;
+  }
+
   if (isLoading) return <p className="text-sm text-muted-foreground">Carregando clientes novos e propostas por estado…</p>;
   if (isError || !data) return (
     <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700">
@@ -77,22 +82,27 @@ export default function MarketingEstadosNovos({ dataInicial, dataFinal }: { data
                     <TableHead className="text-right">Média / cliente</TableHead>
                     <TableHead className="text-right">Clientes com proposta prévia</TableHead>
                     <TableHead className="text-right">Propostas antes da compra</TableHead>
+                    <TableHead className="text-right">Conversão</TableHead>
                     <TableHead className="text-right">Valor cotado antes da compra</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {data.clientesPrimeiraCompra.map(item => (
-                    <TableRow key={item.uf}>
-                      <TableCell>{nomeEstado(item.uf)}</TableCell>
-                      <TableCell className="text-right font-medium">{fmtNum(item.clientes)}</TableCell>
-                      <TableCell className="text-right">{fmtNum(item.os)}</TableCell>
-                      <TableCell className="text-right font-medium">{fmtBrl(item.faturamento)}</TableCell>
-                      <TableCell className="text-right">{fmtBrl(item.ticketMedioPorCliente)}</TableCell>
-                      <TableCell className="text-right">{fmtNum(item.clientesComPropostaAntesDaCompra)}</TableCell>
-                      <TableCell className="text-right">{fmtNum(item.propostasAntesDaCompra)}</TableCell>
-                      <TableCell className="text-right">{fmtBrl(item.valorPropostasAntesDaCompra)}</TableCell>
-                    </TableRow>
-                  ))}
+                  {data.clientesPrimeiraCompra.map(item => {
+                    const conversao = conversaoPct(item.clientes, item.propostasAntesDaCompra);
+                    return (
+                      <TableRow key={item.uf}>
+                        <TableCell>{nomeEstado(item.uf)}</TableCell>
+                        <TableCell className="text-right font-medium">{fmtNum(item.clientes)}</TableCell>
+                        <TableCell className="text-right">{fmtNum(item.os)}</TableCell>
+                        <TableCell className="text-right font-medium">{fmtBrl(item.faturamento)}</TableCell>
+                        <TableCell className="text-right">{fmtBrl(item.ticketMedioPorCliente)}</TableCell>
+                        <TableCell className="text-right">{fmtNum(item.clientesComPropostaAntesDaCompra)}</TableCell>
+                        <TableCell className="text-right">{fmtNum(item.propostasAntesDaCompra)}</TableCell>
+                        <TableCell className="text-right">{conversao == null ? "—" : `${conversao.toFixed(1)}%`}</TableCell>
+                        <TableCell className="text-right">{fmtBrl(item.valorPropostasAntesDaCompra)}</TableCell>
+                      </TableRow>
+                    );
+                  })}
                   {data.clientesPrimeiraCompraSemUf > 0 && (
                     <TableRow className="text-muted-foreground">
                       <TableCell>Sem UF confiável</TableCell>
@@ -102,6 +112,7 @@ export default function MarketingEstadosNovos({ dataInicial, dataFinal }: { data
                       <TableCell className="text-right">{fmtBrl(data.clientesPrimeiraCompraSemUf > 0 ? data.faturamentoPrimeiraCompraSemUf / data.clientesPrimeiraCompraSemUf : 0)}</TableCell>
                       <TableCell className="text-right">{fmtNum(data.clientesComPropostaAntesDaCompraSemUf)}</TableCell>
                       <TableCell className="text-right">{fmtNum(data.propostasAntesDaCompraSemUf)}</TableCell>
+                      <TableCell className="text-right">{conversaoPct(data.clientesComPropostaAntesDaCompraSemUf, data.propostasAntesDaCompraSemUf) == null ? "—" : `${conversaoPct(data.clientesComPropostaAntesDaCompraSemUf, data.propostasAntesDaCompraSemUf)!.toFixed(1)}%`}</TableCell>
                       <TableCell className="text-right">{fmtBrl(data.valorPropostasAntesDaCompraSemUf)}</TableCell>
                     </TableRow>
                   )}
@@ -113,6 +124,7 @@ export default function MarketingEstadosNovos({ dataInicial, dataFinal }: { data
                     <TableCell className="text-right">{fmtBrl(data.totalClientesPrimeiraCompra > 0 ? data.faturamentoPrimeiraCompra / data.totalClientesPrimeiraCompra : 0)}</TableCell>
                     <TableCell className="text-right">{fmtNum(data.clientesComPropostaAntesDaCompra)}</TableCell>
                     <TableCell className="text-right">{fmtNum(data.totalPropostasAntesDaCompra)}</TableCell>
+                    <TableCell className="text-right">{conversaoPct(data.totalClientesPrimeiraCompra, data.totalPropostasAntesDaCompra) == null ? "—" : `${conversaoPct(data.totalClientesPrimeiraCompra, data.totalPropostasAntesDaCompra)!.toFixed(1)}%`}</TableCell>
                     <TableCell className="text-right">{fmtBrl(data.valorPropostasAntesDaCompra)}</TableCell>
                   </TableRow>
                 </TableBody>
@@ -147,17 +159,25 @@ export default function MarketingEstadosNovos({ dataInicial, dataFinal }: { data
                     <TableHead className="text-right">Prospects</TableHead>
                     <TableHead className="text-right">Propostas</TableHead>
                     <TableHead className="text-right">Valor cotado</TableHead>
+                    <TableHead className="text-right">Clientes novos</TableHead>
+                    <TableHead className="text-right">Conversão</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {data.propostasNovosClientes.map(item => (
-                    <TableRow key={item.uf}>
-                      <TableCell>{nomeEstado(item.uf)}</TableCell>
-                      <TableCell className="text-right">{fmtNum(item.clientes)}</TableCell>
-                      <TableCell className="text-right font-medium">{fmtNum(item.propostas)}</TableCell>
-                      <TableCell className="text-right">{fmtBrl(item.valorPropostas)}</TableCell>
-                    </TableRow>
-                  ))}
+                  {data.propostasNovosClientes.map(item => {
+                    const clientes = data.clientesPrimeiraCompra.find(c => c.uf === item.uf)?.clientes ?? 0;
+                    const conversao = conversaoPct(clientes, item.propostas);
+                    return (
+                      <TableRow key={item.uf}>
+                        <TableCell>{nomeEstado(item.uf)}</TableCell>
+                        <TableCell className="text-right">{fmtNum(item.clientes)}</TableCell>
+                        <TableCell className="text-right font-medium">{fmtNum(item.propostas)}</TableCell>
+                        <TableCell className="text-right">{fmtBrl(item.valorPropostas)}</TableCell>
+                        <TableCell className="text-right">{fmtNum(clientes)}</TableCell>
+                        <TableCell className="text-right">{conversao == null ? "—" : `${conversao.toFixed(1)}%`}</TableCell>
+                      </TableRow>
+                    );
+                  })}
                 </TableBody>
               </Table>
             </div>
