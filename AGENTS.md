@@ -293,6 +293,7 @@ assumir que continua certo.
 client/src/          frontend (Vite root = client/)
   pages/              uma pasta por módulo (logistica/, admin/, comercial/, ...)
                        operacoes/Treinamento.tsx é a Escola Corporativa em /treinamento
+                       comercial/NfCompraAuditoria.tsx confere NF-e de compra, vincula itens às matérias-primas, guarda a memória dos vínculos e permite atualizar o espelho do MubiSys
   components/         componentes compartilhados entre páginas
   hooks/               hooks do app, incluindo useAuth.ts (identidade/permissões)
   lib/                 trpc.ts, auth-client.ts (client do Better Auth)
@@ -302,6 +303,7 @@ server/
   routers.ts          appRouter raiz do tRPC — registra todos os sub-routers
                        `price.listModelCatalog`/`price.saveModelMapping` mantêm produtividade de solda e IDs de faixa por modelo nas tabelas antiga/nova (`price_table_model_mappings`).
   routers/             sub-routers por domínio (logistica.ts, admin.ts, ...)
+                       nfCompra.ts atende a auditoria de custo de NF-e, memória de vínculos, comparação com cotações em PDF e sincronização do catálogo de matérias-primas do MubiSys;
                        treinamento.ts controla catálogo, matérias, matrículas, aplicação de provas, materiais de apoio, geração de rascunhos a partir de POPs, formatos de questão, tentativas, resultados e ranking da Escola Corporativa; notas finais são normalizadas de 0 a 10, independentemente da quantidade de questões; avaliações são divididas em módulos sequenciais de até 10 questões, com retomada da tentativa aberta; a avaliação Closer cobre as 14 seções e os anexos A–F do POP, com matriz em `docs/escola-corporativa.md` e questões adicionais desde a migration `0120_closer_full_coverage`;
                        o simulacro do painel de alunos é somente client-side e nunca grava tentativas fictícias
   db/                  acesso a dados (Drizzle + pg puro via getPool()): db.ts, db-connection.ts,
@@ -330,6 +332,7 @@ server/
                        campanhaFilaWorker.ts (fila WhatsApp persistente por contato, controle de lotes,
                        reconciliação de status e pausa/retomada por QStash)
                        treinamentoPop.ts (leitura de PDFs, DOCX e TXT e OCR de PDFs escaneados sob demanda para criar rascunhos de treinamento)
+                       nfCalculo.ts, nfXmlParser.ts, nfSugestaoVinculo.ts e nfCotacaoPdf.ts apoiam a auditoria de custos por NF-e (rateio de frete/ICMS, conversão de unidade, memória do vínculo e análise de cotação)
                        (telefones das campanhas: `server/sync/clientes-mubisys.ts` espelha o cadastro
                        de clientes do MubiSys em `mubisys_clientes_cache`, atualizado sozinho ao abrir
                        o painel de Campanhas; 429 da API tem retentativa e o lote tem orçamento de 40s),

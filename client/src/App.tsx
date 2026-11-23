@@ -36,6 +36,7 @@ import PopRelatorio from "./pages/operacoes/PopRelatorio";
 // Comercial
 import TabelaPrecos from "./pages/comercial/TabelaPrecos";
 import Produtos from "./pages/comercial/Produtos";
+import NfCompraAuditoria from "./pages/comercial/NfCompraAuditoria";
 import Propostas from "./pages/comercial/Propostas";
 import PerformanceComercial from "./pages/comercial/PerformanceComercial";
 import QualificacaoLeadsCnpj from "./pages/comercial/QualificacaoLeadsCnpj";
@@ -140,6 +141,7 @@ function Router() {
       {/* Comercial */}
       <Route path="/tabela-precos"><L><TabelaPrecos /></L></Route>
       <Route path="/comercial/produtos"><L><Produtos /></L></Route>
+      <Route path="/comercial/nf-compra"><L><NfCompraAuditoria /></L></Route>
       <Route path="/comercial/propostas"><L><Propostas /></L></Route>
       <Route path="/comercial/performance"><L><PerformanceComercial /></L></Route>
       <Route path="/comercial/campanhas-whatsapp">
