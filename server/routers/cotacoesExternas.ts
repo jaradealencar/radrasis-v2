@@ -560,6 +560,12 @@ export const cotacoesExternasRouter = router({
         custoNovo: z.number().positive(),
         unidade: z.string().min(1, "Unidade obrigatória"),
         observacao: z.string().optional().nullable(),
+        /**
+         * Confirmação explícita para sobrescrever inconsistências:
+         * divergência de unidade com a MP cadastrada e/ou divergência entre
+         * materiaPrimaId do item de cotação e a MP informada.
+         */
+        confirmarInconsistencia: z.boolean().default(false),
       })
     )
     .mutation(async ({ input, ctx }) => {
@@ -568,12 +574,13 @@ export const cotacoesExternasRouter = router({
 
       const userId = ctx.user?.id ? String(ctx.user.id) : null;
 
-      // Verificar se o item de cotação existe e está vinculado à mesma MP
+      // Verificar se o item de cotação existe
       const [item] = await db
         .select({
           id: cotacaoExternaItem.id,
           materiaPrimaId: cotacaoExternaItem.materiaPrimaId,
           precoUnitario: cotacaoExternaItem.precoUnitario,
+          unidade: cotacaoExternaItem.unidade,
         })
         .from(cotacaoExternaItem)
         .where(eq(cotacaoExternaItem.id, input.cotacaoItemId))
@@ -587,6 +594,7 @@ export const cotacoesExternasRouter = router({
           id: materiasPrimas.id,
           nome: materiasPrimas.nome,
           custoUnitario: materiasPrimas.custoUnitario,
+          unidadeMedida: materiasPrimas.unidadeMedida,
         })
         .from(materiasPrimas)
         .where(eq(materiasPrimas.id, input.materiaPrimaId))
@@ -594,13 +602,49 @@ export const cotacoesExternasRouter = router({
 
       if (!mp) throw new TRPCError({ code: "NOT_FOUND", message: "Matéria-prima não encontrada." });
 
+      // 1. Vínculo coerente entre o item de cotação e a MP informada (salvo confirmação explícita).
+      if (
+        item.materiaPrimaId != null &&
+        input.materiaPrimaId != null &&
+        item.materiaPrimaId !== input.materiaPrimaId &&
+        !input.confirmarInconsistencia
+      ) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: `O item de cotação está vinculado à matéria-prima ${item.materiaPrimaId}, diferente da informada ${input.materiaPrimaId}. Confirme explicitamente para sobrescrever.`,
+        });
+      }
+
+      // 2. Validação de unidade compatível com a unidade de medida cadastrada na MP (salvo confirmação explícita).
+      if (input.unidade !== mp.unidadeMedida && !input.confirmarInconsistencia) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: `A unidade "${input.unidade}" difere da unidade cadastrada na matéria-prima ("${mp.unidadeMedida}"). Confirme explicitamente para prosseguir.`,
+        });
+      }
+
       const custoAnterior = mp.custoUnitario ? Number(mp.custoUnitario) : null;
+
+      // 3. Observação obrigatória quando o novo custo for maior que o anterior (não bloqueia, só exige justificativa).
+      if (
+        custoAnterior != null &&
+        input.custoNovo > custoAnterior &&
+        (!input.observacao || input.observacao.trim() === "")
+      ) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "Quando o novo custo for maior que o custo anterior, é obrigatório informar a observação/justificativa.",
+        });
+      }
+
+      // 4. Arredondamento controlado para 6 casas decimais (escala do decimal(14,6)) antes de gravar.
+      const custoNovoArredondado = Math.round(input.custoNovo * 1_000_000) / 1_000_000;
 
       await db.transaction(async (tx) => {
         await tx
           .update(materiasPrimas)
           .set({
-            custoUnitario: String(input.custoNovo),
+            custoUnitario: String(custoNovoArredondado),
             updatedAt: new Date(),
           })
           .where(eq(materiasPrimas.id, input.materiaPrimaId));
@@ -609,7 +653,7 @@ export const cotacoesExternasRouter = router({
           materiaPrimaId: input.materiaPrimaId,
           cotacaoItemId: input.cotacaoItemId,
           custoAnterior: custoAnterior != null ? String(custoAnterior) : null,
-          custoNovo: String(input.custoNovo),
+          custoNovo: String(custoNovoArredondado),
           unidade: input.unidade,
           observacao: input.observacao ?? null,
           criadoPor: userId,
@@ -620,7 +664,7 @@ export const cotacoesExternasRouter = router({
         ok: true,
         materiaPrimaId: input.materiaPrimaId,
         custoAnterior,
-        custoNovo: input.custoNovo,
+        custoNovo: custoNovoArredondado,
       };
     }),
 });

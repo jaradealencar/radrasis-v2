@@ -270,6 +270,8 @@ export default function CotacoesExternasPage() {
   const [custoNovoValor, setCustoNovoValor] = useState("");
   const [custoUnidade, setCustoUnidade] = useState("");
   const [custoObservacao, setCustoObservacao] = useState("");
+  const [custoConfirmarInconsistencia, setCustoConfirmarInconsistencia] = useState(false);
+  const [custoInconsistenciaAviso, setCustoInconsistenciaAviso] = useState<string | null>(null);
 
   const abrirAtualizarCusto = (item: ItemCotacao) => {
     setCustoItemId(item.materiaPrimaId ?? null);
@@ -277,6 +279,23 @@ export default function CotacoesExternasPage() {
     setCustoUnidade(item.materiaPrimaUnidadeMedida ?? item.unidade);
     setCustoNovoValor(item.precoUnitario.toString());
     setCustoObservacao("");
+    setCustoConfirmarInconsistencia(false);
+    setCustoInconsistenciaAviso(null);
+
+    // Detecta antecipadamente inconsistências conhecidas para orientar o usuário.
+    const custoMp = item.materiaPrimaCustoUnitario;
+    const novo = Number(item.precoUnitario);
+    if (custoMp != null && novo > custoMp && !item.observacao) {
+      setCustoInconsistenciaAviso(
+        `O novo preço (${fmtBrl(novo)}) é maior que o custo cadastrado no MubiSys (${fmtBrl(custoMp)}). Será exigida uma observação.`
+      );
+    }
+    if (item.materiaPrimaId != null && item.materiaPrimaUnidadeMedida && item.materiaPrimaUnidadeMedida !== item.unidade) {
+      setCustoInconsistenciaAviso(
+        (custoInconsistenciaAviso ? custoInconsistenciaAviso + "\n" : "") +
+        `A unidade do item (${item.unidade}) difere da unidade cadastrada na MP (${item.materiaPrimaUnidadeMedida}). Confirme para prosseguir.`
+      );
+    }
   };
 
   const salvarCusto = () => {
@@ -287,6 +306,7 @@ export default function CotacoesExternasPage() {
       custoNovo: Number(custoNovoValor),
       unidade: custoUnidade,
       observacao: custoObservacao || undefined,
+      confirmarInconsistencia: custoConfirmarInconsistencia,
     });
   };
 
@@ -913,6 +933,29 @@ export default function CotacoesExternasPage() {
                   placeholder="Motivo da atualização de custo…"
                 />
               </div>
+              {custoInconsistenciaAviso && (
+                <div className="p-3 rounded border border-amber-200 bg-amber-50 text-amber-800 text-xs">
+                  {custoInconsistenciaAviso.split("\n").map((linha, i) => (
+                    <> {linha} <br /> </>
+                  ))}
+                  {!custoConfirmarInconsistencia && (
+                    <span className="block mt-1 text-amber-600 font-semibold">
+                      Confirme abaixo para prosseguir mesmo com essas inconsistências.
+                    </span>
+                  )}
+                </div>
+              )}
+              {custoInconsistenciaAviso && (
+                <div className="flex items-center gap-2">
+                  <Checkbox
+                    checked={!!custoConfirmarInconsistencia}
+                    onCheckedChange={(v) => setCustoConfirmarInconsistencia(!!v)}
+                  />
+                  <Label className="text-sm">
+                    Confirmo que quero sobrescrever as inconsistências acima
+                  </Label>
+                </div>
+              )}
               <p className="text-xs text-muted-foreground">
                 Somente gestores e administradores podem atualizar o custo cadastrado no MubiSys.
               </p>
@@ -923,7 +966,10 @@ export default function CotacoesExternasPage() {
               </Button>
               <Button
                 type="submit"
-                disabled={atualizarCustoMutation.isPending}
+                disabled={
+                  atualizarCustoMutation.isPending ||
+                  (!!custoInconsistenciaAviso && !custoConfirmarInconsistencia)
+                }
               >
                 {atualizarCustoMutation.isPending ? "Atualizando…" : "Atualizar custo"}
               </Button>
