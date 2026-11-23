@@ -152,7 +152,7 @@ export default function MarketingFinanceiro({ anoSel, dataInicial, dataFinal, ab
             <TabsContent value="mensal" className="space-y-5">
               <MarketingEstadosCampanhas dataInicial={dataInicial} dataFinal={dataFinal} />
               <MarketingEstadosNovos dataInicial={dataInicial} dataFinal={dataFinal} />
-              <MarketingRoiPeriodo key={`${dataInicial}/${dataFinal}`} inicio={dataInicial.slice(0, 7)} fim={dataFinal.slice(0, 7)} />
+              <MarketingRoiPeriodo key={anoSel} inicio={`${anoSel}-01`} fim={`${anoSel}-12`} />
             </TabsContent>
 
             <TabsContent value="campanhas">

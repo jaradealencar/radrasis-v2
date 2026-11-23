@@ -90,7 +90,7 @@ function relatorioAno(ano: number) {
   return { ...relatorioVisaoGeral, meses };
 }
 
-test("filtra todo o ROI pelos controles de Performance e pelo intervalo de análise", async ({ page }) => {
+test("mantém CAC/ROI anual enquanto os relatórios por Estado seguem o período global", async ({ page }) => {
   await page.route("https://fonts.googleapis.com/**", route => route.fulfill({ contentType: "text/css", body: "" }));
   await page.clock.setFixedTime(new Date("2026-11-22T12:00:00Z"));
   await page.route("**/api/auth/get-session**", route => route.fulfill({ json: {
@@ -131,7 +131,13 @@ test("filtra todo o ROI pelos controles de Performance e pelo intervalo de anál
   const competencia = roi.getByRole("combobox", { name: "Mês de referência" });
   await expect(competencia).toHaveValue("2026-11");
   await expect(roi.getByText(/Top 3 por receita.*01\/11\/2026 a 30\/11\/2026/)).toBeVisible();
-  await expect(roi.getByText("Aquisição — Novembro/2026")).toBeVisible();
+  await expect(roi.getByText("Aquisição — Janeiro a Dezembro/2026")).toBeVisible();
+  const aquisicaoAno = roi.locator('[data-slot="card"]').filter({ hasText: "Aquisição — Janeiro a Dezembro/2026" });
+  await expect(aquisicaoAno.getByRole("row", { name: /Janeiro \/ 2026/ })).toBeVisible();
+  await expect(aquisicaoAno.getByRole("row", { name: /Novembro \/ 2026/ })).toBeVisible();
+  const reativacaoAno = roi.locator('[data-slot="card"]').filter({ hasText: "Reativação — Janeiro a Dezembro/2026" });
+  await expect(reativacaoAno.getByRole("row", { name: /Janeiro \/ 2026/ })).toBeVisible();
+  await expect(reativacaoAno.getByRole("row", { name: /Novembro \/ 2026/ })).toBeVisible();
   await expect(page.getByText("Estados com melhor desempenho das campanhas")).toBeVisible();
   await expect(page.getByText("São Paulo (SP)").first()).toBeVisible();
   await expect(page.getByText(/12\.500,75/)).toBeVisible();
@@ -160,12 +166,13 @@ test("filtra todo o ROI pelos controles de Performance e pelo intervalo de anál
   await page.getByRole("option", { name: "Outubro", exact: true }).click();
   await expect(page.getByLabel("Mês inicial do período de análise")).toHaveValue("10");
   await expect(page.getByLabel("Mês final do período de análise")).toHaveValue("10");
-  await expect(competencia).toHaveValue("2026-10");
+  await expect(competencia).toHaveValue("2026-11");
   await expect(roi.getByText(/Top 3 por receita.*01\/10\/2026 a 31\/10\/2026/)).toBeVisible();
   await expect(roi.getByText(/Desempenho de clientes.*01\/10\/2026 a 31\/10\/2026/)).toBeVisible();
-  const aquisicaoOutubro = roi.locator('[data-slot="card"]').filter({ hasText: "Aquisição — Outubro/2026" });
+  const aquisicaoOutubro = roi.locator('[data-slot="card"]').filter({ hasText: "Aquisição — Janeiro a Dezembro/2026" });
   await expect(aquisicaoOutubro.getByRole("row", { name: /Outubro \/ 2026.*1\.000,00/ })).toBeVisible();
-  await expect(roi.getByRole("row", { name: /Novembro \/ 2026/ })).toHaveCount(0);
+  await expect(aquisicaoOutubro.getByRole("row", { name: /Novembro \/ 2026/ })).toBeVisible();
+  await expect(reativacaoAno.getByRole("row", { name: /Novembro \/ 2026/ })).toBeVisible();
   const vendasOutubroPorEstado = roi.locator('[data-slot="card"]').filter({ hasText: "Desempenho dos novos clientes por Estado" });
   await expect(vendasOutubroPorEstado.getByRole("row", { name: /Rio Grande do Sul \(RS\)/ })).toContainText("4.500,00");
   await expect(page.getByRole("row", { name: /\(GO\)/ })).toContainText("7.200,00");
@@ -182,31 +189,34 @@ test("filtra todo o ROI pelos controles de Performance e pelo intervalo de anál
   await page.getByLabel("Mês final do período de análise").selectOption("1");
   await expect(roi.getByText(/Top 3 por receita.*01\/12\/2025 a 31\/01\/2026/)).toBeVisible();
   await expect(roi.getByText(/Desempenho de clientes.*01\/12\/2025 a 31\/01\/2026/)).toBeVisible();
-  await expect(roi.getByText("Aquisição — Dezembro/2025 a Janeiro/2026")).toBeVisible();
-  await expect(roi.getByRole("row", { name: /Dezembro \/ 2025/ })).toHaveCount(3);
+  await expect(roi.getByText("Aquisição — Janeiro a Dezembro/2026")).toBeVisible();
+  await expect(roi.getByRole("row", { name: /Dezembro \/ 2025/ })).toHaveCount(0);
   await expect(roi.getByRole("row", { name: /Janeiro \/ 2026/ })).toHaveCount(3);
-  await expect(roi.getByRole("row", { name: /Fevereiro \/ 2026/ })).toHaveCount(0);
-  const aquisicaoIntervalo = roi.locator('[data-slot="card"]').filter({ hasText: "Aquisição — Dezembro/2025 a Janeiro/2026" });
-  await expect(aquisicaoIntervalo.getByRole("row", { name: /Total.*2\/2 meses/ })).toContainText("1.300,00");
-  await expect(competencia.getByRole("option")).toHaveCount(2);
-  await competencia.selectOption("2025-12");
+  await expect(roi.getByRole("row", { name: /Novembro \/ 2026/ })).toHaveCount(3);
+  await expect(roi.getByRole("row", { name: /Dezembro \/ 2026/ })).toHaveCount(0);
+  await expect(competencia.getByRole("option")).toHaveCount(11);
+  await competencia.selectOption("2026-01");
   await roi.getByLabel("Valor investido em aquisição").fill("123,45");
   await roi.getByRole("button", { name: "Salvar e calcular CAC" }).click();
-  await expect.poll(() => lancamentos).toEqual([{ ano: 2025, mes: 12, investimentoAquisicao: 123.45 }]);
-  const reativacaoIntervalo = roi.locator('[data-slot="card"]').filter({ hasText: "Reativação — Dezembro/2025 a Janeiro/2026" });
-  await reativacaoIntervalo.getByRole("row", { name: /Dezembro \/ 2025/ }).getByRole("button").click();
-  const campoReativacao = reativacaoIntervalo.getByLabel("Investimento de reativação em Dezembro / 2025");
+  await expect.poll(() => lancamentos).toEqual([{ ano: 2026, mes: 1, investimentoAquisicao: 123.45 }]);
+  const reativacaoIntervalo = roi.locator('[data-slot="card"]').filter({ hasText: "Reativação — Janeiro a Dezembro/2026" });
+  await reativacaoIntervalo.getByRole("row", { name: /Janeiro \/ 2026/ }).getByRole("button").click();
+  const campoReativacao = reativacaoIntervalo.getByLabel("Investimento de reativação em Janeiro / 2026");
   await campoReativacao.fill("40,50");
   await campoReativacao.press("Enter");
-  await expect.poll(() => lancamentos[1]).toEqual({ ano: 2025, mes: 12, investimentoReativacao: 40.5 });
+  await expect.poll(() => lancamentos[1]).toEqual({ ano: 2026, mes: 1, investimentoReativacao: 40.5 });
 
   const baixar = page.waitForEvent("download");
   await roi.getByRole("button", { name: "Exportar Excel do período" }).click();
   const arquivo = await baixar;
-  expect(arquivo.suggestedFilename()).toBe("roi-marketing-2025-12-a-2026-01.xlsx");
+  expect(arquivo.suggestedFilename()).toBe("roi-marketing-2026-01-a-2026-12.xlsx");
   const livro = XLSX.readFile((await arquivo.path())!);
   const linhas = XLSX.utils.sheet_to_json<{ Mês: string; Ano: number }>(livro.Sheets[livro.SheetNames[0]]);
-  expect(linhas.map(linha => [linha.Mês, linha.Ano])).toEqual([["Dezembro", 2025], ["Janeiro", 2026]]);
+  expect(linhas).toHaveLength(11);
+  expect(linhas.map(linha => [linha.Mês, linha.Ano])).toEqual([
+    ["Janeiro", 2026], ["Fevereiro", 2026], ["Março", 2026], ["Abril", 2026], ["Maio", 2026],
+    ["Junho", 2026], ["Julho", 2026], ["Agosto", 2026], ["Setembro", 2026], ["Outubro", 2026], ["Novembro", 2026],
+  ]);
   for (const procedure of ["marketingFinanceiro.rankingEstadosCampanhas", "marketingFinanceiro.getDistribuicaoEstadosNovos"]) {
     expect(inputsObservados).toEqual(expect.arrayContaining([
       { procedure, dataInicial: "2026-10-01", dataFinal: "2026-10-31" },
