@@ -1,5 +1,7 @@
 # Fase 5 — Better Auth e tRPC em ambiente serverless
 
+> **ARQUIVADA — referência histórica.** Não execute comandos ou verificações deste arquivo; use o fluxo atual de `AGENTS.md`.
+
 **Depende de:** Fase 1 (edita `server/_core/app.ts`) e Fase 3 (o `vercel.json`
 precisa existir para o teste desta fase).
 **Faça antes da Fase 6.**

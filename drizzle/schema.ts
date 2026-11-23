@@ -172,7 +172,9 @@ export const suppliers = pgTable("suppliers", {
   nfeArquivoKey: varchar("nfe_arquivo_key", { length: 256 }), // chave do arquivo no UploadThing
   nfeArquivoUrl: varchar("nfe_arquivo_url", { length: 512 }), // URL do arquivo no UploadThing
   nfeUltimaAtualizacao: timestamp("nfe_ultima_atualizacao"), // quando a NF-e foi lida pela última vez
-});
+}, table => ({
+  nfeCnpjIdx: index("suppliers_nfe_cnpj_idx").on(table.nfeCnpj),
+}));
 export type Supplier = typeof suppliers.$inferSelect;
 export type InsertSupplier = typeof suppliers.$inferInsert;
 

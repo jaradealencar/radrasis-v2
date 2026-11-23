@@ -689,26 +689,23 @@ export async function deleteSupplier(id: number) {
 export async function updateSupplierNfe(
   id: number,
   data: {
-    nfeCnpj?: string | null;
-    nfeRazaoSocial?: string | null;
-    nfeNomeFantasia?: string | null;
-    nfeNumero?: string | null;
-    nfeSerie?: string | null;
-    nfeChaveAcesso?: string | null;
-    nfeArquivoNome?: string | null;
-    nfeArquivoKey?: string | null;
-    nfeArquivoUrl?: string | null;
-    nfeUltimaAtualizacao?: Date;
+    nfeCnpj: string | null;
+    nfeRazaoSocial: string | null;
+    nfeNomeFantasia: string | null;
+    nfeNumero: string | null;
+    nfeSerie: string | null;
+    nfeChaveAcesso: string | null;
+    nfeArquivoNome: string;
+    nfeArquivoKey: string;
+    nfeArquivoUrl: string;
+    nfeUltimaAtualizacao: Date;
   }
 ) {
   const db = await getDb();
   if (!db) throw new Error("DB not available");
   return db
     .update(suppliers)
-    .set({
-      ...data,
-      updatedAt: new Date(),
-    })
+    .set({ ...data, updatedAt: new Date() })
     .where(eq(suppliers.id, id));
 }
 

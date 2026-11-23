@@ -1,5 +1,7 @@
 # Fase 7 — Upload direto ao UploadThing: fundação + piloto
 
+> **ARQUIVADA — referência histórica.** Não execute comandos ou verificações deste arquivo; use o fluxo atual de `AGENTS.md`.
+
 **Depende de:** Fase 1 (edita `server/_core/app.ts`).
 **A Fase 8 migra os call sites restantes usando o que esta cria.** Não pule.
 

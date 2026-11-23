@@ -126,14 +126,19 @@ identidade esperada (host/porta/banco) e confirmação específica do alvo. Os
 testes exigem `TEST_DATABASE_URL` em loopback e com nome de banco de teste/CI.
 Ver `docs/protecao-ambientes-banco-publicacao.md`.
 
-## Banco de dados — sempre via migration
+## Banco de dados e fluxo de entrega
 
-Publicação em produção pode seguir o fluxo de administrador único descrito em
-`docs/protecao-ambientes-banco-publicacao.md`: a conta administradora configura
-a si própria como revisora obrigatória do ambiente, permite autoaprovação e
-confirma explicitamente a identidade do banco e a migration. Não relaxe as
-validações de alvo, recurso, branch `main` ou Quality para remover a necessidade
-de um segundo revisor.
+Antes de criar **qualquer migration Drizzle**, sincronize a branch com a `main`
+remota mais recente (`git fetch origin` e integre `origin/main`). Só então gere
+a migration, revise o SQL, confirme que o journal está em ordem e que não há
+colisão de sequência.
+
+Fluxo obrigatório de entrega: valide localmente com `yarn run check` e
+`yarn build:vercel`; se houver migration, aplique-a no banco de destino antes
+da publicação; integre e faça commit do resultado na `main`; por fim, execute
+`git push origin main`. O push para `main` dispara a publicação automática da
+Vercel. Não exija workflow manual de migration, revisor de ambiente, abertura
+de navegador ou operação no painel/CLI da Vercel como etapa deste fluxo.
 
 No runtime normal, consultas avulsas por `getPool().query()` usam HTTP via
 Neon. Transações Drizzle (`db.transaction`) reservam um `PoolClient` por
@@ -159,10 +164,10 @@ Toda mudança de estrutura (coluna, tipo, enum, índice) segue este fluxo:
    com tudo (ex: mudar os valores de um enum já em uso exige editar a
    migration à mão para adicionar um `USING CASE ...` que remapeia os
    dados já gravados; senão o `ALTER TYPE` quebra contra linhas existentes).
-4. Aplique com `yarn db:migrate`, depois de declarar e conferir o alvo. O
-   comando `drizzle-kit migrate` também é protegido pela configuração.
-   `yarn db:push` gera e aplica, mas exige as mesmas confirmações; migrations de
-   produção devem usar o workflow manual protegido.
+4. Depois de validar typecheck/build localmente, aplique com `yarn db:migrate`
+   no banco de destino antes de publicar; então integre e faça commit na
+   `main`, e publique com `git push origin main`. Não use `yarn db:push` para
+   contornar a revisão do SQL.
 
 Scripts one-off pra *dado* (backfill pontual, copiar de uma tabela legada)
 são aceitáveis fora desse fluxo — a regra é sobre *estrutura*. Migration
@@ -306,7 +311,9 @@ server/
   services/            lógica de domínio reutilizada por routers; manter funções
                        puras quando não precisarem de I/O:
                        inteligenciaClientes.ts (RFM/classificação/funil/previsão
-                       comercial), crmProbabilidadeModel.ts (score por proposta
+                       comercial), marketingFinanceiroEstados.ts (desempenho por UF de novos clientes,
+                       faturamento de O.S. e propostas anteriores à primeira compra; vínculo por nome normalizado,
+                       sem chave direta proposta→O.S.), crmProbabilidadeModel.ts (score por proposta
                        (calibracao propria para cliente sem O.S. valida anterior: no minimo 100 previsoes temporais, 10 ganhos e 10 perdas; limite pela conversao do grupo +15 p.p., teto de 30%),
                        com regressão logística, calibração temporal, RFM, coorte,
                        idade CNPJ e região; teto individual pela conversão registrada +15 p.p. (0% limita a 15%); auditoria agregada das propostas e
@@ -332,6 +339,7 @@ server/
                        e cpqCoresMateriais.ts (CIEDE2000 e custeio por região de cor),
                        cpqRender3d.ts (resolve o spec 3D assinado a partir do orçamento) e
                        cpqRender3dImagem.ts (valida imagens de textura/preview pelos bytes),
+                       nfeParser.ts (extração heurística dos campos da NF-e na primeira página do PDF, com validação do CNPJ e campos ausentes como nulos),
                        perfilEstoque.ts (ledger de estoque de perfis, sugestão em metros/kg,
                        horizonte de compra configurável por perfil, níveis mínimo/médio/ideal
                        (ponto médio = estoque mínimo + demanda do prazo de 1 mês do slitter), filtro
@@ -442,15 +450,18 @@ com dados fictícios servidos por uma fixture Vite local, sem conexão ao banco 
 
 - **Vendas/ABC do MubiSys na Tabela de Preços (07/10/2026):** `server/services/mubisysVendas.ts` sincroniza OS faturadas por mês ao abrir a calculadora, com TTL de 6 h, grava as linhas em `mubisys_vendas_itens`, status em `mubisys_vendas_sync_status` e ABC em `abc_cache`; `server/services/priceTableImpact.ts` cruza snapshots do histórico com vendas pelos IDs de produtos e modelos afiliados. Migrações `0099_precos_vendas_mubisys` e `0100_afiliacao_blocos_tabela_preco` criam tabelas de vendas, pareamento, afiliações e histórico; `0101_afiliacao_modelos_faixa_preco` permite afiliar o produto inteiro ou modelos específicos (`null` significa todos). A edição pode começar em qualquer uma das tabelas e é espelhada no bloco pareado. Sincronização externa de setembro e outubro/2026 foi validada; token MubiSys ainda é renovação manual. Detalhes em `docs/integracao-mubisys.md`.
 - **Painéis de preço e metas (07/10/2026):** `server/services/priceTableRevenueAnalysis.ts` fornece `price.getRevenueAnalysis` (protegido por login) para o dashboard da Tabela de Preços e o painel Previsões. Reutiliza metas comerciais (fallback explícito à meta operacional), vendas/ABC MubiSys, pareamento e afiliações cadastradas e snapshots de cotação com OS; o detalhe de faixa exibe margem atual e preço/margem observados quando o snapshot vincula a OS àquela faixa. Receita de venda sem faixa permanece no nível produto/modelo; o painel expõe cobertura, lacunas de afiliação, categorias e limitações de previsão/causalidade. Componente compartilhado: `client/src/components/PriceRevenueDashboard.tsx`.
-- **Desempenho de probabilidade no CRM (13/11/2026):** `client/src/pages/comercial/CrmProbabilityPerformance.tsx` e `crm.getDesempenhoProbabilidade` comparam snapshots prospectivos de `crm_probabilidade_previsoes` a desfechos explícitos do espelho `historico_orcamentos`; propostas abertas ou sem sincronização ficam pendentes, sem serem rotuladas como perda. Os snapshots registram região; o painel apresenta conversão histórica por região e cobertura/distribuição de compras válidas de todas as O.S. sincronizadas. Não existe vínculo MubiSys nesta base entre o número de O.S. e o número exato do orçamento, então O.S. são sinais do cliente e não rótulos de propostas individuais. Migration `0117_gigantic_mordo`; produção usa o workflow manual protegido e o modo de administrador único escolhido pelo usuário para `radrasis-v2`, mantendo SHA de `main`, Quality, identidade e confirmação explícita do banco. Detalhes: `docs/protecao-ambientes-banco-publicacao.md` e `docs/crm-painel-desempenho-probabilidade.md`.
+- **Desempenho de probabilidade no CRM (13/11/2026):** `client/src/pages/comercial/CrmProbabilityPerformance.tsx` e `crm.getDesempenhoProbabilidade` comparam snapshots prospectivos de `crm_probabilidade_previsoes` a desfechos explícitos do espelho `historico_orcamentos`; propostas abertas ou sem sincronização ficam pendentes, sem serem rotuladas como perda. Os snapshots registram região; o painel apresenta conversão histórica por região e cobertura/distribuição de compras válidas de todas as O.S. sincronizadas. Não existe vínculo MubiSys nesta base entre o número de O.S. e o número exato do orçamento, então O.S. são sinais do cliente e não rótulos de propostas individuais. Migration `0117_gigantic_mordo`; detalhe funcional em `docs/crm-painel-desempenho-probabilidade.md`.
 - **Campanhas WhatsApp via WTS.Chat / Ceci.Chat (atualizado 20/10/2026):** cada campanha guarda o **ID do template aprovado pela Meta** (`campanhas_whatsapp.wts_template_id`, migration `0105`, campo em Editar campanha); em Ver contatos, `campanhasWhatsapp.dispararWts` envia o template aos contatos prontos (até 100 por clique) diretamente pelo canal oficial do WhatsApp e registra o disparo no Radrasis (cadência, quarentena e histórico centralizados no Radrasys, usando a Ceci apenas para envio). **Envio é sequencial, 1 contato por vez com intervalo de 1,2 s** (`INTERVALO_DISPARO_WTS_MS`), não em paralelo: achado em teste real (16/10/2026) — disparo com 8 chamadas simultâneas era aceito pela Ceci (HTTP 200/`QUEUED`/`READ`) mas **não chegava** ao WhatsApp do destinatário (confirmado com número novo, sem conversa prévia); o mesmo número recebeu na hora quando enviado isolado pela API ou manualmente pela tela da Ceci. Durante o disparo, as telas de envio exibem cronômetro em tempo real (segundos decorridos), tempo estimado e barra de progresso suave, orientando o usuário sobre o ritmo seguro. **O status HTTP 200/`QUEUED`/`READ` do endpoint não garante entrega** — só a confirmação no aparelho do destinatário prova. As respostas dos clientes chegam normalmente no atendimento da Ceci.Chat. A janela também permite testar o template em um telefone digitado (`campanhasWhatsapp.testarNumeroWts`): envia só para esse número e não registra disparo nem altera cadência/quarentena/histórico. Gatilho de venda ainda é manual. O upload de listas aceita CSV/XLSX/XLS/XML e se ajusta sozinho (`shared/lista-contatos.ts`), e `normalizarTelefone` insere o 9º dígito em celulares de 8 dígitos para compatibilidade com a Meta/WhatsApp. `server/integrations/wts-chat-client.ts` envia um objeto `PublicReqSendTemplateSingleDTO` na raiz do JSON para `POST /chat/v1/send/template` em `api.app.ceci.chat`, com `to`, `from` (telefone canal `5511942666377`), `templateId`, `parameters` como objeto quando o template tiver variáveis, `senderId` UUID novo por mensagem (identificador de rastreamento do sistema chamador) e `channelId` fixo do canal físico da Ceci (`b13d2257-af6d-4cbb-a4fd-fa73069ae863`). Para consultar até dez mensagens aceitas, prioriza o `statusUrl` devolvido no aceite (`/v1/send/message/{id}`) e usa `GET /chat/v1/message/{id}/status` como alternativa. Configure `WTS_CHAT_AUTHORIZATION` como segredo no servidor (`WTS_CHAT_TEMPLATE_ID` não é mais lido). **"Ver envios" no Histórico (migration `0115`, tabela `campanhas_whatsapp_disparo_itens`):** cada disparo pode ter a lista detalhada de contatos com status individual — `dispararWts` grava sozinho (origem "auto", com o `wts_mensagem_id` do aceite); disparos antigos/upload/webhook recuperam a lista automaticamente de `campanhas_whatsapp_contatos_historico` cruzada com o cadastro de clientes/OS, ou preenchida pela **lista manual** (`salvarItensDisparoManual`, dentro do próprio diálogo "Ver envios": cola `telefone`, `telefone, nome` ou `telefone, nome, idDaMensagem`). Status é consultado **só sob demanda** (botão "Atualizar status", nunca ao abrir a lista) por `atualizarStatusItensDisparo`, que tenta `GET /chat/v1/send/message/{id}` (WTS e Ceci) além da `statusUrl`/rota documentada já existentes. `classificarStatusWts` (`shared/campanhas-whatsapp.ts`) resume READ/DELIVERED/SENT/QUEUED/.../FAILED em 5 classes (lido/entregue/na_fila/falha/sem_consulta), reaproveitada no resumo em badges e na amostra pós-disparo. Detalhes em `docs/campanhas-whatsapp.md`.
 - `docs/migracao-postgres-better-auth.md` — plano ativo da migração
   MySQL→Postgres/Better Auth (ver aviso no topo deste arquivo). **O doc mais
   importante pra entender o estado real do banco/auth agora.**
 - `docs/campanhas-whatsapp.md` — módulo Campanhas WhatsApp (aba ao lado de ROI Marketing): regras de
   cadência/quarentena/pós-venda, modelo de dados e contrato dos webhooks REST.
-- `docs/protecao-ambientes-banco-publicacao.md` — separação entre build,
-  migrations e testes; confirmações locais e configurações externas de Vercel/GitHub pendentes.
+- `docs/protecao-ambientes-banco-publicacao.md` — documentação arquivada,
+  mantida só como histórico; não seguir os procedimentos de publicação ali descritos.
+- `docs/sprint-migracao-vercel/` — sprint concluída e documentação arquivada;
+  instruções de navegador, painel e CLI são obsoletas. Use o fluxo deste
+  `AGENTS.md`.
 - `docs/escola-corporativa.md` — modelo de conteúdo, modos de avaliação,
   pontuação, permissões e formato de questões da Escola Corporativa.
 - `docs/cpq-cores-materiais-pre-nesting.md` — análise, aprovação e custo de cores do CPQ antes do nesting.

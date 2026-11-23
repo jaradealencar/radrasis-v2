@@ -291,13 +291,10 @@ export const marketingFinanceiroRouter = router({
       };
       const anoInicial = Number(input.dataInicial.slice(0, 4));
       const anoFinal = Number(input.dataFinal.slice(0, 4));
-      const config = await buscarConfig(db).catch(error => {
-        marcarFonteIndisponivel("configuração de marketing", error);
-        return CONFIG_DEFAULTS;
-      });
       const [osHistoricas, propostasHistoricas, cachesMubiSys, perfisCnpj] = await Promise.all([
         db.select({
           id: historicoOs.id,
+          osNumero: historicoOs.osNumero,
           empresa: historicoOs.empresa,
           estado: historicoOs.estado,
           dataAprovacao: historicoOs.dataAprovacao,
@@ -305,6 +302,8 @@ export const marketingFinanceiroRouter = router({
           ano: historicoOs.ano,
           tipoOs: historicoOs.tipoOs,
           status: historicoOs.status,
+          valorOs: historicoOs.valorOs,
+          valorTotal: historicoOs.valorTotal,
         }).from(historicoOs).catch(error => {
           marcarFonteIndisponivel("histórico de O.S.", error);
           return [];
@@ -314,6 +313,7 @@ export const marketingFinanceiroRouter = router({
           orcNumero: historicoOrcamentos.orcNumero,
           empresa: historicoOrcamentos.empresa,
           dataCadastro: historicoOrcamentos.dataCadastro,
+          total: historicoOrcamentos.total,
           mes: historicoOrcamentos.mes,
           ano: historicoOrcamentos.ano,
           status: historicoOrcamentos.status,
@@ -336,19 +336,6 @@ export const marketingFinanceiroRouter = router({
             return [];
           }),
       ]);
-      const agora = new Date();
-      const mesAtualIso = `${agora.getFullYear()}-${String(agora.getMonth() + 1).padStart(2, "0")}`;
-      const incluiMesAtual = input.dataInicial.slice(0, 7) <= mesAtualIso && input.dataFinal.slice(0, 7) >= mesAtualIso;
-      const classificadasAoVivo = incluiMesAtual
-        ? await classificarAno(db, agora.getFullYear(), config.mesesInatividadeReativacao).catch(error => {
-          marcarFonteIndisponivel("classificação atual do ERP", error);
-          return [];
-        })
-        : [];
-      const linhasAoVivoNoPeriodo = classificadasAoVivo.filter(linha => dataDentroPeriodoMarketing(
-        dataOsMarketing(linha.dataAprovacao, linha.mes, linha.ano), input.dataInicial, input.dataFinal,
-      ));
-
       const compradorPrimeiraCompra = new Map<string, { estado: string | null; data: Date }>();
       const primeiraCompraPorCliente = new Map<string, Date>();
       const estadoHistoricoPorCliente = new Map<string, { estado: string; data: Date; id: number }>();
@@ -383,21 +370,6 @@ export const marketingFinanceiroRouter = router({
           compradorPrimeiraCompra.set(clienteKey, dados);
         }
       }
-      for (const linha of linhasAoVivoNoPeriodo) {
-        if (!linha.clienteKey) continue;
-        const data = dataOsMarketing(linha.dataAprovacao, linha.mes, linha.ano);
-        const primeira = primeiraCompraPorCliente.get(linha.clienteKey);
-        if (!primeira || data < primeira) primeiraCompraPorCliente.set(linha.clienteKey, data);
-        if (linha.categoria !== "novo") continue;
-        const primeiraConhecida = primeiraCompraPorCliente.get(linha.clienteKey);
-        if (primeiraConhecida && dataLocalParaIso(data) !== dataLocalParaIso(primeiraConhecida)) continue;
-        const estado = ufMarketing(linha.estado);
-        const atual = compradorPrimeiraCompra.get(linha.clienteKey);
-        if (!atual || data < atual.data || (dataLocalParaIso(data) === dataLocalParaIso(atual.data) && estado && !atual.estado)) {
-          compradorPrimeiraCompra.set(linha.clienteKey, { estado: estado ?? atual?.estado ?? null, data });
-        }
-      }
-
       const estadoCachePorOrcamento = new Map<string, { estado: string; id: number }>();
       for (const cache of cachesMubiSys) {
         if (cache.cacheKey !== `raw_${cache.mes}_${cache.ano}` || !cache.orcData) continue;
@@ -427,7 +399,33 @@ export const marketingFinanceiroRouter = router({
         if (estado) estadoPerfilPorCliente.set(perfil.empresaKey, estado);
       }
 
-      const propostasNovas: Array<{ id: number; orcNumero: string | null; clienteKey: string; estado: string | null }> = [];
+      const ordensPorCliente = new Map<string, Map<string, number>>();
+      for (const os of osHistoricas) {
+        if (!isOsNormalDb(os)) continue;
+        const clienteKey = normalizeEmpresaKey(os.empresa ?? "");
+        if (!clienteKey || !compradorPrimeiraCompra.has(clienteKey)) continue;
+        const data = dataOsMarketing(os.dataAprovacao, os.mes, os.ano);
+        if (!dataDentroPeriodoMarketing(data, input.dataInicial, input.dataFinal)) continue;
+        const chaveOs = os.osNumero?.trim() ? `os:${os.osNumero.trim()}` : `historico:${os.id}`;
+        const ordens = ordensPorCliente.get(clienteKey) ?? new Map<string, number>();
+        ordens.set(chaveOs, Number(os.valorOs ?? os.valorTotal ?? 0) || 0);
+        ordensPorCliente.set(clienteKey, ordens);
+      }
+      const compradoresNovos = [...compradorPrimeiraCompra.entries()].map(([clienteKey, dados]) => ({
+        clienteKey,
+        estado: dados.estado,
+        dataPrimeiraCompra: dados.data,
+        ordens: [...(ordensPorCliente.get(clienteKey)?.entries() ?? [])].map(([chave, valor]) => ({ chave, valor })),
+      }));
+
+      const propostasNovas: Array<{
+        id: number;
+        orcNumero: string | null;
+        clienteKey: string;
+        estado: string | null;
+        dataProposta: Date;
+        valor: number | null;
+      }> = [];
       const statusExcluidos = new Set(["cancelada", "cancelado", "excluída", "excluído", "excluida", "excluido"]);
       for (const proposta of propostasHistoricas) {
         if (statusExcluidos.has((proposta.status ?? "").trim().toLowerCase())) continue;
@@ -437,20 +435,27 @@ export const marketingFinanceiroRouter = router({
         const dataProposta = parseDataFlexivel(proposta.dataCadastro)
           ?? new Date(proposta.ano, proposta.mes - 1, 1);
         if (!dataDentroPeriodoMarketing(dataProposta, input.dataInicial, input.dataFinal)) continue;
-        if (primeiraCompra && primeiraCompra < dataProposta) continue;
+        if (primeiraCompra && primeiraCompra <= dataProposta) continue;
 
         const numero = proposta.orcNumero?.trim() ?? "";
         const estado = (numero ? estadoCachePorOrcamento.get(numero)?.estado : null)
           ?? estadoHistoricoPorCliente.get(clienteKey)?.estado
           ?? estadoPerfilPorCliente.get(clienteKey)
           ?? null;
-        propostasNovas.push({ id: proposta.id, orcNumero: proposta.orcNumero, clienteKey, estado });
+        propostasNovas.push({
+          id: proposta.id,
+          orcNumero: proposta.orcNumero,
+          clienteKey,
+          estado,
+          dataProposta,
+          valor: proposta.total == null || !Number.isFinite(Number(proposta.total)) ? null : Number(proposta.total),
+        });
       }
 
       return {
         ...resumirEstadosNovos(
-        [...compradorPrimeiraCompra.entries()].map(([clienteKey, dados]) => ({ clienteKey, estado: dados.estado })),
-        propostasNovas,
+          compradoresNovos,
+          propostasNovas,
         ),
         fontesIndisponiveis,
       };
@@ -463,7 +468,12 @@ export const marketingFinanceiroRouter = router({
     .input(periodoMarketingSchema)
     .query(async ({ input }) => {
       const db = await getDb();
-      if (!db) return resumirEstadosCampanhas([], []);
+      if (!db) return { ...resumirEstadosCampanhas([], []), fontesIndisponiveis: ["base de dados"] };
+      const fontesIndisponiveis: string[] = [];
+      const marcarFonteIndisponivel = (fonte: string, error: unknown) => {
+        registrarFalhaFonteEstadosMarketing(fonte, error);
+        fontesIndisponiveis.push(fonte);
+      };
 
       const anoInicial = Number(input.dataInicial.slice(0, 4));
       const anoFinal = Number(input.dataFinal.slice(0, 4));
@@ -476,11 +486,19 @@ export const marketingFinanceiroRouter = router({
       const [historicoEnvios, itensDisparados, osRows] = await Promise.all([
         db.select({ disparoId: campanhasWhatsappContatosHistorico.disparoId, telefone: campanhasWhatsappContatosHistorico.telefone, dataEnvio: campanhasWhatsappContatosHistorico.ultimoEnvioEm })
           .from(campanhasWhatsappContatosHistorico)
-          .where(and(gte(campanhasWhatsappContatosHistorico.ultimoEnvioEm, inicioIso), lt(campanhasWhatsappContatosHistorico.ultimoEnvioEm, fimExclusivoIso))),
+          .where(and(gte(campanhasWhatsappContatosHistorico.ultimoEnvioEm, inicioIso), lt(campanhasWhatsappContatosHistorico.ultimoEnvioEm, fimExclusivoIso)))
+          .catch(error => {
+            marcarFonteIndisponivel("histórico de envios de campanhas", error);
+            return [];
+          }),
         db.select({ disparoId: campanhasWhatsappDisparoItens.disparoId, telefone: campanhasWhatsappDisparoItens.telefone, dataEnvio: campanhasWhatsappDisparos.enviadoEm, status: campanhasWhatsappDisparoItens.status })
           .from(campanhasWhatsappDisparoItens)
           .innerJoin(campanhasWhatsappDisparos, eq(campanhasWhatsappDisparoItens.disparoId, campanhasWhatsappDisparos.id))
-          .where(and(gte(campanhasWhatsappDisparos.enviadoEm, inicioIso), lt(campanhasWhatsappDisparos.enviadoEm, fimExclusivoIso))),
+          .where(and(gte(campanhasWhatsappDisparos.enviadoEm, inicioIso), lt(campanhasWhatsappDisparos.enviadoEm, fimExclusivoIso)))
+          .catch(error => {
+            marcarFonteIndisponivel("itens enviados de campanhas", error);
+            return [];
+          }),
         db.select({
           osNumero: historicoOs.osNumero,
           empresa: historicoOs.empresa,
@@ -492,7 +510,11 @@ export const marketingFinanceiroRouter = router({
           valorTotal: historicoOs.valorTotal,
           tipoOs: historicoOs.tipoOs,
           status: historicoOs.status,
-        }).from(historicoOs).where(and(gte(historicoOs.ano, anoInicial), lte(historicoOs.ano, anoFinal))),
+        }).from(historicoOs).where(and(gte(historicoOs.ano, anoInicial), lte(historicoOs.ano, anoFinal)))
+          .catch(error => {
+            marcarFonteIndisponivel("histórico de O.S.", error);
+            return [];
+          }),
       ]);
 
       const itensFalhos = new Set(itensDisparados.flatMap(item => {
@@ -511,7 +533,12 @@ export const marketingFinanceiroRouter = router({
         const dataEnvio = dataIsoEnvio(item.dataEnvio);
         if (dataEnvio) envios.push({ telefone: item.telefone, dataEnvio });
       }
-      completarTelefonesPeloCadastro(osRows, await carregarTelefonesClientes());
+      try {
+        completarTelefonesPeloCadastro(osRows, await carregarTelefonesClientes());
+      } catch (error) {
+        registrarFalhaFonteEstadosMarketing("cadastro de telefones do ERP", error);
+        fontesIndisponiveis.push("cadastro de telefones do ERP");
+      }
       const vendas = osRows.flatMap(os => {
         if (!isOsNormalDb(os)) return [];
         const dtAprovacao = parseDataFlexivel(os.dataAprovacao);
@@ -527,7 +554,7 @@ export const marketingFinanceiroRouter = router({
         }];
       });
 
-      return resumirEstadosCampanhas(vendas, envios, 30);
+      return { ...resumirEstadosCampanhas(vendas, envios, 30), fontesIndisponiveis };
     }),
 
   // ─── Opções de filtro (vendedor/cidade disponíveis no ano) ─────────────────

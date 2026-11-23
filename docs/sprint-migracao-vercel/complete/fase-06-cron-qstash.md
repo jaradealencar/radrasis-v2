@@ -1,5 +1,7 @@
 # Fase 6 — CRON de sincronização de OS via Upstash QStash
 
+> **ARQUIVADA — referência histórica.** Não execute comandos ou verificações deste arquivo; use o fluxo atual de `AGENTS.md`.
+
 **Depende de:** Fase 1, Fase 3 (precisa do `vercel.json`) e Fase 5 (o preview
 precisa estar de pé para o teste).
 **Idealmente depois da Fase 2** — ela muda a latência de cada query, que é

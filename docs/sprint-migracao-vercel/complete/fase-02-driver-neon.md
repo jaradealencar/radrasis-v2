@@ -1,5 +1,7 @@
 # Fase 2 — Driver de banco serverless: `pg` → `@neondatabase/serverless`
 
+> **ARQUIVADA — referência histórica.** Não execute comandos ou verificações deste arquivo; use o fluxo atual de `AGENTS.md`.
+
 **Depende de:** Fase 1 (só porque toda fase depende dela; esta não toca em
 `app.ts` nem em `api/index.ts`).
 **Independente das fases 3–8.** Pode sair a qualquer momento depois da 1.
