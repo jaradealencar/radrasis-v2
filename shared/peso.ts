@@ -23,7 +23,7 @@ export function pesoChapaKg(areaM2: number, espessuraMm: number, densidadeGCm3: 
   return areaM2 * espessuraMm * densidadeGCm3;
 }
 
-export const PERFIL_FORMATOS = ["tubo", "cantoneira", "barra", "u", "redonda"] as const;
+export const PERFIL_FORMATOS = ["tubo", "cantoneira", "barra", "u", "redonda", "tira"] as const;
 export type FormatoPerfil = (typeof PERFIL_FORMATOS)[number];
 
 /** Valor gravado no banco → formato; qualquer coisa desconhecida cai em tubo (padrão histórico). */
@@ -36,13 +36,14 @@ export const FORMATOS_PERFIL: Record<FormatoPerfil, string> = {
   barra: "Barra chata / maciça retangular",
   u: "Perfil em U",
   redonda: "Barra redonda maciça",
+  tira: "Tira de chapa (lateral/retorno/aro)",
 };
 
 /** Barras maciças (retangular e redonda) dispensam a espessura de parede. */
 export const formatoPerfilUsaEspessura = (formato: FormatoPerfil): boolean => formato !== "barra" && formato !== "redonda";
 
 /** A barra redonda é definida só pelo diâmetro (a largura); a altura não entra. */
-export const formatoPerfilUsaAltura = (formato: FormatoPerfil): boolean => formato !== "redonda";
+export const formatoPerfilUsaAltura = (formato: FormatoPerfil): boolean => formato !== "redonda" && formato !== "tira";
 
 /**
  * Área da seção do perfil em mm². Devolve null quando as medidas não formam
@@ -60,6 +61,10 @@ export function secaoPerfilMm2(
   espessuraMm: number | null,
 ): number | null {
   if (formato === "redonda") return larguraMm > 0 ? (Math.PI * larguraMm * larguraMm) / 4 : null;
+  if (formato === "tira") {
+    if (!(larguraMm > 0) || espessuraMm == null || !(espessuraMm > 0)) return null;
+    return larguraMm * espessuraMm;
+  }
   if (!(alturaMm > 0 && larguraMm > 0)) return null;
   if (formato === "barra") return alturaMm * larguraMm;
   if (espessuraMm == null || !(espessuraMm > 0)) return null;

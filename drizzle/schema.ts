@@ -4385,3 +4385,157 @@ export const trainingLessonVersions = pgTable(
     lessonIdx: index("training_lesson_versions_lesson_idx").on(t.lessonId, t.createdAt),
   })
 );
+
+// ??? AUDITORIA DE CUSTO DE MAT?RIA-PRIMA POR NF DE COMPRA ??????????????????
+// Objetivo: ler item a item a NF/cupom de um fornecedor, linkar cada item a
+// uma mat?ria-prima j? espelhada do Mubisys (materias_primas), calcular o
+// custo real pago (produto + frete rateado + ICMS) na unidade de consumo do
+// ERP (ml, m?, un, lt) e comparar com o custo hoje cadastrado ? apontando
+// QUALQUER diverg?ncia, por menor que seja. A API do Mubisys ? s? leitura:
+// o ajuste do custo cadastrado continua manual, feito pelo usu?rio l?.
+//
+// A "mem?ria" pedida pelo usu?rio mora em `nfMpVinculos`: na primeira vez que
+// um item de um fornecedor ? linkado a uma mat?ria-prima (com a convers?o de
+// unidade escolhida), fica salvo por (fornecedor + descri??o normalizada do
+// produto). Nas pr?ximas NFs do mesmo fornecedor, a MESMA descri??o j? chega
+// pr?-preenchida ? o usu?rio s? confirma ou corrige, e a corre??o sobrescreve
+// a mem?ria (n?o acumula vers?es, ? "o que vale agora").
+
+// Cabe?alho da NF/cupom importado (upload de XML/HTML via UploadThing).
+export const nfCompraImportacoes = pgTable(
+  "nf_compra_importacoes",
+  {
+    id: serial("id").primaryKey(),
+    numero: varchar("numero", { length: 64 }),
+    serie: varchar("serie", { length: 16 }),
+    chaveAcesso: varchar("chave_acesso", { length: 64 }),
+    cnpjFornecedor: varchar("cnpj_fornecedor", { length: 18 }).notNull(),
+    nomeFornecedor: varchar("nome_fornecedor", { length: 256 }),
+    dataEmissao: varchar("data_emissao", { length: 32 }),
+    valorProdutos: decimal("valor_produtos", { precision: 14, scale: 2 }).notNull(),
+    valorFreteNf: decimal("valor_frete_nf", { precision: 14, scale: 2 }).default("0").notNull(),
+    pesoLiquidoTotalKg: decimal("peso_liquido_total_kg", { precision: 12, scale: 3 }),
+    // Como o frete foi informado nesta NF: "valor_total" (rateia proporcional ao
+    // valor do item) ou "por_kg" (rateia pelo peso do item ? freteValorPorKg).
+    modoRateioFrete: varchar("modo_rateio_frete", { length: 16 })
+      .default("valor_total")
+      .notNull(),
+    freteValorPorKg: decimal("frete_valor_por_kg", { precision: 10, scale: 4 }),
+    percentualIcms: decimal("percentual_icms", { precision: 5, scale: 2 })
+      .default("10")
+      .notNull(),
+    arquivoOriginalUrl: text("arquivo_original_url"),
+    arquivoTipo: varchar("arquivo_tipo", { length: 16 }), // "xml" | "html"
+    status: varchar("status", { length: 24 }).default("rascunho").notNull(), // rascunho, calibrando, concluida
+    criadoPor: text("criado_por").references(() => user.id, { onDelete: "set null" }),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    concluidoEm: timestamp("concluido_em"),
+  },
+  t => ({
+    chaveAcessoUq: uniqueIndex("nf_compra_importacoes_chave_acesso_uq").on(
+      t.chaveAcesso
+    ),
+    fornecedorIdx: index("nf_compra_importacoes_fornecedor_idx").on(
+      t.cnpjFornecedor
+    ),
+  })
+);
+export type NfCompraImportacao = typeof nfCompraImportacoes.$inferSelect;
+export type InsertNfCompraImportacao = typeof nfCompraImportacoes.$inferInsert;
+
+// Cada item/linha extra?do do XML ou HTML da NF, com a linkagem e o c?lculo.
+export const nfCompraItens = pgTable(
+  "nf_compra_itens",
+  {
+    id: serial("id").primaryKey(),
+    importacaoId: integer("importacao_id")
+      .notNull()
+      .references(() => nfCompraImportacoes.id, { onDelete: "cascade" }),
+    numeroItem: integer("numero_item").notNull(), // ordem na NF (nItem do XML)
+    codigoFornecedor: varchar("codigo_fornecedor", { length: 64 }).notNull(), // cProd ? chave de mem?ria (est?vel entre NFs, ao contr?rio do texto livre)
+    descricaoNf: text("descricao_nf").notNull(), // xProd ? texto bruto do fornecedor, s? exibi??o
+    ncm: varchar("ncm", { length: 16 }),
+    unidadeCompra: varchar("unidade_compra", { length: 16 }).notNull(), // uCom: KG, UN, LT, ML, M2
+    quantidade: decimal("quantidade", { precision: 14, scale: 4 }).notNull(),
+    valorUnitario: decimal("valor_unitario", { precision: 14, scale: 6 }).notNull(),
+    valorTotalItem: decimal("valor_total_item", { precision: 14, scale: 2 }).notNull(),
+
+    // ??? Linkagem (edit?vel pelo usu?rio; pr?-preenchida pela mem?ria) ???
+    materiaPrimaId: integer("materia_prima_id").references(
+      () => materiasPrimas.id,
+      { onDelete: "set null" }
+    ),
+    origemVinculo: varchar("origem_vinculo", { length: 16 }), // "memoria" | "manual" | null (ainda sem link)
+    unidadeErp: varchar("unidade_erp", { length: 16 }), // ML, M2, UN, LT ? o que o Mubisys consome
+    fatorConversao: decimal("fator_conversao", { precision: 16, scale: 8 }), // 1 unidade_compra = fator unidade_erp
+    origemFator: varchar("origem_fator", { length: 24 }), // "cadastro_densidade" | "cadastro_chapa" | "memoria" | "manual"
+
+    // Explica??o textual de COMO o fatorConversao foi obtido, fixada no momento
+    // da confirma??o (ex: "Perfil-tira: 0,50mm espessura ? 80mm largura ?
+    // 7,93 g/cm? = 0,317 kg/m ? 1 kg = 3,1546 ml"). Sobrevive a mudan?as
+    // futuras no cadastro da MP ? ? o que o painel de auditoria mostra.
+    baseCalculoTexto: text("base_calculo_texto"),
+
+    // ??? Resultado do c?lculo (gravado ao concluir a importa??o) ???
+    rateioFrete: decimal("rateio_frete", { precision: 14, scale: 4 }),
+    rateioIcms: decimal("rateio_icms", { precision: 14, scale: 4 }),
+    custoItemTotal: decimal("custo_item_total", { precision: 14, scale: 4 }),
+    quantidadeErp: decimal("quantidade_erp", { precision: 14, scale: 4 }),
+    custoRealErp: decimal("custo_real_erp", { precision: 14, scale: 6 }),
+    custoCadastradoErp: decimal("custo_cadastrado_erp", { precision: 14, scale: 6 }), // lido de materias_primas no momento do c?lculo
+    divergenciaPct: decimal("divergencia_pct", { precision: 8, scale: 4 }),
+    defasado: boolean("defasado").notNull().default(false),
+  },
+  t => ({
+    importacaoIdx: index("nf_compra_itens_importacao_idx").on(t.importacaoId),
+    materiaPrimaIdx: index("nf_compra_itens_materia_prima_idx").on(
+      t.materiaPrimaId
+    ),
+  })
+);
+export type NfCompraItem = typeof nfCompraItens.$inferSelect;
+export type InsertNfCompraItem = typeof nfCompraItens.$inferInsert;
+
+// MEM?RIA: v?nculo aprendido entre (fornecedor + c?digo do produto na NF,
+// `cProd` do XML ? est?vel entre notas, ao contr?rio do texto livre `xProd`)
+// e (mat?ria-prima do Radrasys + unidade/fator de convers?o). ? o que faz o
+// sistema "ficar mais h?bil sozinho": a 1? NF de um fornecedor exige
+// calibra??o manual item a item; da 2? NF em diante, todo c?digo j? visto
+// chega pr?-preenchido (sugest?o com confian?a "alta" em sugerirVinculo) ?
+// o usu?rio s? confirma. Toda confirma??o grava aqui via upsert: a mesma
+// chave (fornecedor+c?digo) sempre reflete a ?LTIMA decis?o humana, nunca
+// acumula vers?es divergentes nem fica presa a um erro antigo.
+export const nfMpVinculos = pgTable(
+  "nf_mp_vinculos",
+  {
+    id: serial("id").primaryKey(),
+    cnpjFornecedor: varchar("cnpj_fornecedor", { length: 18 }).notNull(),
+    codigoFornecedor: varchar("codigo_fornecedor", { length: 64 }).notNull(),
+    // Guardada s? para a tela de mem?ria mostrar texto leg?vel ao gestor;
+    // nunca ? a chave de busca (o c?digo acima ?).
+    descricaoReferencia: text("descricao_referencia").notNull(),
+    materiaPrimaId: integer("materia_prima_id")
+      .notNull()
+      .references(() => materiasPrimas.id, { onDelete: "cascade" }),
+    unidadeErp: varchar("unidade_erp", { length: 16 }).notNull(),
+    fatorConversao: decimal("fator_conversao", { precision: 16, scale: 8 }).notNull(),
+    origemFator: varchar("origem_fator", { length: 24 }).notNull(),
+    baseCalculoTexto: text("base_calculo_texto"),
+    vezesUsado: integer("vezes_usado").notNull().default(1),
+    confirmadoPor: text("confirmado_por").references(() => user.id, {
+      onDelete: "set null",
+    }),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  t => ({
+    // O mesmo c?digo de fornecedores diferentes pode significar mat?ria-prima
+    // diferente (cada fornecedor tem sua pr?pria tabela de c?digos).
+    chaveUq: uniqueIndex("nf_mp_vinculos_chave_uq").on(
+      t.cnpjFornecedor,
+      t.codigoFornecedor
+    ),
+  })
+);
+export type NfMpVinculo = typeof nfMpVinculos.$inferSelect;
+export type InsertNfMpVinculo = typeof nfMpVinculos.$inferInsert;

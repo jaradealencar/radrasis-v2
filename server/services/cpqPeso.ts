@@ -62,7 +62,7 @@ export function calcularPesoLinha(linha: LinhaPesoInput, dados: DadosPesoMateria
       return pendente(`Perfil sem ${[precisaAltura ? "altura" : "diâmetro (largura)", precisaAltura ? "largura" : null, precisaEspessura ? "espessura" : null, "densidade"].filter(Boolean).join(", ")} cadastrada.`);
     const kgPorM = kgPorMetroPerfil(h, w, e, d, formato);
     if (kgPorM == null) return pendente("Medidas do perfil incompatíveis (a parede não cabe na seção).");
-    const aviso = ({ tubo: "seção oca estimada", cantoneira: "cantoneira estimada", barra: "barra maciça", u: "perfil em U estimado", redonda: "barra redonda maciça" } as const)[formato];
+    const aviso = ({ tubo: "seção oca estimada", cantoneira: "cantoneira estimada", barra: "barra maciça", u: "perfil em U estimado", redonda: "barra redonda maciça", tira: "tira de chapa (lateral/retorno)" } as const)[formato];
     const unidade = semAcento(linha.unidade);
     if ((unidade.includes("metro") && !unidade.includes("quadrad")) || unidade === "m" || unidade === "ml")
       return { kg: quantidade * kgPorM, como: `${fmt(quantidade, 2)} m × ${fmt(kgPorM, 3)} kg/m (${aviso})`, motivo: "" };
