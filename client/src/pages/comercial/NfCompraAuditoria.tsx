@@ -1,6 +1,7 @@
 import { useState, useMemo } from "react";
 import PageHeader from "@/components/PageHeader";
 import ModalCalculadoraFator from "@/components/ModalCalculadoraFator";
+import { ComprasHistorico, OrdemCompraModal, SalvarCotacaoCompra } from "./ComprasGestao";
 import { calcularRateioFrete, type BaseValorRateioFrete, type CriterioRateioFrete, type ModoFreteNf } from "@shared/nf-frete";
 import { trpc } from "@/lib/trpc";
 import { fmtBrl, fmtNum, fmtPct } from "@/lib/format";
@@ -143,7 +144,9 @@ function pesoLinhaFreteKg(item: ItemEditavel): number {
 
 export default function NfCompraAuditoria() {
   const utils = trpc.useUtils();
-  const [abaAtiva, setAbaAtiva] = useState<"importar" | "painel" | "cotacao_pdf" | "memoria">("importar");
+  const [abaAtiva, setAbaAtiva] = useState<"importar" | "painel" | "cotacao_pdf" | "memoria" | "historico">("importar");
+  const [cotacaoOrdemId, setCotacaoOrdemId] = useState<number | null>(null);
+  const [versaoEditorCotacao, setVersaoEditorCotacao] = useState(0);
 
   // Estado para modal de Histórico de Compras da Matéria-Prima
   const [mpHistoricoSelecionada, setMpHistoricoSelecionada] = useState<{ id: number; nome: string } | null>(null);
@@ -286,7 +289,8 @@ export default function NfCompraAuditoria() {
         analisarCotacaoPdfMutation.mutate(
           { pdfBase64: base64, nomeArquivo: file.name },
           {
-            onSuccess: (data) => { setCotacaoPdfResultado(data); void utils.suppliers.list.invalidate(); },
+            onSuccess: (data) => { setCotacaoPdfResultado(data); setVersaoEditorCotacao(v => v + 1); void utils.suppliers.list.invalidate(); },
+            onError: (error) => toast.error(error.message),
           }
         );
       }
@@ -650,6 +654,7 @@ export default function NfCompraAuditoria() {
 
       {/* Navegação entre Abas */}
       <div className="flex flex-wrap gap-2 border-b border-slate-200">
+        <button type="button" onClick={() => setAbaAtiva("historico")} className={`px-4 py-2.5 text-sm font-medium border-b-2 ${abaAtiva === "historico" ? "border-blue-600 text-blue-600" : "border-transparent text-slate-500"}`}>Cotações, ordens e evolução</button>
         <button
           type="button"
           onClick={() => setAbaAtiva("importar")}
@@ -1467,17 +1472,16 @@ export default function NfCompraAuditoria() {
               </div>
 
               {cotacaoPdfResultado.fornecedorCadastro && <p className="text-xs text-blue-700"><a href="/fornecedores" className="underline">Cadastro do fornecedor</a>: {cotacaoPdfResultado.fornecedorCadastro.totalCompras} compra(s) registrada(s){!cotacaoPdfResultado.fornecedorCadastro.cadastroConcluido && " - Não concluído: complete os dados em Fornecedores"}</p>}
-              <Table>
+              <SalvarCotacaoCompra key={versaoEditorCotacao} resultado={cotacaoPdfResultado} nomeArquivo={arquivoPdfNome} onAbrirOrdem={setCotacaoOrdemId} />
+              <Table className="table-fixed text-[11px] [&_th]:whitespace-normal [&_th]:px-1.5 [&_td]:whitespace-normal [&_td]:break-words [&_td]:p-1.5 [&_td]:align-top">
                 <TableHeader>
                   <TableRow>
-                    <TableHead>Item Cotado no PDF</TableHead>
-                    <TableHead className="text-right">Qtd Cotada</TableHead>
-                    <TableHead className="text-right">Preço Cotado</TableHead>
-                    <TableHead>MP Vinculada no Radrasys</TableHead>
-                    <TableHead className="text-right">Última compra deste fornecedor</TableHead>
-                    <TableHead className="text-right">Compra mais recente (todos)</TableHead>
-                    <TableHead className="text-right">Reajuste vs compra</TableHead>
-                    <TableHead className="text-right">Custo no MubiSys</TableHead>
+                    <TableHead className="w-[20%]">Item do PDF</TableHead>
+                    <TableHead className="w-[12%] text-right">Cotado</TableHead>
+                    <TableHead className="w-[17%]">Matéria-prima</TableHead>
+                    <TableHead className="w-[18%] text-right">Últimas compras</TableHead>
+                    <TableHead className="w-[11%] text-right">Variação por unidade original</TableHead>
+                    <TableHead className="w-[22%] text-right">Comparativo na unidade de consumo</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -1544,13 +1548,11 @@ export default function NfCompraAuditoria() {
                             <span className="text-[10px] text-slate-400 font-mono">Cód: {item.codigo}</span>
                           )}
                         </TableCell>
-                        <TableCell className="text-right font-mono text-xs">
-                          {fmtNum(item.quantidade)} {item.unidade}
-                        </TableCell>
                         <TableCell className="text-right font-mono text-xs font-bold text-slate-800">
                           {fmtBrl(item.precoUnitario)}/{item.unidade}
+                          <span className="block font-normal text-[10px]">Qtd.: {fmtNum(item.quantidade, 3)} {item.unidade}</span>
                         </TableCell>
-                        <TableCell className="min-w-56">
+                        <TableCell>
                           <div className="space-y-1">
                             <span className="text-xs font-medium text-slate-800 block">
                               {item.materiaPrimaVinculada?.nome ?? (
@@ -1562,7 +1564,7 @@ export default function NfCompraAuditoria() {
                             )}
                             {botaoVincular(item)}
                             {itemCotacaoEmEdicao === i && (
-                              <div className="mt-2 min-w-64 space-y-1 rounded border border-slate-200 bg-slate-50 p-2">
+                              <div className="mt-2 min-w-0 space-y-1 rounded border border-slate-200 bg-slate-50 p-2">
                                 <input
                                   type="search"
                                   value={buscaMateriaPrimaCotacao}
@@ -1610,9 +1612,9 @@ export default function NfCompraAuditoria() {
                           </div>
                         </TableCell>
                         <TableCell className="text-right font-mono text-xs text-slate-600">
+                          <span className="block text-[9px] text-slate-400">Deste fornecedor</span>
                           {formatarCompra(compraFornecedor, false)}
-                        </TableCell>
-                        <TableCell className="text-right font-mono text-xs text-slate-600">
+                          <span className="mt-2 block text-[9px] text-slate-400">Mais recente (todos)</span>
                           {formatarCompra(compraGeral, true)}
                         </TableCell>
                         <TableCell className="text-right font-mono text-xs font-bold">
@@ -1641,7 +1643,7 @@ export default function NfCompraAuditoria() {
                           <div className="space-y-1.5">
                             <span className="block">
                               {custoAtualMubisys != null
-                                ? `${fmtBrl(custoAtualMubisys)}/${unidadeMubisys}`
+                                ? `MubiSys: ${fmtBrl(custoAtualMubisys)}/${unidadeMubisys}`
                                 : "Sem custo cadastrado"}
                             </span>
                             {precoCotadoNaUnidadeMubisys != null ? (
@@ -1685,6 +1687,18 @@ export default function NfCompraAuditoria() {
           )}
         </div>
       )}
+
+      {abaAtiva === "historico" && <ComprasHistorico onOrdem={setCotacaoOrdemId} onAbrirCotacao={async c => {
+        const linhas = await Promise.all(c.itens.map(async i => {
+          const historico = i.materiaPrimaId ? await utils.nfCompra.historicoCotacaoPorMateriaPrima.fetch({ materiaPrimaId: i.materiaPrimaId, fornecedor: c.fornecedor, cnpjFornecedor: c.cnpjFornecedor ?? undefined, precoCotado: Number(i.precoUnitario), unidadeCotada: i.unidade }) : {};
+          return { ...historico, codigo: i.codigo, descricao: i.descricao, quantidade: Number(i.quantidade), unidade: i.unidade, precoUnitario: Number(i.precoUnitario),
+            materiaPrimaVinculada: i.materiaPrimaId ? { id: i.materiaPrimaId, nome: i.nomeMateriaPrima, unidadeMubisys: i.unidadeDestino, custoUnitarioMubisys: i.custoMubisys == null ? null : Number(i.custoMubisys) } : null,
+            fatorConversaoCotacao: i.fatorConversao == null ? null : Number(i.fatorConversao), unidadeOrigemConversaoCotacao: i.unidadeOrigem, unidadeDestinoConversaoCotacao: i.unidadeDestino, baseCalculoConversaoCotacao: i.formula, origemVinculo: "cotação salva (snapshot)" };
+        }));
+        setCotacaoPdfResultado({ ...c, salvoId: c.id, valorTotalCotado: Number(c.total), valorFrete: c.frete == null ? null : Number(c.frete), itens: linhas });
+        setArquivoPdfNome(c.nomeArquivo ?? `Cotação #${c.id}`); setVersaoEditorCotacao(v => v + 1); setAbaAtiva("cotacao_pdf");
+      }} />}
+      <OrdemCompraModal cotacaoId={cotacaoOrdemId} fechar={() => setCotacaoOrdemId(null)} />
 
       {/* Modal Histórico da Matéria-Prima (Função 1 para o Comprador) */}
       {mpHistoricoSelecionada && (

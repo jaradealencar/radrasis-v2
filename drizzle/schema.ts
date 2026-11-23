@@ -13,6 +13,7 @@ import {
   text,
   timestamp,
   uniqueIndex,
+  uuid,
   varchar,
 } from "drizzle-orm/pg-core";
 
@@ -4690,3 +4691,44 @@ export const nfMpVinculos = pgTable(
 );
 export type NfMpVinculo = typeof nfMpVinculos.$inferSelect;
 export type InsertNfMpVinculo = typeof nfMpVinculos.$inferInsert;
+
+// Documentos comerciais imutáveis: nova revisão de cotação recebe nova chave.
+export const comprasCotacoes = pgTable("compras_cotacoes", {
+  id: serial("id").primaryKey(), chave: uuid("chave").notNull().unique(),
+  fornecedor: varchar("fornecedor", { length: 256 }).notNull(), cnpjFornecedor: varchar("cnpj_fornecedor", { length: 18 }),
+  dataCotacao: varchar("data_cotacao", { length: 10 }).notNull(), validadeDias: integer("validade_dias"),
+  condicaoPagamento: text("condicao_pagamento"), prazoEntrega: text("prazo_entrega"),
+  frete: decimal("frete", { precision: 18, scale: 2 }), total: decimal("total", { precision: 18, scale: 2 }).notNull(),
+  nomeArquivo: text("nome_arquivo"), observacoes: text("observacoes"),
+  criadoPor: text("criado_por"), createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+export const comprasCotacaoItens = pgTable("compras_cotacao_itens", {
+  id: serial("id").primaryKey(), cotacaoId: integer("cotacao_id").notNull().references(() => comprasCotacoes.id, { onDelete: "restrict" }),
+  codigo: text("codigo"), descricao: text("descricao").notNull(),
+  materiaPrimaId: integer("materia_prima_id").references(() => materiasPrimas.id, { onDelete: "restrict" }), nomeMateriaPrima: text("nome_materia_prima"),
+  quantidade: decimal("quantidade", { precision: 18, scale: 6 }).notNull(), unidade: varchar("unidade", { length: 80 }).notNull(),
+  precoUnitario: decimal("preco_unitario", { precision: 18, scale: 6 }).notNull(),
+  unidadeOrigem: varchar("unidade_origem", { length: 80 }), unidadeDestino: varchar("unidade_destino", { length: 80 }),
+  fatorConversao: decimal("fator_conversao", { precision: 24, scale: 8 }), formula: text("formula"),
+  custoMubisys: decimal("custo_mubisys", { precision: 18, scale: 6 }),
+}, t => ({ cotacaoIdx: index("compras_cotacao_itens_cotacao_idx").on(t.cotacaoId), mpIdx: index("compras_cotacao_itens_mp_idx").on(t.materiaPrimaId) }));
+export const comprasOrdens = pgTable("compras_ordens", {
+  id: serial("id").primaryKey(), chave: uuid("chave").notNull().unique(),
+  cotacaoId: integer("cotacao_id").notNull().references(() => comprasCotacoes.id, { onDelete: "restrict" }),
+  comprador: jsonb("comprador").$type<import("../shared/compras-cotacoes").CompradorCompra>().notNull(),
+  pagamento: varchar("pagamento", { length: 16 }).notNull(), condicaoPagamento: text("condicao_pagamento").notNull(),
+  transportadora: text("transportadora").notNull(), numeroColeta: text("numero_coleta").notNull(),
+  frete: decimal("frete", { precision: 18, scale: 2 }).notNull(), total: decimal("total", { precision: 18, scale: 2 }).notNull(),
+  observacoes: text("observacoes").notNull(), itens: jsonb("itens").$type<import("../shared/compras-cotacoes").LinhaOrdemCompra[]>().notNull(),
+  criadoPor: text("criado_por"), createdAt: timestamp("created_at").defaultNow().notNull(),
+}, t => ({ cotacaoIdx: index("compras_ordens_cotacao_idx").on(t.cotacaoId) }));
+export const comprasOrdemNfs = pgTable("compras_ordem_nfs", {
+  id: serial("id").primaryKey(), ordemId: integer("ordem_id").notNull().references(() => comprasOrdens.id, { onDelete: "restrict" }),
+  importacaoId: integer("importacao_id").notNull().references(() => nfCompraImportacoes.id, { onDelete: "restrict" }),
+  criadoPor: text("criado_por"), createdAt: timestamp("created_at").defaultNow().notNull(),
+}, t => ({ nfUq: uniqueIndex("compras_ordem_nfs_nf_uq").on(t.importacaoId) }));
+export const comprasCompradores = pgTable("compras_compradores", {
+  id: integer("id").primaryKey(),
+  dados: jsonb("dados").$type<{ empresa: { nome: string; documento: string; inscricaoEstadual: string }; pessoa: { nome: string; documento: string; inscricaoEstadual: string }; endereco: string; emailNf: string }>().notNull(),
+  atualizadoPor: text("atualizado_por"), updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});

@@ -1016,6 +1016,13 @@
       "when": 1795455613287,
       "tag": "0146_fornecedor_compras_integracao",
       "breakpoints": true
+    },
+    {
+      "idx": 145,
+      "version": "7",
+      "when": 1795457812781,
+      "tag": "0147_compras_cotacoes_ordens",
+      "breakpoints": true
     }
   ]
 }

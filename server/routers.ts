@@ -37,6 +37,7 @@ import { custoLedRouter } from "./routers/custoLed";
 import { perfilEstoqueRouter } from "./routers/perfilEstoque";
 import { adminRouter } from "./routers/admin";
 import { nfCompraRouter } from "./routers/nfCompra";
+import { comprasRouter } from "./routers/compras";
 import { systemRouter } from "./_core/systemRouter";
 import { protectedProcedure, publicProcedure, requireRole, router } from "./_core/trpc";
 import { auth } from "./_core/auth";
@@ -272,6 +273,7 @@ export const appRouter = router({
   admin: adminRouter,
   // Auditoria do custo de matérias-primas por nota fiscal de compra.
   nfCompra: nfCompraRouter,
+  compras: comprasRouter,
 
   // ─── Error Library ──────────────────────────────────────────────────────
   errorLibrary: router({

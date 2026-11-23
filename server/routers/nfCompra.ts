@@ -1096,6 +1096,10 @@ export const nfCompraRouter = router({
         cnpjFornecedor: cotacao.cnpjFornecedor,
         dataCotacao: cotacao.dataCotacao,
         valorTotalCotado: cotacao.valorTotal,
+        valorFrete: cotacao.valorFrete,
+        validadeDias: cotacao.validadeDias,
+        condicaoPagamento: cotacao.condicaoPagamento,
+        prazoEntrega: cotacao.prazoEntrega,
         itens: itensAnalisados,
       };
     }),
