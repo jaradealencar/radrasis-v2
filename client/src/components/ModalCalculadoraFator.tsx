@@ -8,18 +8,30 @@ export type TipoFormulaConversao =
   | "lote_un_m2"
   | "pacote_un"
   | "rendimento_kg"
+  | "liquido_rendimento"
+  | "densidade_liquido"
+  | "identica"
   | "direto";
+
+type UnidadeConversao = "KG" | "UN" | "ML" | "M2" | "LT";
 
 export interface ModalCalculadoraFatorProps {
   aberto: boolean;
   onFechar: () => void;
   unidadeCompra: string;
+  unidadeCompraConversao?: string;
   unidadeErp: string;
+  unidadeErpCadastro?: string | null;
   descricaoNf: string;
   nomeMp: string;
   fatorInicial?: number | null;
   baseCalculoTextoInicial?: string | null;
-  onAplicar: (fator: number, baseCalculoTexto: string) => void;
+  onAplicar: (
+    fator: number,
+    baseCalculoTexto: string,
+    unidadeOrigem: UnidadeConversao,
+    unidadeDestino: UnidadeConversao
+  ) => void;
 }
 
 const DENSIDADES_COMUNS = [
@@ -85,6 +97,28 @@ function normalizarTexto(valor: string): string {
     .toLowerCase();
 }
 
+function normalizarUnidadeConversao(valor: string): UnidadeConversao {
+  const normalizada = normalizarTexto(valor).trim().toUpperCase();
+  if (["KG", "KGM", "KGS", "QUILOGRAMA", "QUILOGRAMAS"].includes(normalizada)) return "KG";
+  if (["ML", "M", "METRO LINEAR", "METROS LINEARES"].includes(normalizada)) return "ML";
+  if (["M2", "M²", "METRO QUADRADO", "METROS QUADRADOS"].includes(normalizada)) return "M2";
+  if (["LT", "L", "LITRO", "LITROS"].includes(normalizada)) return "LT";
+  if ([
+    "UN", "UND", "UNID", "UNIDADE", "UNIDADES", "PC", "PCS", "PCE",
+    "PCT", "PACOTE", "PACOTES", "CX", "CXS", "CAIXA", "CAIXAS",
+    "FDO", "FARDO", "FARDOS", "KIT", "RL", "ROLO", "ROLOS", "BOBINA", "BOBINAS",
+  ].includes(normalizada)) return "UN";
+  return "UN";
+}
+
+const UNIDADES_CONVERSAO: { codigo: UnidadeConversao; nome: string }[] = [
+  { codigo: "KG", nome: "Quilograma (KG)" },
+  { codigo: "UN", nome: "Unidade (UN)" },
+  { codigo: "ML", nome: "Metro linear (ML)" },
+  { codigo: "M2", nome: "Metro quadrado (M²)" },
+  { codigo: "LT", nome: "Litro (LT)" },
+];
+
 function detectarDensidade(texto: string): number {
   const s = normalizarTexto(texto);
   if (s.includes("inox 304")) return 7.93;
@@ -137,8 +171,10 @@ function escolherFormulaInicial(
 ): TipoFormulaConversao {
   if (fatorInicial != null && Number.isFinite(fatorInicial) && fatorInicial > 0)
     return "direto";
-  const origem = unidadeCompra.trim().toUpperCase();
-  const destino = unidadeErp.trim().toUpperCase();
+  const origem = normalizarUnidadeConversao(unidadeCompra);
+  const destino = normalizarUnidadeConversao(unidadeErp);
+  if (origem === destino && !(origem === "UN" && itemPareceEmbalagem(textoItem)))
+    return "identica";
   const embalagem = itemPareceEmbalagem(textoItem);
   if (
     origem === "KG" &&
@@ -157,14 +193,17 @@ function escolherFormulaInicial(
   if (origem === "KG" && (destino === "M2" || destino === "ML"))
     return "rendimento_kg";
   if (
-    origem === "UN" &&
-    destino === "M2" &&
+    origem === "UN" && destino === "M2" &&
     itemPareceChapa(textoItem) &&
     !embalagem
   )
     return "lote_un_m2";
-  if (origem === "UN" && (destino === "ML" || destino === "UN"))
+  if (origem === "UN" && destino !== "UN")
     return "pacote_un";
+  if (origem === "UN" && destino === "UN" && embalagem) return "pacote_un";
+  if (origem === "LT" && ["ML", "M2", "UN"].includes(destino)) return "liquido_rendimento";
+  if ((origem === "LT" && destino === "KG") || (origem === "KG" && destino === "LT"))
+    return "densidade_liquido";
   return "direto";
 }
 
@@ -174,23 +213,23 @@ function formulaCompativel(
   destino: string
 ): boolean {
   if (formula === "direto") return true;
+  if (formula === "identica") return origem === destino;
   if (formula === "chapa_kg_m2") return origem === "KG" && destino === "M2";
   if (formula === "perfil_kg_ml") return origem === "KG" && destino === "ML";
   if (formula === "lote_un_m2") return origem === "UN" && destino === "M2";
-  if (formula === "pacote_un")
-    return origem === "UN" && (destino === "ML" || destino === "UN");
-  return (
-    formula === "rendimento_kg" &&
-    origem === "KG" &&
-    (destino === "ML" || destino === "M2")
-  );
+  if (formula === "pacote_un") return origem === "UN";
+  if (formula === "rendimento_kg") return origem === "KG" && (destino === "ML" || destino === "M2");
+  if (formula === "liquido_rendimento") return origem === "LT" && ["ML", "M2", "UN"].includes(destino);
+  return (origem === "LT" && destino === "KG") || (origem === "KG" && destino === "LT");
 }
 
 export default function ModalCalculadoraFator({
   aberto,
   onFechar,
   unidadeCompra,
+  unidadeCompraConversao,
   unidadeErp,
+  unidadeErpCadastro,
   descricaoNf,
   nomeMp,
   fatorInicial,
@@ -198,8 +237,12 @@ export default function ModalCalculadoraFator({
   onAplicar,
 }: ModalCalculadoraFatorProps) {
   const textoItem = descricaoNf + " " + nomeMp;
+  const origemInicial = normalizarUnidadeConversao(unidadeCompraConversao ?? unidadeCompra);
+  const destinoInicial = normalizarUnidadeConversao(unidadeErp);
+  const [origemSelecionada, setOrigemSelecionada] = useState<UnidadeConversao>(origemInicial);
+  const [destinoSelecionado, setDestinoSelecionado] = useState<UnidadeConversao>(destinoInicial);
   const [tipoFormula, setTipoFormula] = useState<TipoFormulaConversao>(() =>
-    escolherFormulaInicial(unidadeCompra, unidadeErp, textoItem, fatorInicial)
+    escolherFormulaInicial(origemInicial, destinoInicial, textoItem, fatorInicial)
   );
 
   const [espessuraChapaMm, setEspessuraChapaMm] = useState(() =>
@@ -238,6 +281,9 @@ export default function ModalCalculadoraFator({
   >("micras");
   const [densidadeBobina, setDensidadeBobina] = useState("");
   const [larguraBobinaMm, setLarguraBobinaMm] = useState("");
+  const [coberturaM2PorLitro, setCoberturaM2PorLitro] = useState("");
+  const [unidadesPorLitro, setUnidadesPorLitro] = useState("");
+  const [densidadeLiquidoKgL, setDensidadeLiquidoKgL] = useState("");
   const [descontoTubetePerda, setDescontoTubetePerda] = useState("0");
   const [fatorLivreTexto, setFatorLivreTexto] = useState(() =>
     fatorInicial != null && Number.isFinite(fatorInicial) && fatorInicial > 0
@@ -247,8 +293,14 @@ export default function ModalCalculadoraFator({
 
   if (!aberto) return null;
 
-  const origem = unidadeCompra.trim().toUpperCase();
-  const destino = unidadeErp.trim().toUpperCase();
+  const origem = origemSelecionada;
+  const destino = destinoSelecionado;
+  const alterarParUnidades = (novaOrigem: UnidadeConversao, novoDestino: UnidadeConversao) => {
+    setOrigemSelecionada(novaOrigem);
+    setDestinoSelecionado(novoDestino);
+    setTipoFormula(escolherFormulaInicial(novaOrigem, novoDestino, textoItem, null));
+    setFatorLivreTexto("");
+  };
   const opcoesFormula: {
     tipo: TipoFormulaConversao;
     titulo: string;
@@ -289,6 +341,27 @@ export default function ModalCalculadoraFator({
       detalhe: "Gramatura ou espessura + densidade",
     });
   }
+  if (formulaCompativel("liquido_rendimento", origem, destino)) {
+    opcoesFormula.push({
+      tipo: "liquido_rendimento",
+      titulo: "Rendimento da tinta (LT -> " + destino + ")",
+      detalhe: "Cobertura M2/L; largura se o destino for ML",
+    });
+  }
+  if (formulaCompativel("densidade_liquido", origem, destino)) {
+    opcoesFormula.push({
+      tipo: "densidade_liquido",
+      titulo: "Densidade do líquido (" + origem + " -> " + destino + ")",
+      detalhe: "Densidade informada em kg/L",
+    });
+  }
+  if (formulaCompativel("identica", origem, destino)) {
+    opcoesFormula.push({
+      tipo: "identica",
+      titulo: "Unidade idêntica (fator 1:1)",
+      detalhe: "Sem conversão adicional",
+    });
+  }
   opcoesFormula.push({
     tipo: "direto",
     titulo: "Fator Livre",
@@ -298,7 +371,10 @@ export default function ModalCalculadoraFator({
   let fatorCalculado = 0;
   let explicacaoTexto = "";
 
-  if (tipoFormula === "chapa_kg_m2") {
+  if (tipoFormula === "identica") {
+    fatorCalculado = 1;
+    explicacaoTexto = "As unidades de origem e destino são iguais; fator automático 1:1.";
+  } else if (tipoFormula === "chapa_kg_m2") {
     const espessura = lerDecimal(espessuraChapaMm) ?? 0;
     const densidade = lerDecimal(densidadeChapa) ?? 0;
     const kgPorM2 = espessura * densidade;
@@ -363,18 +439,35 @@ export default function ModalCalculadoraFator({
     const total = rolos * conteudoPorRolo;
     if (total > 0) {
       fatorCalculado = fatorComPrecisaoPersistida(total);
-      const unidadeConteudo = destino === "ML" ? "ML" : "UN";
       explicacaoTexto =
-        rolos +
-        " rolo(s)/item(ns) por UN da NF × " +
-        conteudoPorRolo +
-        " " +
-        unidadeConteudo +
-        " por rolo/item = " +
+        rolos + " item(ns) por UN da NF × " + conteudoPorRolo + " " + destino + " por item = " +
         formatarFator(fatorCalculado) +
         " " +
         destino +
         " por UN.";
+    }
+  } else if (tipoFormula === "liquido_rendimento") {
+    const cobertura = lerDecimal(coberturaM2PorLitro) ?? 0;
+    const larguraMm = lerDecimal(larguraBobinaMm) ?? 0;
+    const unidades = lerDecimal(unidadesPorLitro) ?? 0;
+    if (destino === "M2" && cobertura > 0) {
+      fatorCalculado = fatorComPrecisaoPersistida(cobertura);
+      explicacaoTexto = cobertura + " M²/L × 1 LT = " + formatarFator(fatorCalculado) + " M² por LT.";
+    } else if (destino === "ML" && cobertura > 0 && larguraMm > 0) {
+      const larguraM = larguraMm / 1000;
+      fatorCalculado = fatorComPrecisaoPersistida(cobertura / larguraM);
+      explicacaoTexto = "(" + cobertura + " M²/L) ÷ (" + larguraMm + " mm ÷ 1000) = " + formatarFator(fatorCalculado) + " ML por LT.";
+    } else if (destino === "UN" && unidades > 0) {
+      fatorCalculado = fatorComPrecisaoPersistida(unidades);
+      explicacaoTexto = unidades + " UN atendidas por 1 LT = " + formatarFator(fatorCalculado) + " UN por LT.";
+    }
+  } else if (tipoFormula === "densidade_liquido") {
+    const densidade = lerDecimal(densidadeLiquidoKgL) ?? 0;
+    if (densidade > 0) {
+      fatorCalculado = fatorComPrecisaoPersistida(origem === "LT" ? densidade : 1 / densidade);
+      explicacaoTexto = origem === "LT"
+        ? densidade + " kg/L × 1 LT = " + formatarFator(fatorCalculado) + " KG por LT."
+        : "1 KG ÷ " + densidade + " kg/L = " + formatarFator(fatorCalculado) + " LT por KG.";
     }
   } else if (tipoFormula === "rendimento_kg") {
     const perdaInformada =
@@ -464,7 +557,7 @@ export default function ModalCalculadoraFator({
 
   const handleConfirmar = () => {
     if (!Number.isFinite(fatorCalculado) || fatorCalculado <= 0) return;
-    onAplicar(fatorCalculado, explicacaoTexto);
+    onAplicar(fatorCalculado, explicacaoTexto, origem, destino);
     onFechar();
   };
 
@@ -506,11 +599,51 @@ export default function ModalCalculadoraFator({
               </span>
             </div>
             <div>
-              <span className="text-slate-400">Conversão desejada:</span>{" "}
-              <span className="font-bold text-blue-700">
-                {origem} (Compra) → {destino} (Mubisys)
+              <span className="text-slate-400">Unidade original da NF:</span>{" "}
+              <span className="font-bold text-slate-700">
+                {normalizarUnidadeConversao(unidadeCompra)}
               </span>
             </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2">
+              <label className="block font-medium text-slate-600">
+                Unidade de origem para o cálculo
+                <select
+                  value={origem}
+                  onChange={event => alterarParUnidades(
+                    normalizarUnidadeConversao(event.target.value), destino
+                  )}
+                  className="mt-1 w-full border border-slate-300 rounded-md bg-white px-2.5 py-2 text-slate-800"
+                >
+                  {UNIDADES_CONVERSAO.map(unidade => (
+                    <option key={unidade.codigo} value={unidade.codigo}>{unidade.nome}</option>
+                  ))}
+                </select>
+              </label>
+              <label className="block font-medium text-slate-600">
+                Unidade de destino no cálculo
+                <select
+                  value={destino}
+                  onChange={event => alterarParUnidades(
+                    origem, normalizarUnidadeConversao(event.target.value)
+                  )}
+                  className="mt-1 w-full border border-slate-300 rounded-md bg-white px-2.5 py-2 text-slate-800"
+                >
+                  {UNIDADES_CONVERSAO.map(unidade => (
+                    <option key={unidade.codigo} value={unidade.codigo}>{unidade.nome}</option>
+                  ))}
+                </select>
+              </label>
+            </div>
+            {origem !== normalizarUnidadeConversao(unidadeCompra) && (
+              <p className="text-[11px] text-amber-800 bg-amber-50 border border-amber-200 rounded p-2">
+                A quantidade da NF será interpretada como {origem}; a unidade original continua registrada como {normalizarUnidadeConversao(unidadeCompra)}.
+              </p>
+            )}
+            {unidadeErpCadastro && destino !== normalizarUnidadeConversao(unidadeErpCadastro) && (
+              <p className="text-[11px] text-amber-800 bg-amber-50 border border-amber-200 rounded p-2">
+                O cadastro atual do MubiSys está em {normalizarUnidadeConversao(unidadeErpCadastro)}. O custo cadastrado só poderá ser comparado quando o destino voltar para essa unidade.
+              </p>
+            )}
           </div>
 
           <div>
@@ -689,13 +822,66 @@ export default function ModalCalculadoraFator({
                   label={
                     destino === "ML"
                       ? "Metros por rolo/item"
-                      : "Unidades por rolo/item"
+                      : destino === "M2"
+                        ? "M² por rolo/item"
+                        : destino === "LT"
+                          ? "Litros por rolo/item"
+                          : destino === "KG"
+                            ? "Quilogramas por rolo/item"
+                            : "Unidades por rolo/item"
                   }
                   value={metrosOuUnidadesPorRolo}
                   onChange={setMetrosOuUnidadesPorRolo}
-                  placeholder={destino === "ML" ? "Ex.: 50" : "Ex.: 12"}
+                  placeholder={destino === "ML" ? "Ex.: 50" : destino === "UN" ? "Ex.: 12" : "Informe o conteúdo"}
                 />
               </div>
+            </div>
+          )}
+
+          {tipoFormula === "liquido_rendimento" && (
+            <div className="space-y-3 p-3 bg-blue-50/50 rounded-lg border border-blue-100">
+              <p className="text-slate-600">
+                Informe o rendimento real da tinta. Para converter em metro linear, inclua a largura de aplicação.
+              </p>
+              {destino === "UN" ? (
+                <CampoDecimal
+                  label="Unidades atendidas por litro (UN/L)"
+                  value={unidadesPorLitro}
+                  onChange={setUnidadesPorLitro}
+                  placeholder="Ex.: 8"
+                />
+              ) : (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <CampoDecimal
+                    label="Cobertura (M² por litro)"
+                    value={coberturaM2PorLitro}
+                    onChange={setCoberturaM2PorLitro}
+                    placeholder="Ex.: 12"
+                  />
+                  {destino === "ML" && (
+                    <CampoDecimal
+                      label="Largura de aplicação (mm)"
+                      value={larguraBobinaMm}
+                      onChange={setLarguraBobinaMm}
+                      placeholder="Ex.: 100"
+                    />
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+
+          {tipoFormula === "densidade_liquido" && (
+            <div className="space-y-3 p-3 bg-blue-50/50 rounded-lg border border-blue-100">
+              <p className="text-slate-600">
+                Use a densidade informada na ficha técnica da tinta; não será presumido um valor.
+              </p>
+              <CampoDecimal
+                label="Densidade (kg/L)"
+                value={densidadeLiquidoKgL}
+                onChange={setDensidadeLiquidoKgL}
+                placeholder="Ex.: 1,25"
+              />
             </div>
           )}
 

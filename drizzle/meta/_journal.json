@@ -1002,6 +1002,13 @@
       "when": 1795400000002,
       "tag": "0145_cotacao_externa_atualizacao_custo",
       "breakpoints": true
+    },
+    {
+      "idx": 143,
+      "version": "7",
+      "when": 1795433156223,
+      "tag": "0143_silky_fixer",
+      "breakpoints": true
     }
   ]
 }

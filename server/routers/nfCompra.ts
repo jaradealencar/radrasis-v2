@@ -16,6 +16,7 @@ import { parseNfXml } from "../services/nfXmlParser";
 import {
   sugerirVinculoItem,
   resolverFatorUnidadeParaChapaM2,
+  normalizarUnidadeErp,
   type CandidatoMateriaPrima,
   type MemoriaVinculo,
 } from "../services/nfSugestaoVinculo";
@@ -59,6 +60,8 @@ export const nfCompraRouter = router({
       for (const m of memoriasRows) {
         memoriasPorCodigo.set(m.codigoFornecedor, {
           materiaPrimaId: m.materiaPrimaId,
+          unidadeCompraNf: m.unidadeCompraNf,
+          unidadeCompraConversao: m.unidadeCompraConversao,
           unidadeErp: m.unidadeErp as any,
           fatorConversao: Number(m.fatorConversao),
           origemFator: m.origemFator,
@@ -155,6 +158,8 @@ export const nfCompraRouter = router({
           valorUnitario: item.valorUnitario,
           valorTotalItem: item.valorTotalItem,
           valorIpi: item.valorIpi,
+          unidadeCompraConversao: sugestao.unidadeCompraConversao,
+          unidadeErpCadastro: sugestao.unidadeErp,
           pesoUnitarioFreteKg:
             sugestao.unidadeErp === "UN" && sugestao.fatorConversao === 1 &&
             /^(UN|UND|UNID|PC|PÇ)$/i.test(item.unidadeCompra.trim())
@@ -275,7 +280,7 @@ export const nfCompraRouter = router({
             valorTotalItem: z.number().nonnegative(),
             valorIpi: z.number().nonnegative().optional(),
             materiaPrimaId: z.number().optional().nullable(),
-            unidadeErp: z.enum(["ML", "M2", "UN", "LT"]).optional().nullable(),
+            unidadeErp: z.enum(["KG", "ML", "M2", "UN", "LT"]).optional().nullable(),
             fatorConversao: z.number().positive().optional().nullable(),
             custoCadastrado: z.number().nonnegative().optional().nullable(),
             pesoKg: z.number().optional().nullable(),
@@ -356,6 +361,7 @@ export const nfCompraRouter = router({
             descricaoNf: z.string(),
             ncm: z.string().optional().nullable(),
             unidadeCompra: z.string(),
+            unidadeCompraConversao: z.string().optional().nullable(),
             quantidade: z.number(),
             valorUnitario: z.number(),
             valorTotalItem: z.number(),
@@ -380,6 +386,31 @@ export const nfCompraRouter = router({
     .mutation(async ({ input, ctx }) => {
       const db = await getDb();
       if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Banco indisponível." });
+
+      // Confere o destino com o espelho atual do MubiSys também no servidor.
+      // A tela já faz esta validação; repetir aqui impede gravar uma memória
+      // que compare custos em unidades diferentes via chamada direta.
+      const idsMps = Array.from(new Set(
+        input.itens.flatMap(item => item.materiaPrimaId ? [item.materiaPrimaId] : [])
+      ));
+      if (idsMps.length > 0) {
+        const mps = await db
+          .select({ id: materiasPrimas.id, unidadeMedida: materiasPrimas.unidadeMedida })
+          .from(materiasPrimas)
+          .where(inArray(materiasPrimas.id, idsMps));
+        const unidadesPorMp = new Map(mps.map(mp => [mp.id, normalizarUnidadeErp(mp.unidadeMedida)]));
+        const destinoDivergente = input.itens.some(item => {
+          if (!item.materiaPrimaId || !item.unidadeErp) return false;
+          const unidadeAtual = unidadesPorMp.get(item.materiaPrimaId);
+          return !unidadeAtual || normalizarUnidadeErp(item.unidadeErp) !== unidadeAtual;
+        });
+        if (destinoDivergente) {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: "O destino da conversão precisa corresponder à unidade atual da matéria-prima no MubiSys.",
+          });
+        }
+      }
 
       const userId = ctx.user?.id ? String(ctx.user.id) : null;
 
@@ -416,6 +447,7 @@ export const nfCompraRouter = router({
           descricaoNf: item.descricaoNf,
           ncm: item.ncm ?? null,
           unidadeCompra: item.unidadeCompra,
+          unidadeCompraConversao: item.unidadeCompraConversao ?? item.unidadeCompra,
           quantidade: String(item.quantidade),
           valorUnitario: String(item.valorUnitario),
           valorTotalItem: String(item.valorTotalItem),
@@ -442,6 +474,8 @@ export const nfCompraRouter = router({
             codigoFornecedor: item.codigoFornecedor,
             descricaoReferencia: item.descricaoNf,
             materiaPrimaId: item.materiaPrimaId,
+            unidadeCompraNf: item.unidadeCompra,
+            unidadeCompraConversao: item.unidadeCompraConversao ?? item.unidadeCompra,
             unidadeErp: item.unidadeErp,
             fatorConversao: String(item.fatorConversao),
             origemFator: item.origemFator ?? "manual",
@@ -485,6 +519,8 @@ export const nfCompraRouter = router({
           descricaoReferencia: nfMpVinculos.descricaoReferencia,
           materiaPrimaId: nfMpVinculos.materiaPrimaId,
           nomeMateriaPrima: materiasPrimas.nome,
+          unidadeCompraNf: nfMpVinculos.unidadeCompraNf,
+          unidadeCompraConversao: nfMpVinculos.unidadeCompraConversao,
           unidadeErp: nfMpVinculos.unidadeErp,
           fatorConversao: nfMpVinculos.fatorConversao,
           origemFator: nfMpVinculos.origemFator,

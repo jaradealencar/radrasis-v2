@@ -42,6 +42,7 @@ interface ItemEditavel {
   descricaoNf: string;
   ncm: string | null;
   unidadeCompra: string;
+  unidadeCompraConversao: string;
   quantidade: number;
   valorUnitario: number;
   valorTotalItem: number;
@@ -50,7 +51,8 @@ interface ItemEditavel {
   pesoUnitarioFreteKgTexto: string;
   materiaPrimaId: number | null;
   nomeMateriaPrima: string | null;
-  unidadeErp: "ML" | "M2" | "UN" | "LT" | null;
+  unidadeErp: "KG" | "ML" | "M2" | "UN" | "LT" | null;
+  unidadeErpCadastro: "KG" | "ML" | "M2" | "UN" | "LT" | null;
   fatorConversao: number | null;
   fatorConversaoTexto?: string;
   origemFator: string | null;
@@ -84,10 +86,14 @@ function normalizarUnidadeAuditoria(unidade: string | null | undefined): string 
     .replace(/[\u0300-\u036f]/g, "")
     .trim()
     .toLowerCase();
-  if (texto.includes("metro linear") || texto === "ml" || texto === "m") return "ML";
+  if (texto.includes("metro linear") || texto === "ml" || texto === "m" || texto === "mt") return "ML";
   if (texto.includes("metro quadrado") || texto === "m2" || texto === "m²") return "M2";
+  if (["kg", "kgm", "kgs"].includes(texto) || texto.includes("quilograma")) return "KG";
   if (texto.includes("litro") || texto === "lt" || texto === "l") return "LT";
-  if (texto.includes("unidade") || texto === "un" || texto === "und" || texto === "pc") return "UN";
+  if (
+    texto.includes("unidade") ||
+    ["un", "und", "unid", "pc", "pcs", "pce", "pct", "pacote", "pacotes", "cx", "cxs", "caixa", "caixas", "fdo", "fardo", "fardos", "kit", "rl", "rolo", "rolos", "bobina", "bobinas"].includes(texto)
+  ) return "UN";
   return texto.toUpperCase();
 }
 
@@ -107,9 +113,9 @@ function lerPesoUnitarioFreteKg(texto: string): number | null {
   return Number.isFinite(valor) && valor >= 0 ? valor : null;
 }
 
-function normalizarUnidadeErpMateriaPrima(unidade: string | null | undefined): "ML" | "M2" | "UN" | "LT" {
+function normalizarUnidadeErpMateriaPrima(unidade: string | null | undefined): "KG" | "ML" | "M2" | "UN" | "LT" {
   const normalizada = normalizarUnidadeAuditoria(unidade);
-  if (normalizada === "ML" || normalizada === "M2" || normalizada === "LT") return normalizada;
+  if (normalizada === "KG" || normalizada === "ML" || normalizada === "M2" || normalizada === "LT") return normalizada;
   return "UN";
 }
 
@@ -311,6 +317,7 @@ export default function NfCompraAuditoria() {
               descricaoNf: i.descricaoNf,
               ncm: i.ncm,
               unidadeCompra: i.unidadeCompra,
+              unidadeCompraConversao: i.unidadeCompraConversao ?? i.unidadeCompra,
               quantidade: i.quantidade,
               valorUnitario: i.valorUnitario,
               valorTotalItem: i.valorTotalItem,
@@ -320,6 +327,7 @@ export default function NfCompraAuditoria() {
               materiaPrimaId: i.materiaPrimaId,
               nomeMateriaPrima: i.nomeMateriaPrima,
               unidadeErp: i.unidadeErp as any,
+              unidadeErpCadastro: i.unidadeErpCadastro as any,
               fatorConversao: i.fatorConversao,
               fatorConversaoTexto: i.fatorConversao != null ? String(i.fatorConversao) : "",
               origemFator: i.origemFator,
@@ -371,10 +379,12 @@ export default function NfCompraAuditoria() {
       totalIcms += rateioIcms;
       totalCustoGeral += custoItemTotal;
 
-      const origemNormalizada = normalizarUnidadeAuditoria(item.unidadeCompra);
+      const origemNormalizada = normalizarUnidadeAuditoria(item.unidadeCompraConversao);
       const destinoNormalizado = normalizarUnidadeAuditoria(item.unidadeErp);
       const exigeConversao = Boolean(item.unidadeErp && origemNormalizada !== destinoNormalizado);
       const conversaoPendente = exigeConversao && !(item.fatorConversao && item.fatorConversao > 0);
+      const unidadeComparavelComMubiSys = item.unidadeErpCadastro != null &&
+        item.unidadeErp === item.unidadeErpCadastro;
       let custoRealErp = 0;
       let divergenciaPct: number | null = null;
       let defasado = false;
@@ -388,7 +398,7 @@ export default function NfCompraAuditoria() {
         custoRealErp = item.quantidade > 0 ? Number((custoItemTotal / item.quantidade).toFixed(6)) : 0;
       }
 
-      if (!conversaoPendente && item.custoCadastrado && item.custoCadastrado > 0 && custoRealErp > 0) {
+      if (unidadeComparavelComMubiSys && !conversaoPendente && item.custoCadastrado && item.custoCadastrado > 0 && custoRealErp > 0) {
         divergenciaPct = ((custoRealErp - item.custoCadastrado) / item.custoCadastrado) * 100;
         defasado = Math.abs(divergenciaPct) > 0.005;
       }
@@ -469,7 +479,9 @@ export default function NfCompraAuditoria() {
         ...alvo,
         materiaPrimaId: mp.id,
         nomeMateriaPrima: mp.nome,
+        unidadeCompraConversao: mesmoVinculo ? alvo.unidadeCompraConversao : alvo.unidadeCompra,
         unidadeErp,
+        unidadeErpCadastro: unidadeErp,
         fatorConversao: fator,
         fatorConversaoTexto: fatorTexto,
         origemFator,
@@ -489,7 +501,7 @@ export default function NfCompraAuditoria() {
   const salvarAuditoria = () => {
     if (!cabecalho || !calculoAoVivo) return;
     const itensSemConversao = calculoAoVivo.itens.filter((item) => {
-      const origem = normalizarUnidadeAuditoria(item.unidadeCompra);
+      const origem = normalizarUnidadeAuditoria(item.unidadeCompraConversao);
       const destino = normalizarUnidadeAuditoria(item.unidadeErp);
       return Boolean(item.unidadeErp && origem !== destino && !(item.fatorConversao && item.fatorConversao > 0));
     });
@@ -499,6 +511,13 @@ export default function NfCompraAuditoria() {
           itensSemConversao.length +
           " item(ns) antes de salvar. A unidade do custo precisa corresponder à unidade do MubiSys."
       );
+      return;
+    }
+    const destinosDivergentes = calculoAoVivo.itens.filter((item) =>
+      item.materiaPrimaId != null && item.unidadeErpCadastro != null && item.unidadeErp !== item.unidadeErpCadastro
+    );
+    if (destinosDivergentes.length > 0) {
+      toast.error("O destino escolhido precisa corresponder à unidade atual do MubiSys para salvar e comparar o custo. Ajuste o menu ou vincule uma matéria-prima com a unidade desejada.");
       return;
     }
     salvarMutation.mutate(
@@ -533,6 +552,7 @@ export default function NfCompraAuditoria() {
           descricaoNf: i.descricaoNf,
           ncm: i.ncm,
           unidadeCompra: i.unidadeCompra,
+          unidadeCompraConversao: i.unidadeCompraConversao,
           quantidade: i.quantidade,
           valorUnitario: i.valorUnitario,
           valorTotalItem: i.valorTotalItem,
@@ -1035,7 +1055,7 @@ export default function NfCompraAuditoria() {
                                   c[idx].baseCalculoTexto =
                                     valor != null
                                       ? "Fator manual: 1 " +
-                                        normalizarUnidadeAuditoria(c[idx].unidadeCompra) +
+                                        normalizarUnidadeAuditoria(c[idx].unidadeCompraConversao) +
                                         " = " +
                                         fmtNum(valor, 8) +
                                         " " +
@@ -1069,6 +1089,14 @@ export default function NfCompraAuditoria() {
                             </button>
                             <span className="text-[10px] text-slate-400">({item.unidadeErp ?? "—"})</span>
                           </div>
+                          <span className="text-[10px] text-slate-400 block text-right">
+                            {normalizarUnidadeAuditoria(item.unidadeCompraConversao)} → {item.unidadeErp ?? "—"}
+                          </span>
+                          {normalizarUnidadeAuditoria(item.unidadeCompraConversao) !== normalizarUnidadeAuditoria(item.unidadeCompra) && (
+                            <span className="text-[10px] text-amber-700 block text-right">
+                              origem corrigida; NF: {item.unidadeCompra}
+                            </span>
+                          )}
                         </TableCell>
                         <TableCell className="text-right font-mono text-xs font-semibold text-slate-800">
                           {item.conversaoPendente ? "—" : formatarCustoUnitarioAuditoria(item.custoRealErp)}
@@ -1076,7 +1104,10 @@ export default function NfCompraAuditoria() {
                         </TableCell>
                         <TableCell className="text-right font-mono text-xs text-slate-600">
                           {item.custoCadastrado ? formatarCustoUnitarioAuditoria(item.custoCadastrado) : "—"}
-                          <span className="text-[10px] text-slate-400 block font-normal">/{item.unidadeErp ?? "—"}</span>
+                          <span className="text-[10px] text-slate-400 block font-normal">/{item.unidadeErpCadastro ?? "—"}</span>
+                          {item.unidadeErp !== item.unidadeErpCadastro && (
+                            <span className="text-[10px] text-amber-700 block font-normal">unidade de destino incompatível</span>
+                          )}
                         </TableCell>
                         <TableCell className="text-right font-mono text-xs font-bold">
                           {item.divergenciaPct !== null ? (
@@ -1133,6 +1164,7 @@ export default function NfCompraAuditoria() {
                 <TableHead>Código do Produto</TableHead>
                 <TableHead>Descrição de Referência</TableHead>
                 <TableHead>Matéria-Prima Vinculada</TableHead>
+                <TableHead>Unidades (NF → cálculo → ERP)</TableHead>
                 <TableHead>Unidade ERP</TableHead>
                 <TableHead className="text-right">Fator Gravado</TableHead>
                 <TableHead className="text-right">Vezes Usado</TableHead>
@@ -1146,8 +1178,11 @@ export default function NfCompraAuditoria() {
                   <TableCell className="font-mono text-xs font-bold">{m.codigoFornecedor}</TableCell>
                   <TableCell className="text-xs text-slate-700">{m.descricaoReferencia}</TableCell>
                   <TableCell className="text-xs font-medium text-slate-800">{m.nomeMateriaPrima}</TableCell>
+                  <TableCell className="text-xs font-mono">
+                    {m.unidadeCompraNf ?? "—"} → {m.unidadeCompraConversao ?? m.unidadeCompraNf ?? "—"} → {m.unidadeErp}
+                  </TableCell>
                   <TableCell className="text-xs font-mono">{m.unidadeErp}</TableCell>
-                  <TableCell className="text-xs font-mono text-right">{fmtNum(Number(m.fatorConversao), 6)}</TableCell>
+                  <TableCell className="text-xs font-mono text-right">{fmtNum(Number(m.fatorConversao), 8)}</TableCell>
                   <TableCell className="text-xs font-mono text-right font-semibold text-emerald-700">
                     {m.vezesUsado}×
                   </TableCell>
@@ -1158,7 +1193,7 @@ export default function NfCompraAuditoria() {
               ))}
               {memoriasQuery.data?.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={8} className="text-center py-6 text-slate-400 text-xs">
+                  <TableCell colSpan={9} className="text-center py-6 text-slate-400 text-xs">
                     Nenhum vínculo memorizado ainda. Confirme sua primeira NF para começar a alimentar a memória.
                   </TableCell>
                 </TableRow>
@@ -1692,21 +1727,25 @@ export default function NfCompraAuditoria() {
       {/* Modal Assistente de Fórmulas de Conversão */}
       {itemCalculadoraFator !== null && calculoAoVivo?.itens[itemCalculadoraFator] && (
         <ModalCalculadoraFator
-          key={itemCalculadoraFator + "-" + (calculoAoVivo.itens[itemCalculadoraFator].unidadeErp ?? "")}
+          key={itemCalculadoraFator + "-" + calculoAoVivo.itens[itemCalculadoraFator].unidadeCompraConversao + "-" + (calculoAoVivo.itens[itemCalculadoraFator].unidadeErp ?? "")}
           aberto={itemCalculadoraFator !== null}
           onFechar={() => setItemCalculadoraFator(null)}
           unidadeCompra={calculoAoVivo.itens[itemCalculadoraFator].unidadeCompra}
+          unidadeCompraConversao={calculoAoVivo.itens[itemCalculadoraFator].unidadeCompraConversao}
           unidadeErp={calculoAoVivo.itens[itemCalculadoraFator].unidadeErp ?? ""}
+          unidadeErpCadastro={calculoAoVivo.itens[itemCalculadoraFator].unidadeErpCadastro}
           descricaoNf={calculoAoVivo.itens[itemCalculadoraFator].descricaoNf}
           nomeMp={calculoAoVivo.itens[itemCalculadoraFator].nomeMateriaPrima ?? ""}
           fatorInicial={calculoAoVivo.itens[itemCalculadoraFator].fatorConversao}
           baseCalculoTextoInicial={calculoAoVivo.itens[itemCalculadoraFator].baseCalculoTexto}
-          onAplicar={(fator, baseCalculoTexto) => {
+          onAplicar={(fator, baseCalculoTexto, unidadeOrigem, unidadeDestino) => {
             const idx = itemCalculadoraFator;
             setItens((prev) => {
               const c = [...prev];
               c[idx] = {
                 ...c[idx],
+                unidadeCompraConversao: unidadeOrigem,
+                unidadeErp: unidadeDestino,
                 fatorConversao: fator,
                 fatorConversaoTexto: String(fator),
                 origemFator: "calculadora_modal",

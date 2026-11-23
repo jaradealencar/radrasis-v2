@@ -14,7 +14,7 @@
 import { kgPorMetroPerfil, normalizarFormatoPerfil, pesoChapaKg } from "../../shared/peso";
 
 export type UnidadeCompraNf = "KG" | "UN" | "LT" | "ML" | "M2";
-export type UnidadeErp = "ML" | "M2" | "UN" | "LT";
+export type UnidadeErp = "KG" | "ML" | "M2" | "UN" | "LT";
 
 /** Subconjunto de materia_prima_cadastros relevante para a conversão (mesmos campos que cpqPeso.ts já consome). */
 export interface DadosTecnicosMateriaPrima {
@@ -38,6 +38,8 @@ export interface CandidatoMateriaPrima {
 /** Linha gravada em nf_mp_vinculos para este fornecedor+código, se existir. */
 export interface MemoriaVinculo {
   materiaPrimaId: number;
+  unidadeCompraNf?: string | null;
+  unidadeCompraConversao?: string | null;
   unidadeErp: UnidadeErp;
   fatorConversao: number;
   origemFator: string;
@@ -56,6 +58,7 @@ export type ConfiancaSugestao = "alta" | "media" | "baixa" | "nenhuma";
 export interface SugestaoVinculo {
   materiaPrimaId: number | null;
   nomeMateriaPrima: string | null;
+  unidadeCompraConversao: UnidadeCompraNf;
   unidadeErp: UnidadeErp | null;
   fatorConversao: number | null;
   origemFator:
@@ -69,16 +72,20 @@ export interface SugestaoVinculo {
   pendencias: string[]; // o que falta para o sistema conseguir calcular sozinho
 }
 
-const normalizarUnidadeErp = (bruta: string): UnidadeErp | null => {
+export const normalizarUnidadeErp = (bruta: string): UnidadeErp | null => {
   const s = bruta
     .normalize("NFD")
     .replace(/[̀-ͯ]/g, "")
     .toLowerCase()
     .trim();
-  if (s.includes("metro linear") || s === "ml" || s === "m") return "ML";
+  if (s.includes("metro linear") || s === "ml" || s === "m" || s === "mt") return "ML";
   if (s.includes("metro quadrado") || s === "m2" || s === "m²") return "M2";
+  if (s.includes("quilograma") || s === "kg" || s === "kgm" || s === "kgs") return "KG";
   if (s.includes("litro") || s === "lt" || s === "l") return "LT";
-  if (s.includes("unidade") || s === "un" || s === "pc" || s === "und") return "UN";
+  if (
+    s.includes("unidade") ||
+    ["un", "und", "unid", "pc", "pcs", "pce", "pct", "pacote", "pacotes", "cx", "cxs", "caixa", "caixas", "fdo", "fardo", "fardos", "kit", "rl", "rolo", "rolos", "bobina", "bobinas"].includes(s)
+  ) return "UN";
   return null;
 };
 
@@ -221,24 +228,42 @@ export function sugerirVinculoItem(
   memoria: MemoriaVinculo | null,
   candidatos: CandidatoMateriaPrima[],
 ): SugestaoVinculo {
+  const unidadeCompraNormalizada = (
+    normalizarUnidadeErp(item.unidadeCompra) ?? item.unidadeCompra
+  ) as UnidadeCompraNf;
+
   if (memoria) {
     const mp = candidatos.find(c => c.id === memoria.materiaPrimaId);
     const unidadeErpAtual = mp ? normalizarUnidadeErp(mp.unidadeMedida) : null;
     const unidadeErp = unidadeErpAtual ?? memoria.unidadeErp;
+    const unidadeCompraNfAtual = normalizarUnidadeErp(item.unidadeCompra) ?? item.unidadeCompra;
+    const unidadeCompraNfMudou = Boolean(
+      memoria.unidadeCompraNf &&
+      (normalizarUnidadeErp(memoria.unidadeCompraNf) ?? memoria.unidadeCompraNf) !== unidadeCompraNfAtual
+    );
+    const unidadeCompraConversao = unidadeCompraNfMudou
+      ? unidadeCompraNfAtual as UnidadeCompraNf
+      : (memoria.unidadeCompraConversao ?? unidadeCompraNfAtual) as UnidadeCompraNf;
     const unidadeMudou = unidadeErp !== memoria.unidadeErp;
+    const fatorIncompativel = unidadeMudou || unidadeCompraNfMudou;
     return {
       materiaPrimaId: memoria.materiaPrimaId,
       nomeMateriaPrima: mp?.nome ?? null,
+      unidadeCompraConversao,
       unidadeErp,
-      fatorConversao: unidadeMudou ? null : memoria.fatorConversao,
-      origemFator: unidadeMudou ? null : "memoria",
-      baseCalculoTexto: unidadeMudou
-        ? `A unidade desta matéria-prima mudou no MubiSys de ${memoria.unidadeErp} para ${unidadeErp}; o fator salvo foi descartado para evitar custo em unidade incorreta. Recalcule a conversão.`
+      fatorConversao: fatorIncompativel ? null : memoria.fatorConversao,
+      origemFator: fatorIncompativel ? null : "memoria",
+      baseCalculoTexto: fatorIncompativel
+        ? unidadeMudou
+          ? `A unidade desta matéria-prima mudou no MubiSys de ${memoria.unidadeErp} para ${unidadeErp}; o fator salvo foi descartado para evitar custo em unidade incorreta. Recalcule a conversão.`
+          : `A unidade da NF mudou de ${memoria.unidadeCompraNf} para ${item.unidadeCompra}; o fator salvo foi descartado. Confirme o par de unidades e recalcule.`
         : (memoria.baseCalculoTexto ?? "Vínculo salvo de uma confirmação anterior.") +
           ` (usado ${memoria.vezesUsado}× com este fornecedor)`,
-      confianca: unidadeMudou ? "media" : "alta",
-      pendencias: unidadeMudou
-        ? [`A unidade MubiSys foi atualizada para ${unidadeErp}; confirme um novo fator de conversão.`]
+      confianca: fatorIncompativel ? "media" : "alta",
+      pendencias: fatorIncompativel
+        ? [unidadeMudou
+          ? `A unidade MubiSys foi atualizada para ${unidadeErp}; confirme um novo fator de conversão.`
+          : `A unidade da NF mudou para ${item.unidadeCompra}; confirme a origem e o fator de conversão.`]
         : [],
     };
   }
@@ -247,6 +272,7 @@ export function sugerirVinculoItem(
     return {
       materiaPrimaId: null,
       nomeMateriaPrima: null,
+      unidadeCompraConversao: unidadeCompraNormalizada,
       unidadeErp: null,
       fatorConversao: null,
       origemFator: null,
@@ -265,13 +291,14 @@ export function sugerirVinculoItem(
   // exige que o usuário informe o conteúdo no assistente. Memórias confirmadas
   // continuam sendo tratadas acima e preservam o fator já aprovado.
   if (
-    item.unidadeCompra === "UN" &&
+    unidadeCompraNormalizada === "UN" &&
     unidadeErpCandidata === "UN" &&
     descricaoIndicaEmbalagemComMultiplos(item.descricao + " " + mp.nome)
   ) {
     return {
       materiaPrimaId: mp.id,
       nomeMateriaPrima: mp.nome,
+      unidadeCompraConversao: unidadeCompraNormalizada,
       unidadeErp: "UN",
       fatorConversao: null,
       origemFator: null,
@@ -280,12 +307,13 @@ export function sugerirVinculoItem(
       pendencias: ["A descrição indica embalagem com múltiplas unidades — informe quantas unidades internas correspondem a 1 UN da NF."],
     };
   }
-  const resolucao = resolverFatorPorCadastroTecnico(item.unidadeCompra, mp);
+  const resolucao = resolverFatorPorCadastroTecnico(unidadeCompraNormalizada, mp);
 
   if ("pendencias" in resolucao) {
     return {
       materiaPrimaId: mp.id,
       nomeMateriaPrima: mp.nome,
+      unidadeCompraConversao: unidadeCompraNormalizada,
       unidadeErp: normalizarUnidadeErp(mp.unidadeMedida),
       fatorConversao: null,
       origemFator: null,
@@ -298,6 +326,7 @@ export function sugerirVinculoItem(
   return {
     materiaPrimaId: mp.id,
     nomeMateriaPrima: mp.nome,
+    unidadeCompraConversao: unidadeCompraNormalizada,
     unidadeErp: resolucao.unidadeErp,
     fatorConversao: resolucao.fatorConversao,
     origemFator: resolucao.origemFator,

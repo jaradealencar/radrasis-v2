@@ -332,7 +332,7 @@ server/
                        campanhaFilaWorker.ts (fila WhatsApp persistente por contato, controle de lotes,
                        reconciliação de status e pausa/retomada por QStash)
                        treinamentoPop.ts (leitura de PDFs, DOCX e TXT e OCR de PDFs escaneados sob demanda para criar rascunhos de treinamento)
-                       nfCalculo.ts, nfXmlParser.ts, nfSugestaoVinculo.ts e nfCotacaoPdf.ts apoiam a auditoria de custos por NF-e (rateio de frete/ICMS, conversão de unidade, memória do vínculo e análise de cotação); nfSugestaoVinculo.ts deixa conversões UN → UN descritas como caixa/pacote pendentes de conteúdo, e ModalCalculadoraFator.tsx auxilia pacotes por unidade/metro e rendimento de bobina em KG → ML/M², com fator decimal de até 8 casas
+                       nfCalculo.ts, nfXmlParser.ts, nfSugestaoVinculo.ts e nfCotacaoPdf.ts apoiam a auditoria de custos por NF-e (rateio de frete/ICMS, conversão de unidade, memória do vínculo e análise de cotação); nfSugestaoVinculo.ts deixa conversões UN → UN descritas como caixa/pacote pendentes de conteúdo, e ModalCalculadoraFator.tsx oferece menus editáveis KG/UN/ML/M²/LT, cálculos de pacote, bobina e líquidos, e fator com até 8 casas. A unidade original uCom continua preservada; a origem escolhida para o fator é persistida separadamente, com colunas nullable para compatibilidade com memórias e importações antigas.
                        (telefones das campanhas: `server/sync/clientes-mubisys.ts` espelha o cadastro
                        de clientes do MubiSys em `mubisys_clientes_cache`, atualizado sozinho ao abrir
                        o painel de Campanhas; 429 da API tem retentativa e o lote tem orçamento de 40s),

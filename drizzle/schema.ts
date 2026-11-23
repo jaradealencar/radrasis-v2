@@ -4588,6 +4588,7 @@ export const nfCompraItens = pgTable(
     descricaoNf: text("descricao_nf").notNull(), // xProd ? texto bruto do fornecedor, s? exibi??o
     ncm: varchar("ncm", { length: 16 }),
     unidadeCompra: varchar("unidade_compra", { length: 16 }).notNull(), // uCom: KG, UN, LT, ML, M2
+    unidadeCompraConversao: varchar("unidade_compra_conversao", { length: 16 }), // unidade escolhida para interpretar a quantidade no fator; unidadeCompra mantém o XML bruto
     quantidade: decimal("quantidade", { precision: 14, scale: 4 }).notNull(),
     valorUnitario: decimal("valor_unitario", { precision: 14, scale: 6 }).notNull(),
     valorTotalItem: decimal("valor_total_item", { precision: 14, scale: 2 }).notNull(),
@@ -4649,6 +4650,8 @@ export const nfMpVinculos = pgTable(
     materiaPrimaId: integer("materia_prima_id")
       .notNull()
       .references(() => materiasPrimas.id, { onDelete: "cascade" }),
+    unidadeCompraNf: varchar("unidade_compra_nf", { length: 16 }), // uCom da NF usada na última confirmação; null para memórias antigas
+    unidadeCompraConversao: varchar("unidade_compra_conversao", { length: 16 }), // origem escolhida no assistente; null em memórias antigas
     unidadeErp: varchar("unidade_erp", { length: 16 }).notNull(),
     fatorConversao: decimal("fator_conversao", { precision: 16, scale: 8 }).notNull(),
     origemFator: varchar("origem_fator", { length: 24 }).notNull(),

@@ -5,7 +5,7 @@
 import { calcularRateioFrete, type BaseValorRateioFrete, type CriterioRateioFrete, type ModoFreteNf } from "../../shared/nf-frete";
 
 export type UnidadeCompra = "KG" | "UN" | "LT" | "ML" | "M2";
-export type UnidadeErp = "ML" | "M2" | "UN" | "LT";
+export type UnidadeErp = "KG" | "ML" | "M2" | "UN" | "LT";
 
 export interface ItemCalculoEntrada {
   descricao: string;
