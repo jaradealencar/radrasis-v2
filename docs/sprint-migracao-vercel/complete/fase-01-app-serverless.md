@@ -1,5 +1,7 @@
 # Fase 1 — Separar o app do servidor: `createApp()` + `api/index.ts`
 
+> **ARQUIVADA — referência histórica.** Não execute comandos ou verificações deste arquivo; use o fluxo atual de `AGENTS.md`.
+
 **Depende de:** nada. É a primeira fase.
 **Todas as outras fases editam o arquivo que esta cria.** Não pule, não reordene.
 
@@ -280,7 +282,7 @@ Em `tsconfig.json`, linha 2:
 yarn run check
 yarn test
 yarn build
-yarn dev          # tem que subir na mesma porta de sempre e abrir no browser
+yarn dev          # inicia o servidor local para inspeção durante o desenvolvimento
 ```
 
 Com o `yarn dev` de pé, confira **na mão**:

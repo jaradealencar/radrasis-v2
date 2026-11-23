@@ -38,6 +38,14 @@ export default function MarketingEstadosNovos({ dataInicial, dataFinal }: { data
     </div>
   );
 
+  const clientesPorUf = new Map(data!.clientesPrimeiraCompra.map(item => [item.uf, item.clientes]));
+  const propostasPorUf = new Map(data!.propostasNovosClientes.map(item => [item.uf, item.propostas]));
+
+  function conversaoPct(clientes: number, propostas: number): number | null {
+    if (!propostas || propostas === 0) return null;
+    return (clientes / propostas) * 100;
+  }
+
   return (
     <div className="space-y-2">
       <p className="text-xs text-muted-foreground">
@@ -66,15 +74,26 @@ export default function MarketingEstadosNovos({ dataInicial, dataFinal }: { data
             <div className="max-h-80 overflow-y-auto">
               <Table>
                 <TableHeader>
-                  <TableRow><TableHead>Estado</TableHead><TableHead className="text-right">Clientes</TableHead></TableRow>
+                  <TableRow>
+                    <TableHead>Estado</TableHead>
+                    <TableHead className="text-right">Clientes novos</TableHead>
+                    <TableHead className="text-right">Propostas antes da compra</TableHead>
+                    <TableHead className="text-right">Conversão</TableHead>
+                  </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {data.clientesPrimeiraCompra.map(item => (
-                    <TableRow key={item.uf}>
-                      <TableCell>{nomeEstado(item.uf)}</TableCell>
-                      <TableCell className="text-right font-medium">{fmtNum(item.clientes)}</TableCell>
-                    </TableRow>
-                  ))}
+                  {data.clientesPrimeiraCompra.map(item => {
+                    const propostas = propostasPorUf.get(item.uf) ?? 0;
+                    const conversao = conversaoPct(item.clientes, propostas);
+                    return (
+                      <TableRow key={item.uf}>
+                        <TableCell>{nomeEstado(item.uf)}</TableCell>
+                        <TableCell className="text-right font-medium">{fmtNum(item.clientes)}</TableCell>
+                        <TableCell className="text-right">{fmtNum(propostas)}</TableCell>
+                        <TableCell className="text-right">{conversao == null ? "—" : `${conversao.toFixed(1)}%`}</TableCell>
+                      </TableRow>
+                    );
+                  })}
                 </TableBody>
               </Table>
             </div>
@@ -104,18 +123,24 @@ export default function MarketingEstadosNovos({ dataInicial, dataFinal }: { data
                 <TableHeader>
                   <TableRow>
                     <TableHead>Estado</TableHead>
-                    <TableHead className="text-right">Propostas</TableHead>
-                    <TableHead className="text-right">Clientes</TableHead>
+                    <TableHead className="text-right">Propostas antes da compra</TableHead>
+                    <TableHead className="text-right">Clientes novos</TableHead>
+                    <TableHead className="text-right">Conversão</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {data.propostasNovosClientes.map(item => (
-                    <TableRow key={item.uf}>
-                      <TableCell>{nomeEstado(item.uf)}</TableCell>
-                      <TableCell className="text-right font-medium">{fmtNum(item.propostas)}</TableCell>
-                      <TableCell className="text-right">{fmtNum(item.clientes)}</TableCell>
-                    </TableRow>
-                  ))}
+                  {data.propostasNovosClientes.map(item => {
+                    const clientes = clientesPorUf.get(item.uf) ?? 0;
+                    const conversao = conversaoPct(clientes, item.propostas);
+                    return (
+                      <TableRow key={item.uf}>
+                        <TableCell>{nomeEstado(item.uf)}</TableCell>
+                        <TableCell className="text-right font-medium">{fmtNum(item.propostas)}</TableCell>
+                        <TableCell className="text-right">{fmtNum(clientes)}</TableCell>
+                        <TableCell className="text-right">{conversao == null ? "—" : `${conversao.toFixed(1)}%`}</TableCell>
+                      </TableRow>
+                    );
+                  })}
                 </TableBody>
               </Table>
             </div>

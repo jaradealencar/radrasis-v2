@@ -30,6 +30,7 @@ import { leadsCnpjRouter } from "./routers/leadsCnpj";
 import { perfilClientesCnpjRouter } from "./routers/perfilClientesCnpj";
 import { planosAcaoComercialRouter } from "./routers/planosAcaoComercial";
 import { campanhasWhatsappRouter } from "./routers/campanhasWhatsapp";
+import { cotacoesExternasRouter } from "./routers/cotacoesExternas";
 import { radarMercadoRouter } from "./routers/radarMercado";
 import { custoLedRouter } from "./routers/custoLed";
 import { perfilEstoqueRouter } from "./routers/perfilEstoque";
@@ -786,7 +787,7 @@ Seja direto, técnico e prático. Use dados específicos dos números fornecidos
       .input(z.object({ id: z.number(), data: z.object({ name: z.string().optional(), company: z.string().optional().nullable(), category: z.string().optional(), supplies: z.string().optional().nullable(), contact: z.string().optional().nullable(), phone: z.string().optional().nullable(), email: z.string().optional().nullable(), paymentTerms: z.string().optional().nullable(), notes: z.string().optional().nullable(), active: z.enum(["sim", "nao"]).optional() }) }))
       .mutation(({ input, ctx }) => updateSupplier(input.id, { ...input.data, updatedByNome: ctx.user.name ?? ctx.user.email ?? "sistema" } as any)),
     delete: protectedProcedure.input(z.object({ id: z.number() })).mutation(({ input }) => deleteSupplier(input.id)),
-  }),
+    }),
 
   // ─── OPERAÇÕES: Rotinas ──────────────────────────────────────────────────────────────────
   fornecedorNfe: router({
@@ -1782,6 +1783,7 @@ O POP deve:
   perfilClientesCnpj: perfilClientesCnpjRouter,
   planosAcaoComercial: planosAcaoComercialRouter,
   campanhasWhatsapp: campanhasWhatsappRouter,
+  cotacoesExternas: cotacoesExternasRouter,
   radarMercado: radarMercadoRouter,
   custoLed: custoLedRouter,
   perfilEstoque: perfilEstoqueRouter,

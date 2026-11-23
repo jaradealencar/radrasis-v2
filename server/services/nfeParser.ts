@@ -153,7 +153,10 @@ export async function extrairDadosNfePdf(buffer: Buffer): Promise<NfeDadosExtrai
         /(?:NUMERO\s+DA\s+(?:NF-?E|NOTA\s+FISCAL)|N\s*O\.?\s*(?:DA\s*)?(?:NF-?E|NOTA\s+FISCAL)?|NOTA\s+FISCAL)\s*[:#.\-]?\s*(\d[\d./-]{0,19})/i
       )?.[1]
       ?.replace(/[./-]+$/, "") ?? null;
-  const serie = textoCompacto.match(/SERIE\s*[:#.\-]?\s*(\d{1,5})/i)?.[1] ?? null;
+  const serie =
+    textoCompacto.match(/SERIE\s*[:#.\-]?\s*(\d{1,5})/i)?.[1] ??
+    textoCompacto.match(/(?:^|\s)SER\s*[:#.\-]?\s*(\d{1,5})(?=\s|$)/i)?.[1] ??
+    null;
 
   return {
     nfeCnpj: extrairCnpj(texto),

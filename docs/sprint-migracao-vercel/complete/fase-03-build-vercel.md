@@ -1,5 +1,7 @@
 # Fase 3 — `vercel.json`, rewrites e scripts de build
 
+> **ARQUIVADA — referência histórica.** Não execute comandos ou verificações deste arquivo; use o fluxo atual de `AGENTS.md`.
+
 **Depende de:** Fase 1 (precisa do `api/index.ts` existindo).
 **As fases 5 e 6 assumem que esta já saiu.** Faça-a cedo.
 

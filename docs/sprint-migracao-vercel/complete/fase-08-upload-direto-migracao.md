@@ -1,5 +1,7 @@
 # Fase 8 — Upload direto: migrar os 9 call sites restantes
 
+> **ARQUIVADA — referência histórica.** Não execute comandos ou verificações deste arquivo; use o fluxo atual de `AGENTS.md`.
+
 **Depende de:** Fase 7. Ela criou `client/src/lib/upload.ts`,
 `server/_core/uploadthing.ts` e a rota `/api/uploadthing`, e migrou
 `cargos.uploadImage` como piloto.

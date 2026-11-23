@@ -1,5 +1,7 @@
 # Fase 4 — Rate limiting: tirar do caminho serverless e documentar
 
+> **ARQUIVADA — referência histórica.** Não execute comandos ou verificações deste arquivo; use o fluxo atual de `AGENTS.md`.
+
 **Depende de:** Fase 1 (edita `server/_core/app.ts`).
 **Independente das fases 2, 3, 5, 6 e 7.**
 

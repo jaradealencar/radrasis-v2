@@ -49,6 +49,7 @@ import DiagnosticoApi from "./pages/comercial/DiagnosticoApi";
 import CrmAuditoria from "./pages/comercial/CrmAuditoria";
 import CrmMonitoramentoUso from "./pages/comercial/CrmMonitoramentoUso";
 import InsightsIA from "./pages/comercial/InsightsIA";
+import CotacoesExternas from "./pages/comercial/CotacoesExternas";
 import MarketingCampanhasWhatsapp from "./pages/financeiro/MarketingCampanhasWhatsapp";
 // Financeiro
 import Financeiro from "./pages/financeiro/Financeiro";
@@ -158,6 +159,11 @@ function Router() {
       <Route path="/comercial/crm-auditoria">
         <ProtectedRoute pageKey="crm-auditoria">
           <L><CrmAuditoria /></L>
+        </ProtectedRoute>
+      </Route>
+      <Route path="/comercial/cotacoes-externas">
+        <ProtectedRoute pageKey="comercial-cotacoes-externas">
+          <L><CotacoesExternas /></L>
         </ProtectedRoute>
       </Route>
       <Route path="/comercial/crm-monitoramento">

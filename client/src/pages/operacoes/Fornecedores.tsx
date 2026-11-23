@@ -118,6 +118,7 @@ export default function Fornecedores() {
     }
     setNfeFile(file);
     setNfeUploadedFile(null);
+    setNfeForm({ ...EMPTY_NFE });
   }
 
   async function enviarNfeSeNecessario() {
@@ -387,10 +388,14 @@ export default function Fornecedores() {
                     Anexar / editar NF-e
                   </Button>
                 )}
-                <button onClick={() => openEdit(item)} className="p-1.5 rounded hover:bg-gray-100 text-gray-400 hover:text-gray-700 transition-colors text-xs font-medium px-2">Editar</button>
-                <button onClick={() => { if (confirm("Remover fornecedor?")) deleteMut.mutate({ id: item.id }); }} className="p-1.5 rounded hover:bg-red-50 text-gray-400 hover:text-red-500 transition-colors">
-                  <Trash2 size={13} />
-                </button>
+                {user && (
+                  <>
+                    <button onClick={() => openEdit(item)} className="p-1.5 rounded hover:bg-gray-100 text-gray-400 hover:text-gray-700 transition-colors text-xs font-medium px-2">Editar</button>
+                    <button onClick={() => { if (confirm("Remover fornecedor?")) deleteMut.mutate({ id: item.id }); }} className="p-1.5 rounded hover:bg-red-50 text-gray-400 hover:text-red-500 transition-colors">
+                      <Trash2 size={13} />
+                    </button>
+                  </>
+                )}
               </div>
             </div>
           ))}

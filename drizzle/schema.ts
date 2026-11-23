@@ -161,16 +161,17 @@ export const suppliers = pgTable("suppliers", {
   updatedByNome: varchar("updatedByNome", { length: 128 }), // nome do último editor
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().notNull(),
-  nfeCnpj: varchar("nfe_cnpj", { length: 32 }),
-  nfeRazaoSocial: varchar("nfe_razao_social", { length: 256 }),
-  nfeNomeFantasia: varchar("nfe_nome_fantasia", { length: 256 }),
-  nfeNumero: varchar("nfe_numero", { length: 64 }),
-  nfeSerie: varchar("nfe_serie", { length: 32 }),
-  nfeChaveAcesso: varchar("nfe_chave_acesso", { length: 64 }),
-  nfeArquivoNome: varchar("nfe_arquivo_nome", { length: 256 }),
-  nfeArquivoKey: varchar("nfe_arquivo_key", { length: 256 }),
-  nfeArquivoUrl: varchar("nfe_arquivo_url", { length: 512 }),
-  nfeUltimaAtualizacao: timestamp("nfe_ultima_atualizacao"),
+  // NF-e do fornecedor (upload de PDF e dados extraídos automaticamente)
+  nfeCnpj: varchar("nfe_cnpj", { length: 32 }), // CNPJ extraído da NF-e
+  nfeRazaoSocial: varchar("nfe_razao_social", { length: 256 }), // razão social extraída
+  nfeNomeFantasia: varchar("nfe_nome_fantasia", { length: 256 }), // nome fantasia extraído
+  nfeNumero: varchar("nfe_numero", { length: 64 }), // número da NF-e
+  nfeSerie: varchar("nfe_serie", { length: 32 }), // série da NF-e
+  nfeChaveAcesso: varchar("nfe_chave_acesso", { length: 64 }), // chave de acesso da NF-e
+  nfeArquivoNome: varchar("nfe_arquivo_nome", { length: 256 }), // nome do arquivo enviado
+  nfeArquivoKey: varchar("nfe_arquivo_key", { length: 256 }), // chave do arquivo no UploadThing
+  nfeArquivoUrl: varchar("nfe_arquivo_url", { length: 512 }), // URL do arquivo no UploadThing
+  nfeUltimaAtualizacao: timestamp("nfe_ultima_atualizacao"), // quando a NF-e foi lida pela última vez
 }, table => ({
   nfeCnpjIdx: index("suppliers_nfe_cnpj_idx").on(table.nfeCnpj),
 }));
@@ -1104,6 +1105,7 @@ export const PAGE_KEYS = [
   "admin", "admin-usuarios", "admin-permissoes",
   "comercial-performance", "comercial-metas", "comercial-crm", "comercial-crm-config",
   "comercial-tabela-preco", "comercial-planos-acao", "comercial-geografia", "comercial-insights-ia",
+  "comercial-cotacoes-externas",
   "qualidade-planos", "qualidade-desempenho",
   "logistica-cte", "logistica-insights-ia",
   "metricas",
@@ -4397,3 +4399,99 @@ export const trainingLessonVersions = pgTable(
     lessonIdx: index("training_lesson_versions_lesson_idx").on(t.lessonId, t.createdAt),
   })
 );
+
+// ─── COTAÇÕES EXTERNAS DE FORNECEDORES (comparativo de preços) ───────────────
+// Permite cadastrar cotações recebidas de qualquer fornecedor — incluindo
+// empresas que nunca trabalhamos — e comparar preços com o histórico de
+// compras (NFs) já registradas, suportando a decisão de compra.
+// Funcionalidades solicitadas:
+// 1) Valores cobrados nos últimos pedidos ao linkar orçamento com produtos.
+// 2) Cotação de outros fornecedores que trabalham com o mesmo item.
+// 3) Admitir cotação de empresa que nunca trabalhamos, para comparar preço.
+
+export const cotacaoExternaFornecedor = pgTable(
+  "cotacao_externa_fornecedor",
+  {
+    id: serial("id").primaryKey(),
+    cnpj: varchar("cnpj", { length: 18 }).notNull(),
+    nomeFantasia: varchar("nome_fantasia", { length: 256 }).notNull(),
+    razaoSocial: varchar("razao_social", { length: 256 }),
+    telefone: varchar("telefone", { length: 32 }),
+    email: varchar("email", { length: 256 }),
+    cidade: varchar("cidade", { length: 128 }),
+    estado: varchar("estado", { length: 2 }),
+    observacoes: text("observacoes"),
+    jaTrabalhamos: boolean("ja_trabalhamos").default(false).notNull(),
+    criadoPor: text("criado_por"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  t => ({
+    cnpjIdx: index("cotacao_externa_fornecedor_cnpj_idx").on(t.cnpj),
+  })
+);
+export type CotacaoExternaFornecedor = typeof cotacaoExternaFornecedor.$inferSelect;
+export type InsertCotacaoExternaFornecedor =
+  typeof cotacaoExternaFornecedor.$inferInsert;
+
+export const cotacaoExternaItem = pgTable(
+  "cotacao_externa_item",
+  {
+    id: serial("id").primaryKey(),
+    fornecedorId: integer("fornecedor_id")
+      .notNull()
+      .references(() => cotacaoExternaFornecedor.id, { onDelete: "cascade" }),
+    codigoFornecedor: varchar("codigo_fornecedor", { length: 64 }),
+    descricao: varchar("descricao", { length: 512 }).notNull(),
+    unidade: varchar("unidade", { length: 16 }).notNull(),
+    precoUnitario: decimal("preco_unitario", { precision: 14, scale: 6 }).notNull(),
+    precoTotal: decimal("preco_total", { precision: 14, scale: 2 }),
+    quantidade: decimal("quantidade", { precision: 14, scale: 4 }),
+    dataCotacao: varchar("data_cotacao", { length: 32 }),
+    validadeDias: integer("validade_dias"),
+    condicaoPagamento: varchar("condicao_pagamento", { length: 128 }),
+    prazoEntrega: varchar("prazo_entrega", { length: 128 }),
+    arquivoOrigemUrl: text("arquivo_origem_url"),
+    materiaPrimaId: integer("materia_prima_id").references(
+      () => materiasPrimas.id,
+      { onDelete: "set null" }
+    ),
+    vinculadoAoItemNf: boolean("vinculado_ao_item_nf").default(false).notNull(),
+    criadoPor: text("criado_por"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  t => ({
+    fornecedorIdx: index("cotacao_externa_item_fornecedor_idx").on(
+      t.fornecedorId
+    ),
+    materiaPrimaIdx: index("cotacao_externa_item_materia_prima_idx").on(
+      t.materiaPrimaId
+    ),
+  })
+);
+export type CotacaoExternaItem = typeof cotacaoExternaItem.$inferSelect;
+export type InsertCotacaoExternaItem =
+  typeof cotacaoExternaItem.$inferInsert;
+
+export const cotacaoExternaVinculo = pgTable(
+  "cotacao_externa_vinculo",
+  {
+    id: serial("id").primaryKey(),
+    // Referência livre ao item de cotação/NF de origem (texto, pois não há
+    // tabela de NF de compra neste repositório — o vínculo é informativo).
+    descricaoOrigem: varchar("descricao_origem", { length: 256 }).notNull(),
+    cotacaoItemId: integer("cotacao_item_id")
+      .notNull()
+      .references(() => cotacaoExternaItem.id, { onDelete: "cascade" }),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  t => ({
+    cotacaoItemIdx: index("cotacao_externa_vinculo_cotacao_item_idx").on(
+      t.cotacaoItemId
+    ),
+  })
+);
+export type CotacaoExternaVinculo = typeof cotacaoExternaVinculo.$inferSelect;
+export type InsertCotacaoExternaVinculo =
+  typeof cotacaoExternaVinculo.$inferInsert;

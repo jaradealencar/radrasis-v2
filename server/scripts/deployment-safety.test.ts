@@ -10,7 +10,6 @@ const vercelJson = JSON.parse(readFileSync(resolve("vercel.json"), "utf8")) as {
   buildCommand: string;
 };
 const workflowDirectory = resolve(".github/workflows");
-const protectionGuide = readFileSync(resolve("docs/protecao-ambientes-banco-publicacao.md"), "utf8");
 const workflowNames = readdirSync(workflowDirectory)
   .filter(name => /\.ya?ml$/i.test(name))
   .sort();
@@ -18,7 +17,6 @@ const workflows = new Map(
   workflowNames.map(name => [name, readFileSync(resolve(workflowDirectory, name), "utf8")]),
 );
 const qualityWorkflow = workflows.get("quality.yml") ?? "";
-const migrationWorkflow = workflows.get("migrate.yml") ?? "";
 const workflowMigrationPattern = /\b(?:yarn\s+db:migrate|yarn\s+db:push|drizzle-kit\s+(?:migrate|push))\b/i;
 
 describe("deployment and migration separation", () => {
@@ -43,7 +41,6 @@ describe("deployment and migration separation", () => {
     expect(packageJson.scripts["build:vercel"]).not.toContain("DATABASE_URL");
     expect(packageJson.scripts["build:vercel"]).toContain("write-build-metadata.ts");
     expect(packageJson.scripts.build).toContain("write-build-metadata.ts");
-    expect(migrationWorkflow).toContain("GIT_COMMIT_SHA: ${{ github.sha }}");
   });
 
   it("routes database migration commands through guarded entry points", () => {
@@ -54,37 +51,16 @@ describe("deployment and migration separation", () => {
     expect(drizzleConfig).toContain("assertMigrationTarget();");
   });
 
-  it("allows migration commands only in the controlled workflow and disposable CI workflow", () => {
+  it("keeps the only automatic migration workflow restricted to disposable CI", () => {
     const callers = [...workflows.entries()]
       .filter(([, contents]) => workflowMigrationPattern.test(contents))
       .map(([name]) => name)
       .sort();
-    expect(callers).toEqual(["migrate.yml", "quality.yml"]);
-    expect(workflowNames).toEqual(["migrate.yml", "quality.yml"]);
-    expect(migrationWorkflow).toContain("workflow_dispatch:");
-    expect(migrationWorkflow).not.toMatch(/^\s{2}(?:push|pull_request):/m);
-    expect(migrationWorkflow).toContain('test "$GITHUB_REF" = "refs/heads/main"');
-    expect(migrationWorkflow).toContain('workflow_id: "quality.yml"');
-  });
-
-  it("fails closed unless the migration environment and exact database resource are provisioned", () => {
-    expect(migrationWorkflow).toContain("name: ${{ inputs.target }}-${{ inputs.project }}");
-    expect(migrationWorkflow).toContain("database_resource_id:");
-    expect(migrationWorkflow).toContain("group: migration-database-${{ inputs.database_resource_id }}");
-    expect(migrationWorkflow).toContain("queue: max");
-    expect(migrationWorkflow).toContain("DB_MIGRATION_RESOURCE_ID: ${{ vars.DB_MIGRATION_RESOURCE_ID }}");
-    expect(migrationWorkflow).toContain("DB_MIGRATION_ENVIRONMENT_READY");
-    expect(migrationWorkflow).toContain("MIGRATION_ENVIRONMENT_READY:${MIGRATION_TARGET}:${VERCEL_PROJECT}:${REQUESTED_RESOURCE_ID}");
-    expect(migrationWorkflow).toContain("DB_MIGRATION_PRODUCTION_APPROVAL");
-    expect(migrationWorkflow).toContain("yarn install --frozen-lockfile --production=false");
-    expect(migrationWorkflow).not.toMatch(/continue-on-error:\s*true/i);
-  });
-
-  it("documents the single-admin production approval flow", () => {
-    expect(protectionGuide).toContain("Operação com um único administrador");
-    expect(protectionGuide).toContain("deixe a opção de impedir autoaprovação desativada");
-    expect(protectionGuide).toContain("AUTHORIZE_PRODUCTION_MIGRATION:<host>:<porta>/<banco>");
-    expect(migrationWorkflow).toContain("administrador unico em producao");
+    expect(callers).toEqual(["quality.yml"]);
+    expect(workflowNames).toEqual(["quality.yml"]);
+    expect(qualityWorkflow).toContain("APP_ENV: ci");
+    expect(qualityWorkflow).toContain("POSTGRES_DB: radrasys_ci_test");
+    expect(qualityWorkflow).toContain("run: yarn db:migrate");
   });
 
   it("requires the exact Quality jobs before database integration tests and migrations", () => {

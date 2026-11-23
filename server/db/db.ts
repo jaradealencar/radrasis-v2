@@ -686,7 +686,6 @@ export async function deleteSupplier(id: number) {
   return db.delete(suppliers).where(eq(suppliers.id, id));
 }
 
-// ─── OPERAÇÕES: Rotinas ────────────────────────────────────────────────────────
 export async function updateSupplierNfe(
   id: number,
   data: {
@@ -710,6 +709,7 @@ export async function updateSupplierNfe(
     .where(eq(suppliers.id, id));
 }
 
+// ─── OPERAÇÕES: Rotinas ────────────────────────────────────────────────────────
 export async function listRoutines() {
   const db = await getDb();
   if (!db) return [];

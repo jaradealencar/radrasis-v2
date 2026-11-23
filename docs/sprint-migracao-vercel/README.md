@@ -1,19 +1,16 @@
-# Sprint: migração para deploy na Vercel
+# Sprint: migração para deploy na Vercel — ARQUIVADA
+
+> **ARQUIVADA em 22/11/2026.** Esta sprint foi concluída e seu procedimento
+> operacional foi substituído pelo fluxo atual em `AGENTS.md`. Não execute as
+> instruções, comandos de browser, painel ou CLI abaixo. Consulte este material
+> apenas como histórico técnico.
 
 Sprint única, dividida em **9 fases — uma fase por arquivo em `pending/`, uma
 fase por commit**. O objetivo é fazer o projeto rodar na Vercel (client
 estático + funções serverless) **sem mudar uma linha de regra de negócio**.
 
-> **Como usar este material.** Ao atacar uma fase, cole **este README inteiro
-> + o arquivo daquela fase** como contexto inicial da conversa. Não carregue
-> as outras fases: cada arquivo de fase é auto-contido e diz explicitamente o
-> que assumir das fases anteriores.
->
-> Este material foi escrito para ser executado por **modelos menores**. Por
-> isso cada fase é mecânica, tem lista fechada de arquivos, exemplos literais
-> de antes/depois e um comando de verificação objetivo. Se uma fase parecer
-> exigir decisão de arquitetura, ela está mal escrita — **pare e pergunte, não
-> improvise.**
+> O índice abaixo é apenas histórico. Nenhuma fase deve ser iniciada ou usada
+> como checklist atual.
 
 ## Índice das fases
 
@@ -27,7 +24,7 @@ estático + funções serverless) **sem mudar uma linha de regra de negócio**.
 | 6 | [fase-06-cron-qstash.md](pending/fase-06-cron-qstash.md) | CRON de sync de OS → Upstash QStash | 1, 3 |
 | 7 | [fase-07-upload-direto-fundacao.md](pending/fase-07-upload-direto-fundacao.md) | Infra de upload direto ao UploadThing + 1 call site piloto | 1 |
 | 8 | [fase-08-upload-direto-migracao.md](pending/fase-08-upload-direto-migracao.md) | Migra os 9 call sites restantes; reduz o body limit | 7 |
-| 9 | [fase-09-deploy-e-limpeza.md](pending/fase-09-deploy-e-limpeza.md) | Env vars, deploy de produção, smoke test, fechamento | 1–8 |
+| 9 | [fase-09-deploy-e-limpeza.md](pending/fase-09-deploy-e-limpeza.md) | **Arquivada/obsoleta** — não executar; publicação pelo fluxo atual de `AGENTS.md` | 1–8 |
 
 **Ordem obrigatória: a Fase 1 vem primeiro.** Ela cria o `server/_core/app.ts`
 que todas as outras editam. Depois disso:
@@ -149,13 +146,12 @@ para perguntar, não para improvisar.
 
 ---
 
-## Regras de ouro (valem para todas as fases)
+## Regras históricas (não são requisitos atuais)
 
 1. **Uma fase = um commit.** Mensagem no padrão do repo:
    `chore(deploy): <o que fez> (sprint vercel, fase N)`.
-2. **`yarn dev` é sagrado.** Toda fase termina com `yarn dev` subindo e a
-   aplicação abrindo no browser. Não vale "quebrou o dev mas o deploy
-   funciona".
+2. `yarn dev` era usado durante o desenvolvimento local. Abrir browser não é
+   etapa obrigatória de validação ou publicação.
 3. **Nada de `import` de Vite fora do caminho de dev.** O arquivo
    `server/_core/vite.ts` importa `vite` e o `vite.config.ts` inteiro. Se ele
    for parar na árvore de imports da função serverless, o bundle da função
@@ -172,26 +168,20 @@ para perguntar, não para improvisar.
 8. **Se uma fase exigir decisão de arquitetura que não está na tabela de
    "Decisões já tomadas" acima — pare e pergunte.**
 
-## Verificação (rode ao fim de toda fase, sem exceção)
+## Verificações históricas (não executar como checklist atual)
 
 ```bash
 yarn run check    # tsc --noEmit — precisa do "run"! (ver AGENTS.md)
 yarn test         # vitest run
 yarn build        # o build precisa passar
-yarn dev          # tem que subir e abrir no browser (regra de ouro 2)
 ```
 
 `yarn run check` é o portão mais importante: quase todo erro desta sprint
 (import quebrado ao mover código, tipo de handler errado, driver com
 assinatura diferente) aparece ali.
 
-A partir da Fase 3 existe um segundo portão, o build da própria Vercel:
-
-```bash
-npx vercel build      # reproduz o build da Vercel localmente, sem deployar
-```
-
-Cada fase diz qual dos dois usar.
+O fluxo atual de typecheck, build, migrations e publicação está definido no
+`AGENTS.md` da raiz.
 
 ## Meta da sprint
 
