@@ -153,6 +153,7 @@ export default function NfCompraAuditoria() {
   const [arquivoPdfNome, setArquivoPdfNome] = useState<string>("");
   const [cotacaoPdfResultado, setCotacaoPdfResultado] = useState<any | null>(null);
   const [itemCotacaoEmEdicao, setItemCotacaoEmEdicao] = useState<number | null>(null);
+  const [itemCotacaoCalculadora, setItemCotacaoCalculadora] = useState<number | null>(null);
   const [buscaMateriaPrimaCotacao, setBuscaMateriaPrimaCotacao] = useState("");
 
   // Origem da compra (Interestadual vs Local/Dentro de MS)
@@ -321,6 +322,10 @@ export default function NfCompraAuditoria() {
                   custoUnitarioMubisys: mp.custoUnitario,
                   unidadeMubisys: mp.unidadeMedida,
                 },
+                fatorConversaoCotacao: normalizarUnidadeAuditoria(item.unidade) === normalizarUnidadeAuditoria(mp.unidadeMedida) ? 1 : null,
+                unidadeOrigemConversaoCotacao: item.unidade,
+                unidadeDestinoConversaoCotacao: mp.unidadeMedida,
+                baseCalculoConversaoCotacao: null,
                 origemVinculo: "vínculo manual",
                 ...historico,
                 variacaoPrecoCotadoVsMubisys: null,
@@ -1479,6 +1484,27 @@ export default function NfCompraAuditoria() {
                   {cotacaoPdfResultado.itens.map((item: any, i: number) => {
                     const compraFornecedor = item.ultimaCompraFornecedor;
                     const compraGeral = item.ultimaCompraGeral;
+                    const mpVinculada = item.materiaPrimaVinculada;
+                    const unidadeMubisys = mpVinculada?.unidadeMubisys ?? "";
+                    const unidadeDestinoConversao = item.unidadeDestinoConversaoCotacao ?? unidadeMubisys;
+                    const fatorConversaoCotacao = item.fatorConversaoCotacao ?? (
+                      mpVinculada && normalizarUnidadeAuditoria(item.unidade) === normalizarUnidadeAuditoria(unidadeMubisys)
+                        ? 1
+                        : null
+                    );
+                    const unidadeDestinoCompativel = Boolean(
+                      unidadeMubisys && unidadeDestinoConversao &&
+                      normalizarUnidadeAuditoria(unidadeDestinoConversao) === normalizarUnidadeAuditoria(unidadeMubisys)
+                    );
+                    const precoCotadoNaUnidadeMubisys = fatorConversaoCotacao && fatorConversaoCotacao > 0 && unidadeDestinoCompativel
+                      ? item.precoUnitario / fatorConversaoCotacao
+                      : null;
+                    const custoAtualMubisys = mpVinculada?.custoUnitarioMubisys == null
+                      ? null
+                      : Number(mpVinculada.custoUnitarioMubisys);
+                    const variacaoCotacaoVsMubisys = precoCotadoNaUnidadeMubisys != null && custoAtualMubisys != null && custoAtualMubisys > 0
+                      ? ((precoCotadoNaUnidadeMubisys - custoAtualMubisys) / custoAtualMubisys) * 100
+                      : null;
                     const mesmaCompra = Boolean(
                       compraFornecedor && compraGeral &&
                       compraFornecedor.precoUnitario === compraGeral.precoUnitario &&
@@ -1612,9 +1638,43 @@ export default function NfCompraAuditoria() {
                           )}
                         </TableCell>
                         <TableCell className="text-right font-mono text-xs text-slate-600">
-                          {item.materiaPrimaVinculada?.custoUnitarioMubisys
-                            ? `${fmtBrl(item.materiaPrimaVinculada.custoUnitarioMubisys)}/${item.materiaPrimaVinculada.unidadeMubisys}`
-                            : "—"}
+                          <div className="space-y-1.5">
+                            <span className="block">
+                              {custoAtualMubisys != null
+                                ? `${fmtBrl(custoAtualMubisys)}/${unidadeMubisys}`
+                                : "Sem custo cadastrado"}
+                            </span>
+                            {precoCotadoNaUnidadeMubisys != null ? (
+                              <div className="rounded bg-slate-50 px-2 py-1 text-left">
+                                <span className="block text-[10px] font-semibold text-slate-700">
+                                  Cotação convertida: {fmtBrl(precoCotadoNaUnidadeMubisys)}/{unidadeMubisys}
+                                </span>
+                                {variacaoCotacaoVsMubisys != null && (
+                                  <span className={`block text-[10px] font-bold ${variacaoCotacaoVsMubisys > 0 ? "text-red-700" : "text-emerald-700"}`}>
+                                    {variacaoCotacaoVsMubisys > 0 ? "+" : ""}{fmtPct(variacaoCotacaoVsMubisys, 2)} vs MubiSys
+                                  </span>
+                                )}
+                                {item.baseCalculoConversaoCotacao && (
+                                  <span className="mt-0.5 block text-[9px] font-sans text-slate-500">
+                                    1 {item.unidadeOrigemConversaoCotacao ?? item.unidade} = {fmtNum(fatorConversaoCotacao, 8)} {unidadeDestinoConversao}. {item.baseCalculoConversaoCotacao}
+                                  </span>
+                                )}
+                              </div>
+                            ) : mpVinculada && (
+                              <span className="block text-[10px] text-amber-700">
+                                Converta {item.unidade} para {unidadeMubisys} para comparar na unidade de consumo.
+                              </span>
+                            )}
+                            {mpVinculada && (
+                              <button
+                                type="button"
+                                onClick={() => setItemCotacaoCalculadora(i)}
+                                className="text-[10px] text-blue-600 hover:underline"
+                              >
+                                {fatorConversaoCotacao ? "Ver/ajustar conversão" : "Calcular preço por unidade de consumo"}
+                              </button>
+                            )}
+                          </div>
                         </TableCell>
                       </TableRow>
                     );
@@ -1896,6 +1956,40 @@ export default function NfCompraAuditoria() {
               return c;
             });
             setItemCalculadoraFator(null);
+          }}
+        />
+      )}
+
+      {itemCotacaoCalculadora !== null && cotacaoPdfResultado?.itens?.[itemCotacaoCalculadora]?.materiaPrimaVinculada && (
+        <ModalCalculadoraFator
+          key={`cotacao-${itemCotacaoCalculadora}-${cotacaoPdfResultado.itens[itemCotacaoCalculadora].unidade}-${cotacaoPdfResultado.itens[itemCotacaoCalculadora].materiaPrimaVinculada.unidadeMubisys}`}
+          aberto={itemCotacaoCalculadora !== null}
+          onFechar={() => setItemCotacaoCalculadora(null)}
+          unidadeCompra={cotacaoPdfResultado.itens[itemCotacaoCalculadora].unidade}
+          unidadeCompraConversao={cotacaoPdfResultado.itens[itemCotacaoCalculadora].unidadeOrigemConversaoCotacao}
+          unidadeErp={cotacaoPdfResultado.itens[itemCotacaoCalculadora].materiaPrimaVinculada.unidadeMubisys}
+          descricaoNf={cotacaoPdfResultado.itens[itemCotacaoCalculadora].descricao}
+          nomeMp={cotacaoPdfResultado.itens[itemCotacaoCalculadora].materiaPrimaVinculada.nome}
+          fatorInicial={cotacaoPdfResultado.itens[itemCotacaoCalculadora].fatorConversaoCotacao}
+          baseCalculoTextoInicial={cotacaoPdfResultado.itens[itemCotacaoCalculadora].baseCalculoConversaoCotacao}
+          onAplicar={(fator, baseCalculoTexto, unidadeOrigem, unidadeDestino) => {
+            const indice = itemCotacaoCalculadora;
+            setCotacaoPdfResultado((atual: any) => {
+              if (!atual) return atual;
+              return {
+                ...atual,
+                itens: atual.itens.map((linha: any, linhaIdx: number) => linhaIdx === indice
+                  ? {
+                      ...linha,
+                      fatorConversaoCotacao: fator,
+                      unidadeOrigemConversaoCotacao: unidadeOrigem,
+                      unidadeDestinoConversaoCotacao: unidadeDestino,
+                      baseCalculoConversaoCotacao: baseCalculoTexto,
+                    }
+                  : linha),
+              };
+            });
+            setItemCotacaoCalculadora(null);
           }}
         />
       )}
