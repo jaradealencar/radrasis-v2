@@ -1,14 +1,16 @@
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
-import { router, protectedProcedure } from "../_core/trpc";
+import { router, protectedProcedure, adminProcedure } from "../_core/trpc";
 import { getDb } from "../db/db";
 import {
   cotacaoExternaFornecedor,
   cotacaoExternaItem,
   cotacaoExternaVinculo,
+  cotacaoExternaAtualizacaoCusto,
   materiasPrimas,
 } from "../../drizzle/schema";
 import { eq, desc, ilike, or, and, sql } from "drizzle-orm";
+import { storagePut } from "../db/storage";
 
 export const cotacoesExternasRouter = router({
   /**
@@ -312,5 +314,313 @@ export const cotacoesExternasRouter = router({
       });
 
       return { ok: true };
+    }),
+
+  /**
+   * Detalhe de um fornecedor externo com todos os itens da cotação,
+   * incluindo o preço cadastrado da matéria-prima no MubiSys para
+   * comparar lado a lado e decidir se atualiza o custo.
+   */
+  detalheFornecedor: protectedProcedure
+    .input(z.object({ fornecedorId: z.number() }))
+    .query(async ({ input }) => {
+      const db = await getDb();
+      if (!db) return null;
+
+      const [fornecedor] = await db
+        .select({
+          id: cotacaoExternaFornecedor.id,
+          cnpj: cotacaoExternaFornecedor.cnpj,
+          nomeFantasia: cotacaoExternaFornecedor.nomeFantasia,
+          razaoSocial: cotacaoExternaFornecedor.razaoSocial,
+          telefone: cotacaoExternaFornecedor.telefone,
+          email: cotacaoExternaFornecedor.email,
+          cidade: cotacaoExternaFornecedor.cidade,
+          estado: cotacaoExternaFornecedor.estado,
+          observacoes: cotacaoExternaFornecedor.observacoes,
+          jaTrabalhamos: cotacaoExternaFornecedor.jaTrabalhamos,
+          criadoPor: cotacaoExternaFornecedor.criadoPor,
+          createdAt: cotacaoExternaFornecedor.createdAt,
+          updatedAt: cotacaoExternaFornecedor.updatedAt,
+        })
+        .from(cotacaoExternaFornecedor)
+        .where(eq(cotacaoExternaFornecedor.id, input.fornecedorId))
+        .limit(1);
+
+      if (!fornecedor) return null;
+
+      const itens = await db
+        .select({
+          id: cotacaoExternaItem.id,
+          codigoFornecedor: cotacaoExternaItem.codigoFornecedor,
+          descricao: cotacaoExternaItem.descricao,
+          unidade: cotacaoExternaItem.unidade,
+          precoUnitario: cotacaoExternaItem.precoUnitario,
+          precoTotal: cotacaoExternaItem.precoTotal,
+          quantidade: cotacaoExternaItem.quantidade,
+          dataCotacao: cotacaoExternaItem.dataCotacao,
+          validadeDias: cotacaoExternaItem.validadeDias,
+          condicaoPagamento: cotacaoExternaItem.condicaoPagamento,
+          prazoEntrega: cotacaoExternaItem.prazoEntrega,
+          arquivoOrigemUrl: cotacaoExternaItem.arquivoOrigemUrl,
+          materiaPrimaId: cotacaoExternaItem.materiaPrimaId,
+          vinculadoAoItemNf: cotacaoExternaItem.vinculadoAoItemNf,
+          criadoPor: cotacaoExternaItem.criadoPor,
+          createdAt: cotacaoExternaItem.createdAt,
+          updatedAt: cotacaoExternaItem.updatedAt,
+          materiaPrimaNome: materiasPrimas.nome,
+          materiaPrimaCustoUnitario: materiasPrimas.custoUnitario,
+          materiaPrimaUnidadeMedida: materiasPrimas.unidadeMedida,
+        })
+        .from(cotacaoExternaItem)
+        .leftJoin(
+          materiasPrimas,
+          eq(materiasPrimas.id, cotacaoExternaItem.materiaPrimaId)
+        )
+        .where(eq(cotacaoExternaItem.fornecedorId, input.fornecedorId))
+        .orderBy(desc(cotacaoExternaItem.createdAt));
+
+      return {
+        fornecedor,
+        itens: itens.map((i) => ({
+          ...i,
+          precoUnitario: Number(i.precoUnitario),
+          precoTotal: i.precoTotal ? Number(i.precoTotal) : null,
+          quantidade: i.quantidade ? Number(i.quantidade) : null,
+          materiaPrimaCustoUnitario: i.materiaPrimaCustoUnitario
+            ? Number(i.materiaPrimaCustoUnitario)
+            : null,
+        })),
+      };
+    }),
+
+  /**
+   * Adiciona um item de cotação a um fornecedor já cadastrado.
+   */
+  adicionarItemCotacao: protectedProcedure
+    .input(
+      z.object({
+        fornecedorId: z.number(),
+        codigoFornecedor: z.string().optional().nullable(),
+        descricao: z.string().min(1, "Descrição obrigatória"),
+        unidade: z.string().min(1, "Unidade obrigatória"),
+        precoUnitario: z.number().nonnegative(),
+        precoTotal: z.number().nonnegative().optional().nullable(),
+        quantidade: z.number().nonnegative().optional().nullable(),
+        dataCotacao: z.string().optional().nullable(),
+        validadeDias: z.number().int().nonnegative().optional().nullable(),
+        condicaoPagamento: z.string().optional().nullable(),
+        prazoEntrega: z.string().optional().nullable(),
+        arquivoOrigemUrl: z.string().optional().nullable(),
+        materiaPrimaId: z.number().optional().nullable(),
+      })
+    )
+    .mutation(async ({ input, ctx }) => {
+      const db = await getDb();
+      if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Banco indisponível." });
+
+      const userId = ctx.user?.id ? String(ctx.user.id) : null;
+
+      const [item] = await db
+        .insert(cotacaoExternaItem)
+        .values({
+          fornecedorId: input.fornecedorId,
+          codigoFornecedor: input.codigoFornecedor ?? null,
+          descricao: input.descricao,
+          unidade: input.unidade,
+          precoUnitario: String(input.precoUnitario),
+          precoTotal: input.precoTotal != null ? String(input.precoTotal) : null,
+          quantidade: input.quantidade != null ? String(input.quantidade) : null,
+          dataCotacao: input.dataCotacao ?? null,
+          validadeDias: input.validadeDias ?? null,
+          condicaoPagamento: input.condicaoPagamento ?? null,
+          prazoEntrega: input.prazoEntrega ?? null,
+          arquivoOrigemUrl: input.arquivoOrigemUrl ?? null,
+          materiaPrimaId: input.materiaPrimaId ?? null,
+          criadoPor: userId,
+        })
+        .returning({ id: cotacaoExternaItem.id });
+
+      return { itemId: item.id, ok: true };
+    }),
+
+  /**
+   * Atualiza um item de cotação existente.
+   */
+  atualizarItemCotacao: protectedProcedure
+    .input(
+      z.object({
+        itemId: z.number(),
+        codigoFornecedor: z.string().optional().nullable(),
+        descricao: z.string().min(1, "Descrição obrigatória").optional(),
+        unidade: z.string().min(1, "Unidade obrigatória").optional(),
+        precoUnitario: z.number().nonnegative().optional(),
+        precoTotal: z.number().nonnegative().optional().nullable(),
+        quantidade: z.number().nonnegative().optional().nullable(),
+        dataCotacao: z.string().optional().nullable(),
+        validadeDias: z.number().int().nonnegative().optional().nullable(),
+        condicaoPagamento: z.string().optional().nullable(),
+        prazoEntrega: z.string().optional().nullable(),
+        arquivoOrigemUrl: z.string().optional().nullable(),
+        materiaPrimaId: z.number().optional().nullable(),
+      })
+    )
+    .mutation(async ({ input, ctx }) => {
+      const db = await getDb();
+      if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Banco indisponível." });
+
+      const userId = ctx.user?.id ? String(ctx.user.id) : null;
+
+      const setValues: Record<string, any> = {
+        updatedAt: new Date(),
+      };
+      if (input.codigoFornecedor !== undefined) setValues.codigoFornecedor = input.codigoFornecedor ?? null;
+      if (input.descricao !== undefined) setValues.descricao = input.descricao;
+      if (input.unidade !== undefined) setValues.unidade = input.unidade;
+      if (input.precoUnitario !== undefined) setValues.precoUnitario = String(input.precoUnitario);
+      if (input.precoTotal !== undefined) setValues.precoTotal = input.precoTotal != null ? String(input.precoTotal) : null;
+      if (input.quantidade !== undefined) setValues.quantidade = input.quantidade != null ? String(input.quantidade) : null;
+      if (input.dataCotacao !== undefined) setValues.dataCotacao = input.dataCotacao ?? null;
+      if (input.validadeDias !== undefined) setValues.validadeDias = input.validadeDias;
+      if (input.condicaoPagamento !== undefined) setValues.condicaoPagamento = input.condicaoPagamento ?? null;
+      if (input.prazoEntrega !== undefined) setValues.prazoEntrega = input.prazoEntrega ?? null;
+      if (input.arquivoOrigemUrl !== undefined) setValues.arquivoOrigemUrl = input.arquivoOrigemUrl ?? null;
+      if (input.materiaPrimaId !== undefined) setValues.materiaPrimaId = input.materiaPrimaId ?? null;
+      if (userId) setValues.criadoPor = userId;
+
+      await db
+        .update(cotacaoExternaItem)
+        .set(setValues)
+        .where(eq(cotacaoExternaItem.id, input.itemId));
+
+      return { ok: true };
+    }),
+
+  /**
+   * Remove um item de cotação.
+   */
+  removerItemCotacao: protectedProcedure
+    .input(z.object({ itemId: z.number() }))
+    .mutation(async ({ input }) => {
+      const db = await getDb();
+      if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Banco indisponível." });
+
+      await db.delete(cotacaoExternaItem).where(eq(cotacaoExternaItem.id, input.itemId));
+
+      return { ok: true };
+    }),
+
+  /**
+   * Faz upload do arquivo de origem do orçamento (PDF/imagem/planilha) e
+   * associa a URL ao item de cotação.
+   */
+  uploadArquivoCotacao: adminProcedure
+    .input(
+      z.object({
+        itemId: z.number(),
+        fileName: z.string(),
+        contentType: z.string(),
+        data: z.string(), // base64
+      })
+    )
+    .mutation(async ({ input }) => {
+      const db = await getDb();
+      if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Banco indisponível." });
+
+      const [item] = await db
+        .select({ id: cotacaoExternaItem.id, fornecedorId: cotacaoExternaItem.fornecedorId })
+        .from(cotacaoExternaItem)
+        .where(eq(cotacaoExternaItem.id, input.itemId))
+        .limit(1);
+
+      if (!item) throw new TRPCError({ code: "NOT_FOUND", message: "Item de cotação não encontrado." });
+
+      const buffer = Buffer.from(input.data, "base64");
+      const relKey = `cotacoes-externas/fornecedor_${item.fornecedorId}/item_${item.id}/${input.fileName}`;
+      const { url } = await storagePut(relKey, buffer, input.contentType);
+
+      await db
+        .update(cotacaoExternaItem)
+        .set({ arquivoOrigemUrl: url, updatedAt: new Date() })
+        .where(eq(cotacaoExternaItem.id, input.itemId));
+
+      return { ok: true, url };
+    }),
+
+  /**
+   * Atualiza o custo unitário da matéria-prima no espelho local do MubiSys
+   * com base no preço de uma cotação externa, registrando a mudança na
+   * tabela de auditoria para rastreabilidade.
+   */
+  atualizarCustoMateriaPrima: adminProcedure
+    .input(
+      z.object({
+        materiaPrimaId: z.number(),
+        cotacaoItemId: z.number(),
+        custoNovo: z.number().positive(),
+        unidade: z.string().min(1, "Unidade obrigatória"),
+        observacao: z.string().optional().nullable(),
+      })
+    )
+    .mutation(async ({ input, ctx }) => {
+      const db = await getDb();
+      if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Banco indisponível." });
+
+      const userId = ctx.user?.id ? String(ctx.user.id) : null;
+
+      // Verificar se o item de cotação existe e está vinculado à mesma MP
+      const [item] = await db
+        .select({
+          id: cotacaoExternaItem.id,
+          materiaPrimaId: cotacaoExternaItem.materiaPrimaId,
+          precoUnitario: cotacaoExternaItem.precoUnitario,
+        })
+        .from(cotacaoExternaItem)
+        .where(eq(cotacaoExternaItem.id, input.cotacaoItemId))
+        .limit(1);
+
+      if (!item) throw new TRPCError({ code: "NOT_FOUND", message: "Item de cotação não encontrado." });
+
+      // Verificar se a MP existe
+      const [mp] = await db
+        .select({
+          id: materiasPrimas.id,
+          nome: materiasPrimas.nome,
+          custoUnitario: materiasPrimas.custoUnitario,
+        })
+        .from(materiasPrimas)
+        .where(eq(materiasPrimas.id, input.materiaPrimaId))
+        .limit(1);
+
+      if (!mp) throw new TRPCError({ code: "NOT_FOUND", message: "Matéria-prima não encontrada." });
+
+      const custoAnterior = mp.custoUnitario ? Number(mp.custoUnitario) : null;
+
+      await db.transaction(async (tx) => {
+        await tx
+          .update(materiasPrimas)
+          .set({
+            custoUnitario: String(input.custoNovo),
+            updatedAt: new Date(),
+          })
+          .where(eq(materiasPrimas.id, input.materiaPrimaId));
+
+        await tx.insert(cotacaoExternaAtualizacaoCusto).values({
+          materiaPrimaId: input.materiaPrimaId,
+          cotacaoItemId: input.cotacaoItemId,
+          custoAnterior: custoAnterior != null ? String(custoAnterior) : null,
+          custoNovo: String(input.custoNovo),
+          unidade: input.unidade,
+          observacao: input.observacao ?? null,
+          criadoPor: userId,
+        });
+      });
+
+      return {
+        ok: true,
+        materiaPrimaId: input.materiaPrimaId,
+        custoAnterior,
+        custoNovo: input.custoNovo,
+      };
     }),
 });

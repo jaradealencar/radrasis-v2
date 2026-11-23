@@ -168,6 +168,11 @@ function Router() {
           <L><CotacoesExternas /></L>
         </ProtectedRoute>
       </Route>
+      <Route path="/comercial/cotacoes-externas/detalhe">
+        <ProtectedRoute pageKey="comercial-cotacoes-externas">
+          <L><CotacoesExternas /></L>
+        </ProtectedRoute>
+      </Route>
       <Route path="/comercial/crm-monitoramento">
         <ProtectedRoute pageKey="crm-monitoramento">
           <L><CrmMonitoramentoUso /></L>

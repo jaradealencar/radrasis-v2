@@ -4496,6 +4496,43 @@ export type CotacaoExternaVinculo = typeof cotacaoExternaVinculo.$inferSelect;
 export type InsertCotacaoExternaVinculo =
   typeof cotacaoExternaVinculo.$inferInsert;
 
+/**
+ * Auditoria de atualização de custo da matéria-prima a partir de uma cotação
+ * externa. Registra quem mudou, quando, qual matéria-prima, qual cotação foi
+ * a origem, o valor antes e depois, e se o valor foi efetivamente gravado no
+ * espelho local do MubiSys (materias_primas.custo_unitario).
+ */
+export const cotacaoExternaAtualizacaoCusto = pgTable(
+  "cotacao_externa_atualizacao_custo",
+  {
+    id: serial("id").primaryKey(),
+    materiaPrimaId: integer("materia_prima_id")
+      .notNull()
+      .references(() => materiasPrimas.id, { onDelete: "restrict" }),
+    cotacaoItemId: integer("cotacao_item_id")
+      .notNull()
+      .references(() => cotacaoExternaItem.id, { onDelete: "restrict" }),
+    custoAnterior: decimal("custo_anterior", { precision: 14, scale: 6 }),
+    custoNovo: decimal("custo_novo", { precision: 14, scale: 6 }).notNull(),
+    unidade: varchar("unidade", { length: 16 }).notNull(),
+    observacao: text("observacao"),
+    criadoPor: text("criado_por"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  t => ({
+    materiaPrimaIdx: index("cotacao_externa_atualizacao_custo_mp_idx").on(
+      t.materiaPrimaId
+    ),
+    cotacaoItemIdx: index("cotacao_externa_atualizacao_custo_item_idx").on(
+      t.cotacaoItemId
+    ),
+  })
+);
+export type CotacaoExternaAtualizacaoCusto =
+  typeof cotacaoExternaAtualizacaoCusto.$inferSelect;
+export type InsertCotacaoExternaAtualizacaoCusto =
+  typeof cotacaoExternaAtualizacaoCusto.$inferInsert;
+
 export const nfCompraImportacoes = pgTable(
   "nf_compra_importacoes",
   {
