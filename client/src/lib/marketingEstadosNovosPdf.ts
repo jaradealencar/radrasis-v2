@@ -1,5 +1,5 @@
-import jsPDF from "jspdf";
-import autoTable from "jspdf-autotable";
+import { jsPDF } from "jspdf";
+import { autoTable } from "jspdf-autotable";
 import { fmtBrl, fmtDate, fmtNum, fmtPct } from "@/lib/format";
 
 export interface MarketingEstadosNovosPdfLinha {
@@ -25,7 +25,7 @@ export function exportarMarketingEstadosNovosPdf(args: {
   fontesIndisponiveis?: string[];
   cotacoesSemValor: number;
 }) {
-  const doc = new jsPDF({ orientation: "landscape", unit: "mm", format: "a4" });
+  const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
   const larguraUtil = doc.internal.pageSize.getWidth() - 28;
   const pct = (valor: number | null) => valor == null ? "—" : fmtPct(valor, 1);
 
@@ -91,11 +91,11 @@ export function exportarMarketingEstadosNovosPdf(args: {
     footStyles: { fillColor: [226, 232, 240], textColor: [15, 23, 42], fontStyle: "bold" },
     alternateRowStyles: { fillColor: [248, 250, 252] },
     columnStyles: {
-      0: { cellWidth: 100 },
-      1: { cellWidth: 35, halign: "right" },
-      2: { cellWidth: 40, halign: "right" },
-      3: { cellWidth: 50, halign: "right" },
-      4: { cellWidth: 44, halign: "right" },
+      0: { cellWidth: 58 },
+      1: { cellWidth: 24, halign: "right" },
+      2: { cellWidth: 31, halign: "right" },
+      3: { cellWidth: 37, halign: "right" },
+      4: { cellWidth: 32, halign: "right" },
     },
     didParseCell: celula => {
       if (celula.section === "foot" && celula.row.index === 1) {
@@ -111,15 +111,16 @@ export function exportarMarketingEstadosNovosPdf(args: {
     doc.setFont("helvetica", "normal");
     doc.setFontSize(8);
     doc.setTextColor(100, 116, 139);
-    doc.text("Faturamento da O.S. após descontos do ERP; não representa lucro.", 14, 203);
-    doc.text(`Página ${pagina} de ${paginas}`, doc.internal.pageSize.getWidth() - 14, 203, { align: "right" });
+    const rodapeY = doc.internal.pageSize.getHeight() - 7;
+    doc.text("Faturamento da O.S. após descontos do ERP; não representa lucro.", 14, rodapeY);
+    doc.text(`Página ${pagina} de ${paginas}`, doc.internal.pageSize.getWidth() - 14, rodapeY, { align: "right" });
   }
 
   if (args.cotacoesSemValor > 0) {
     doc.setPage(paginas);
     doc.setFontSize(8);
     doc.setTextColor(100, 116, 139);
-    doc.text(`${fmtNum(args.cotacoesSemValor)} cotações sem valor disponível.`, 14, 198);
+    doc.text(`${fmtNum(args.cotacoesSemValor)} cotações sem valor disponível.`, 14, doc.internal.pageSize.getHeight() - 12);
   }
 
   doc.save(`roi-marketing-estados-${args.periodo.replace(/\//g, "-").replace(/\s+/g, "-")}.pdf`);
