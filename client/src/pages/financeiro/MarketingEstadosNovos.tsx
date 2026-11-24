@@ -97,8 +97,8 @@ export default function MarketingEstadosNovos({ dataInicial, dataFinal }: { data
             <Users size={17} className="text-blue-600" /> Cotações, pedidos e faturamento por Estado
           </CardTitle>
           <p className="text-xs text-muted-foreground">
-            Taxa Conv. Novos = pedidos de clientes sem compra em meses anteriores ÷ cotações desses clientes. Ordenado
-            por cotações e, em caso de empate, por faturamento.
+            Por UF: pedidos (O.S.) de novos puros ÷ cotações de novos puros no Estado. Como o ERP não liga uma O.S. à
+            cotação de origem, a taxa compara volumes por UF. Ordenado por cotações e, em caso de empate, por faturamento.
           </p>
         </CardHeader>
         <CardContent>
