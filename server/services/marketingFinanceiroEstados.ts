@@ -93,6 +93,8 @@ export function resumirEstadosNovos(
   const propostasSemUf = new Set<string>();
   const propostasSemValor = new Set<string>();
   const propostasVistas = new Set<string>();
+  const clientesCotados = new Set<string>();
+  const clientesConvertidos = new Set<string>();
   const clientesComPropostaAntesDaCompra = new Set<string>();
   const propostasAntesDaCompra = new Set<string>();
   let valorPropostasTotal = 0;
@@ -108,6 +110,10 @@ export function resumirEstadosNovos(
     const chave = numero ? `orc:${numero}` : `id:${proposta.id}`;
     if (propostasVistas.has(chave)) continue;
     propostasVistas.add(chave);
+    if (clienteKey) clientesCotados.add(clienteKey);
+    if (clienteKey && proposta.dataPrimeiraCompra && proposta.dataPrimeiraCompra > proposta.dataProposta) {
+      clientesConvertidos.add(clienteKey);
+    }
 
     const valorValido = proposta.valor != null && Number.isFinite(proposta.valor);
     if (valorValido) valorPropostasTotal += proposta.valor!;
@@ -193,6 +199,8 @@ export function resumirEstadosNovos(
     valorPropostasAntesDaCompra: arredondar(valorPropostasAntesDaCompraTotal),
     propostasNovosClientes,
     totalPropostasNovosClientes: propostasVistas.size,
+    totalClientesCotadosNovosClientes: clientesCotados.size,
+    totalClientesConvertidosNovosClientes: clientesConvertidos.size,
     valorPropostasNovosClientes: arredondar(valorPropostasTotal),
     propostasNovosClientesSemUf: propostasSemUf.size,
     valorPropostasNovosClientesSemUf: arredondar(valorPropostasSemUf),
