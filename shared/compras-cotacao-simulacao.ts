@@ -16,8 +16,11 @@ export type SimulacaoCotacao = {
   valorIcms: number | null;
   totalFinal: number | null;
   pendencia: "peso" | "frete" | null;
+  rateioFreteEstimado: boolean;
+  diferencaPesoKg: number | null;
   itens: Array<{
     rateioFrete: number;
+    rateioDesconto: number;
     rateioIcms: number;
     custoFinalTotal: number;
     custoFinalUnitario: number;
@@ -37,7 +40,14 @@ export function simularCustoFinalCotacao(args: {
   freteModo: ModoFreteCotacao;
   valorFreteInformado: number | null;
   pesoTotalKg: number | null;
+  descontoTotal?: number;
 }): SimulacaoCotacao {
+  const itensTodosKg = args.itens.length > 0 && args.itens.every(item =>
+    ["KG", "KGS", "KGM"].includes(String(item.unidade).trim().toUpperCase())
+  );
+  const pesoItensKg = itensTodosKg
+    ? args.itens.reduce((total, item) => total + Math.max(0, Number(item.quantidade) || 0), 0)
+    : null;
   const valoresItens = args.itens.map(item => {
     const quantidade = Number(item.quantidade);
     const precoUnitario = Number(item.precoUnitario);
@@ -52,7 +62,7 @@ export function simularCustoFinalCotacao(args: {
   const calculoFrete = calcularFreteCompra(
     args.freteModo,
     args.valorFreteInformado,
-    args.pesoTotalKg
+    args.freteModo === "por_kg" && itensTodosKg ? pesoItensKg : args.pesoTotalKg
   );
   const pendencia = calculoFrete.total != null
     ? null
@@ -69,6 +79,8 @@ export function simularCustoFinalCotacao(args: {
       valorIcms: null,
       totalFinal: null,
       pendencia,
+      rateioFreteEstimado: args.freteModo === "por_kg" && !itensTodosKg,
+      diferencaPesoKg: null,
       itens: [],
     };
   }
@@ -79,20 +91,38 @@ export function simularCustoFinalCotacao(args: {
       unidadeCompra: item.unidade,
       valorTotalItem: valoresItens[indice],
     })),
+    modo: args.freteModo === "por_kg" && itensTodosKg ? "por_kg" : "valor_total",
+    valor: args.freteModo === "por_kg" && itensTodosKg
+      ? Number(args.valorFreteInformado ?? 0)
+      : calculoFrete.total,
+    criterio: "valor",
+  });
+  const descontoTotal = Math.min(
+    Math.max(0, Number(args.descontoTotal ?? 0)),
+    subtotalMercadoria + calculoFrete.total
+  );
+  const rateioDesconto = calcularRateioFrete({
+    itens: args.itens.map((item, indice) => ({
+      quantidade: item.quantidade,
+      unidadeCompra: item.unidade,
+      valorTotalItem: valoresItens[indice] + (rateio.itens[indice] ?? 0),
+    })),
     modo: "valor_total",
-    valor: calculoFrete.total,
+    valor: descontoTotal,
     criterio: "valor",
   });
   const itens = args.itens.map((item, indice) => {
     const rateioFrete = rateio.itens[indice] ?? 0;
+    const descontoItem = rateioDesconto.itens[indice] ?? 0;
     const rateioIcms = arredondar4(
-      (valoresItens[indice] + rateioFrete) * 0.1
+      Math.max(0, valoresItens[indice] + rateioFrete - descontoItem) * 0.1
     );
     const custoFinalTotal = arredondar4(
-      valoresItens[indice] + rateioFrete + rateioIcms
+      Math.max(0, valoresItens[indice] + rateioFrete - descontoItem) + rateioIcms
     );
     return {
       rateioFrete,
+      rateioDesconto: descontoItem,
       rateioIcms,
       custoFinalTotal,
       custoFinalUnitario: item.quantidade > 0
@@ -100,7 +130,7 @@ export function simularCustoFinalCotacao(args: {
         : 0,
     };
   });
-  const baseIcms = subtotalMercadoria + calculoFrete.total;
+  const baseIcms = subtotalMercadoria + calculoFrete.total - descontoTotal;
   const valorIcms = arredondar2(baseIcms * 0.1);
 
   return {
@@ -110,6 +140,10 @@ export function simularCustoFinalCotacao(args: {
     valorIcms,
     totalFinal: arredondar2(baseIcms + valorIcms),
     pendencia: null,
+    rateioFreteEstimado: args.freteModo === "por_kg" && !itensTodosKg,
+    diferencaPesoKg: itensTodosKg && args.pesoTotalKg != null && pesoItensKg != null
+      ? Number((Number(args.pesoTotalKg) - pesoItensKg).toFixed(3))
+      : null,
     itens,
   };
 }

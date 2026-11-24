@@ -7,10 +7,16 @@ import { medidasChapaMm, precoChapaM2 } from "@shared/compras-chapas";
 export function CotacaoComparativoConsumo({
   item,
   fornecedor,
+  custoFinalUnitarioCompra,
+  propostasAnterioresMesmoFornecedor,
+  propostasAnterioresOutrosFornecedores,
   alterar,
 }: {
   item: any;
   fornecedor: string;
+  custoFinalUnitarioCompra: number | null;
+  propostasAnterioresMesmoFornecedor: any[];
+  propostasAnterioresOutrosFornecedores: any[];
   alterar: (fator: number | null, formula: string) => void;
 }) {
   const medidas = medidasChapaMm(item.descricao);
@@ -63,9 +69,16 @@ export function CotacaoComparativoConsumo({
   const custo =
     destino &&
     unidadeConsumo(destino) === "M2" &&
-    item.materiaPrimaVinculada.custoUnitarioMubisys != null
+    Number(item.materiaPrimaVinculada.custoUnitarioMubisys) > 0
       ? Number(item.materiaPrimaVinculada.custoUnitarioMubisys)
       : null;
+  const custoFinal = fatorValido && custoFinalUnitarioCompra != null
+    ? Number((custoFinalUnitarioCompra / fatorValido).toFixed(6))
+    : null;
+  const mesmaPropostaAnterior = propostasAnterioresMesmoFornecedor.find(proposta => proposta.custoFinalUnidadeConsumo != null);
+  const melhorOutraProposta = propostasAnterioresOutrosFornecedores.find(proposta => proposta.custoFinalUnidadeConsumo != null);
+  const variacao = (valor: number | null | undefined, referencia: number | null | undefined) =>
+    valor != null && referencia != null && referencia > 0 ? (valor / referencia - 1) * 100 : null;
   const mudarDimensoes = (l: string, c: string) => {
     setLargura(l);
     setComprimento(c);
@@ -127,42 +140,35 @@ export function CotacaoComparativoConsumo({
       </p>
       <div className="rounded border border-blue-100 bg-blue-50 p-2 space-y-1">
         <p>
-          <strong>{fornecedor || "Fornecedor cotado"}:</strong>{" "}
+          <strong>{fornecedor || "Fornecedor cotado"} · preço puro:</strong>{" "}
           {preco == null ? "área pendente" : `${fmtBrl(preco)}/m²`}{" "}
-          <span className="text-slate-500">
-            ({fmtBrl(Number(item.precoUnitario))}/{item.unidade})
-          </span>
+          <span className="text-slate-500">({fmtBrl(Number(item.precoUnitario))}/{item.unidade})</span>
+        </p>
+        <p className={custoFinal != null && custo != null && custoFinal > custo ? "font-semibold text-red-800" : "font-semibold text-emerald-800"}>
+          <strong>Custo final cotado · mercadoria + frete + ICMS:</strong>{" "}
+          {custoFinal == null ? "pendente" : `${fmtBrl(custoFinal)}/m²`}
+          {variacao(custoFinal, custo) != null && custo != null && <span> · {fmtPct(variacao(custoFinal, custo)!, 2)} vs MubiSys</span>}
+        </p>
+        <p><strong>MubiSys atual:</strong>{" "}{custo == null ? "vínculo/custo por m² pendente" : `${fmtBrl(custo)}/m²`}</p>
+        <p>
+          <strong>{compra?.fornecedor ?? "Última NF"} · custo final auditado:</strong>{" "}
+          {compra?.custoRealErp == null ? compra ? "custo final não disponível" : "sem NF anterior" : `${fmtBrl(Number(compra.custoRealErp))}/${compra.unidadeErp ?? "M²"}`}
+          {compra?.data && <span className="text-slate-500"> · {compra.data}</span>}
         </p>
         <p>
-          <strong>{compra?.fornecedor ?? "Última compra"}:</strong>{" "}
-          {precoAnterior == null
-            ? compra
-              ? "conversão para m² pendente"
-              : "sem compra anterior"
-            : `${fmtBrl(precoAnterior)}/m²`}
+          <strong>Proposta anterior · mesmo fornecedor:</strong>{" "}
+          {mesmaPropostaAnterior ? `${fmtBrl(mesmaPropostaAnterior.custoFinalUnidadeConsumo)}/m² · ${mesmaPropostaAnterior.data}${mesmaPropostaAnterior.rateioFreteEstimado ? " · frete estimado" : ""}` : "sem proposta anterior compatível"}
+          {mesmaPropostaAnterior && variacao(custoFinal, mesmaPropostaAnterior.custoFinalUnidadeConsumo) != null && <span className="ml-1">({fmtPct(variacao(custoFinal, mesmaPropostaAnterior.custoFinalUnidadeConsumo)!, 2)})</span>}
         </p>
         <p>
-          <strong>MubiSys atual:</strong>{" "}
-          {custo == null
-            ? "vínculo/custo por m² pendente"
-            : `${fmtBrl(custo)}/m²`}
+          <strong>Melhor proposta anterior · outros fornecedores:</strong>{" "}
+          {melhorOutraProposta ? `${fmtBrl(melhorOutraProposta.custoFinalUnidadeConsumo)}/m² · ${melhorOutraProposta.fornecedor} · ${melhorOutraProposta.data}${melhorOutraProposta.rateioFreteEstimado ? " · frete estimado" : ""}` : "sem proposta anterior compatível"}
+          {melhorOutraProposta && variacao(custoFinal, melhorOutraProposta.custoFinalUnidadeConsumo) != null && <span className="ml-1">({fmtPct(variacao(custoFinal, melhorOutraProposta.custoFinalUnidadeConsumo)!, 2)})</span>}
         </p>
-        {preco != null && precoAnterior != null && precoAnterior > 0 && (
-          <p
-            className={
-              preco > precoAnterior ? "text-red-700" : "text-emerald-700"
-            }
-          >
-            Cotação vs compra: {fmtPct((preco / precoAnterior - 1) * 100, 2)}
-          </p>
+        {custoFinal != null && custo != null && custo > 0 && custoFinal > custo && (
+          <p className="rounded bg-red-50 px-2 py-1 font-semibold text-red-800">Alerta: custo cotado {fmtPct((custoFinal / custo - 1) * 100, 2)} acima do MubiSys. Avalie reajustar o cadastro antes de aprovar o pedido.</p>
         )}
-        {preco != null && custo != null && custo > 0 && (
-          <p className={preco > custo ? "text-red-700" : "text-emerald-700"}>
-            Cotação vs MubiSys: {fmtPct((preco / custo - 1) * 100, 2)}
-          </p>
-        )}
-      </div>
-      {compra && (
+      </div>      {compra && (
         <details>
           <summary className="cursor-pointer text-blue-600">
             Conferir conversão da compra anterior

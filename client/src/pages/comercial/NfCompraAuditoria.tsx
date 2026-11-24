@@ -326,6 +326,8 @@ export default function NfCompraAuditoria() {
         fornecedor: cotacao.fornecedor || undefined,
         precoCotado: item.precoUnitario,
         unidadeCotada: item.unidade,
+        dataReferencia: /^\d{4}-\d{2}-\d{2}$/.test(cotacao.dataCotacao ?? "") ? cotacao.dataCotacao : undefined,
+        excluirCotacaoId: cotacao.salvoId,
       });
 
       setCotacaoPdfResultado((atual: any) => {
@@ -1537,25 +1539,39 @@ export default function NfCompraAuditoria() {
                       unidadeMubisys && unidadeDestinoConversao &&
                       normalizarUnidadeAuditoria(unidadeDestinoConversao) === normalizarUnidadeAuditoria(unidadeMubisys)
                     );
-                    const precoCotadoNaUnidadeMubisys = fatorConversaoCotacao && fatorConversaoCotacao > 0 && unidadeDestinoCompativel
-                      ? item.precoUnitario / fatorConversaoCotacao
-                      : null;
                     const custoAtualMubisys = mpVinculada?.custoUnitarioMubisys == null
-                      ? null
+                      ? item.custoMubisysAtual == null ? null : Number(item.custoMubisysAtual)
                       : Number(mpVinculada.custoUnitarioMubisys);
-                    const variacaoCotacaoVsMubisys = precoCotadoNaUnidadeMubisys != null && custoAtualMubisys != null && custoAtualMubisys > 0
-                      ? ((precoCotadoNaUnidadeMubisys - custoAtualMubisys) / custoAtualMubisys) * 100
+                    const custoMubisysComparavel = custoAtualMubisys != null && custoAtualMubisys > 0 ? custoAtualMubisys : null;
+                    const simulacaoItem = cotacaoSimulacao?.itens[i] ?? null;
+                    const custoFinalCotadoCompra = simulacaoItem?.custoFinalUnitario ?? null;
+                    const custoFinalCotadoConsumo = custoFinalCotadoCompra != null && fatorConversaoCotacao && unidadeDestinoCompativel
+                      ? Number((custoFinalCotadoCompra / fatorConversaoCotacao).toFixed(6))
                       : null;
-                    const mesmaCompra = Boolean(
-                      compraFornecedor && compraGeral &&
-                      compraFornecedor.precoUnitario === compraGeral.precoUnitario &&
-                      compraFornecedor.unidade === compraGeral.unidade &&
-                      compraFornecedor.data === compraGeral.data &&
-                      compraFornecedor.fornecedor === compraGeral.fornecedor
-                    );
-                    const variacaoFornecedor = item.variacaoPrecoCotadoVsFornecedor;
-                    const variacaoGeral = item.variacaoPrecoCotadoVsUltimaCompra;
-                    const semVariacao = variacaoFornecedor == null && variacaoGeral == null;
+                    const unidadeConsumoMubisys = item.unidadeMubisysAtual ?? unidadeMubisys;
+                    const propostaMesmoFornecedor = (item.propostasAnterioresMesmoFornecedor ?? [])
+                      .find((proposta: any) => proposta.custoFinalUnidadeConsumo != null) ?? null;
+                    const melhorPropostaOutroFornecedor = (item.propostasAnterioresOutrosFornecedores ?? [])
+                      .find((proposta: any) => proposta.custoFinalUnidadeConsumo != null) ?? null;
+                    const custoUltimaNf = compraGeral?.custoRealErp != null &&
+                      (!unidadeConsumoMubisys || normalizarUnidadeAuditoria(compraGeral.unidadeErp) === normalizarUnidadeAuditoria(unidadeConsumoMubisys))
+                      ? Number(compraGeral.custoRealErp)
+                      : null;
+                    const linhaComparacao = (titulo: string, referencia: number | null, unidade: string, detalhe?: string) => {
+                      const variacao = custoFinalCotadoConsumo != null && referencia != null && referencia > 0
+                        ? ((custoFinalCotadoConsumo - referencia) / referencia) * 100
+                        : null;
+                      return (
+                        <div className="flex flex-wrap items-baseline justify-between gap-x-2 gap-y-0.5">
+                          <span className="text-slate-500">{titulo}</span>
+                          <span className="text-right">
+                            <strong>{referencia == null ? titulo === "MubiSys atual" ? "Sem custo cadastrado" : "Sem referência compatível" : `${formatarCustoUnitarioAuditoria(referencia)}/${unidade || "un."}`}</strong>
+                            {variacao != null && <span className={`ml-1 text-[10px] font-semibold ${variacao > 0 ? "text-red-700" : "text-emerald-700"}`}>{variacao > 0 ? "+" : ""}{fmtPct(variacao, 2)}</span>}
+                            {detalhe && <span className="block text-[9px] text-slate-400">{detalhe}</span>}
+                          </span>
+                        </div>
+                      );
+                    };
                     const formatarCompra = (compra: any, mostrarFornecedor: boolean) => compra ? (
                       <div>
                         <span>{fmtBrl(compra.precoUnitario)}/{compra.unidade}</span>
@@ -1610,6 +1626,9 @@ export default function NfCompraAuditoria() {
                                 </strong>
                                 <span className="block text-xs font-normal text-emerald-800">
                                   Total final: {fmtBrl(cotacaoSimulacao.itens[i].custoFinalTotal)}
+                                </span>
+                                <span className="mt-1 block text-[10px] font-normal text-emerald-800">
+                                  Mercadoria {fmtBrl(Number(item.precoUnitario) * Number(item.quantidade))} + frete {fmtBrl(cotacaoSimulacao.itens[i].rateioFrete)} + ICMS {fmtBrl(cotacaoSimulacao.itens[i].rateioIcms)}
                                 </span>
                               </div>
                             ) : cotacaoSimulacao?.pendencia ? (
@@ -1685,48 +1704,35 @@ export default function NfCompraAuditoria() {
                           {formatarCompra(compraGeral, true)}
                         </TableCell>
                         <TableCell className="text-right font-mono text-xs text-slate-600">
-                          {(medidasChapaMm(item.descricao) || normalizarUnidadeAuditoria(unidadeMubisys) === "M2" || normalizarUnidadeAuditoria(item.unidade) === "M2") ? <CotacaoComparativoConsumo key={`${i}-${item.codigo}-${item.materiaPrimaVinculada?.id ?? "sem-mp"}`} item={item} fornecedor={cotacaoPdfResultado.fornecedor} alterar={(fator, formula) => setCotacaoPdfResultado((atual: any) => {
+                          {(medidasChapaMm(item.descricao) || normalizarUnidadeAuditoria(unidadeMubisys) === "M2" || normalizarUnidadeAuditoria(item.unidade) === "M2") ? <CotacaoComparativoConsumo key={`${i}-${item.codigo}-${item.materiaPrimaVinculada?.id ?? "sem-mp"}`} item={item} fornecedor={cotacaoPdfResultado.fornecedor} custoFinalUnitarioCompra={custoFinalCotadoCompra} propostasAnterioresMesmoFornecedor={item.propostasAnterioresMesmoFornecedor ?? []} propostasAnterioresOutrosFornecedores={item.propostasAnterioresOutrosFornecedores ?? []} alterar={(fator, formula) => setCotacaoPdfResultado((atual: any) => {
                             const linha = atual?.itens[i];
                             if (!linha || (linha.fatorConversaoCotacao === fator && linha.baseCalculoConversaoCotacao === formula && linha.unidadeDestinoConversaoCotacao === "M2")) return atual;
                             return { ...atual, itens: atual.itens.map((l: any, indice: number) => indice === i ? { ...l, fatorConversaoCotacao: fator, unidadeDestinoConversaoCotacao: "M2", unidadeOrigemConversaoCotacao: item.unidade, baseCalculoConversaoCotacao: formula } : l) };
                           })} /> : <div className="space-y-1.5">
-                            <span className="block">
-                              {custoAtualMubisys != null
-                                ? `MubiSys: ${fmtBrl(custoAtualMubisys)}/${unidadeMubisys}`
-                                : "Sem custo cadastrado"}
-                            </span>
-                            {precoCotadoNaUnidadeMubisys != null ? (
-                              <div className="rounded bg-slate-50 px-2 py-1 text-left">
-                                <span className="block text-[10px] font-semibold text-slate-700">
-                                  Cotação convertida: {fmtBrl(precoCotadoNaUnidadeMubisys)}/{unidadeMubisys}
-                                </span>
-                                {variacaoCotacaoVsMubisys != null && (
-                                  <span className={`block text-[10px] font-bold ${variacaoCotacaoVsMubisys > 0 ? "text-red-700" : "text-emerald-700"}`}>
-                                    {variacaoCotacaoVsMubisys > 0 ? "+" : ""}{fmtPct(variacaoCotacaoVsMubisys, 2)} vs MubiSys
-                                  </span>
-                                )}
-                                {item.baseCalculoConversaoCotacao && (
-                                  <span className="mt-0.5 block text-[9px] font-sans text-slate-500">
-                                    1 {item.unidadeOrigemConversaoCotacao ?? item.unidade} = {fmtNum(fatorConversaoCotacao, 8)} {unidadeDestinoConversao}. {item.baseCalculoConversaoCotacao}
-                                  </span>
-                                )}
-                              </div>
-                            ) : mpVinculada && (
-                              <span className="block text-[10px] text-amber-700">
-                                Converta {item.unidade} para {unidadeMubisys} para comparar na unidade de consumo.
-                              </span>
-                            )}
+                            <div className="rounded border border-blue-100 bg-blue-50 px-2 py-1.5 text-left space-y-1">
+                              {linhaComparacao("Custo final cotado", custoFinalCotadoConsumo, unidadeConsumoMubisys,
+                                custoFinalCotadoCompra != null && simulacaoItem ? `Mercadoria ${formatarCustoUnitarioAuditoria(Number(item.precoUnitario) / (fatorConversaoCotacao || 1))} + frete ${formatarCustoUnitarioAuditoria(simulacaoItem.rateioFrete / (Number(item.quantidade) * (fatorConversaoCotacao || 1)))} + ICMS ${formatarCustoUnitarioAuditoria(simulacaoItem.rateioIcms / (Number(item.quantidade) * (fatorConversaoCotacao || 1)))}` : undefined)}
+                              {linhaComparacao("MubiSys atual", custoMubisysComparavel, unidadeConsumoMubisys)}
+                              {linhaComparacao("Última NF · custo real", custoUltimaNf, unidadeConsumoMubisys,
+                                compraGeral ? `${compraGeral.fornecedor} · ${compraGeral.data}` : undefined)}
+                              {linhaComparacao("Proposta anterior · mesmo fornecedor", propostaMesmoFornecedor?.custoFinalUnidadeConsumo ?? null, unidadeConsumoMubisys,
+                                propostaMesmoFornecedor ? `${propostaMesmoFornecedor.fornecedor} · ${propostaMesmoFornecedor.data} · cotação #${propostaMesmoFornecedor.cotacaoId}` : undefined)}
+                              {linhaComparacao("Melhor proposta anterior · outros fornecedores", melhorPropostaOutroFornecedor?.custoFinalUnidadeConsumo ?? null, unidadeConsumoMubisys,
+                                melhorPropostaOutroFornecedor ? `${melhorPropostaOutroFornecedor.fornecedor} · ${melhorPropostaOutroFornecedor.data} · cotação #${melhorPropostaOutroFornecedor.cotacaoId}` : undefined)}
+                              {cotacaoSimulacao?.rateioFreteEstimado && <span className="block rounded bg-amber-50 px-1.5 py-1 text-[10px] text-amber-800">Frete por kg sem peso individual: custo do item estimado por rateio de valor.</span>}
+                              {!mpVinculada && <span className="block text-[10px] text-amber-700">Vincule uma matéria-prima para comparar na unidade de consumo.</span>}
+                              {mpVinculada && !fatorConversaoCotacao && <span className="block text-[10px] text-amber-700">Converta {item.unidade} para {unidadeMubisys} para comparar na unidade de consumo.</span>}
+                              {custoFinalCotadoConsumo != null && custoMubisysComparavel != null && custoFinalCotadoConsumo > custoMubisysComparavel && (
+                                <span className="mt-1 block rounded bg-red-50 px-1.5 py-1 text-[10px] font-semibold text-red-800">Alerta: custo cotado {fmtPct((custoFinalCotadoConsumo / custoMubisysComparavel - 1) * 100, 2)} acima do MubiSys. Avalie reajustar o cadastro antes de aprovar o pedido.</span>
+                              )}
+                              {item.baseCalculoConversaoCotacao && <span className="block text-[9px] font-sans text-slate-500">1 {item.unidadeOrigemConversaoCotacao ?? item.unidade} = {fmtNum(fatorConversaoCotacao, 8)} {unidadeDestinoConversao}. {item.baseCalculoConversaoCotacao}</span>}
+                            </div>
                             {mpVinculada && (
-                              <button
-                                type="button"
-                                onClick={() => setItemCotacaoCalculadora(i)}
-                                className="text-[10px] text-blue-600 hover:underline"
-                              >
+                              <button type="button" onClick={() => setItemCotacaoCalculadora(i)} className="text-[10px] text-blue-600 hover:underline">
                                 {fatorConversaoCotacao ? "Ver/ajustar conversão" : "Calcular preço por unidade de consumo"}
                               </button>
                             )}
-                          </div>}
-                        </TableCell>
+                          </div>}                        </TableCell>
                       </TableRow>
                     );
                   })}
@@ -1739,7 +1745,7 @@ export default function NfCompraAuditoria() {
 
       {abaAtiva === "historico" && <ComprasHistorico onOrdem={(id, decisao) => { setCotacaoOrdemDecisao(decisao ?? null); setCotacaoOrdemId(id); }} onAbrirCotacao={async c => {
         const linhas = await Promise.all(c.itens.map(async i => {
-          const historico = i.materiaPrimaId ? await utils.nfCompra.historicoCotacaoPorMateriaPrima.fetch({ materiaPrimaId: i.materiaPrimaId, fornecedor: c.fornecedor, cnpjFornecedor: c.cnpjFornecedor ?? undefined, precoCotado: Number(i.precoUnitario), unidadeCotada: i.unidade }) : {};
+          const historico = i.materiaPrimaId ? await utils.nfCompra.historicoCotacaoPorMateriaPrima.fetch({ materiaPrimaId: i.materiaPrimaId, fornecedor: c.fornecedor, cnpjFornecedor: c.cnpjFornecedor ?? undefined, precoCotado: Number(i.precoUnitario), unidadeCotada: i.unidade, dataReferencia: /^\d{4}-\d{2}-\d{2}$/.test(c.dataCotacao ?? "") ? c.dataCotacao : undefined, excluirCotacaoId: c.id }) : {};
           return { ...historico, codigo: i.codigo, descricao: i.descricao, quantidade: Number(i.quantidade), unidade: i.unidade, precoUnitario: Number(i.precoUnitario),
             materiaPrimaVinculada: i.materiaPrimaId ? { id: i.materiaPrimaId, nome: i.nomeMateriaPrima, unidadeMubisys: i.unidadeDestino, custoUnitarioMubisys: i.custoMubisys == null ? null : Number(i.custoMubisys) } : null,
             fatorConversaoCotacao: i.fatorConversao == null ? null : Number(i.fatorConversao), unidadeOrigemConversaoCotacao: i.unidadeOrigem, unidadeDestinoConversaoCotacao: i.unidadeDestino, baseCalculoConversaoCotacao: i.formula, origemVinculo: "cotação salva (snapshot)" };

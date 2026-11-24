@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { trpc } from "@/lib/trpc";
-import { fmtBrl, fmtDate, fmtNum } from "@/lib/format";
+import { fmtBrl, fmtDate, fmtNum, fmtPct } from "@/lib/format";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -403,8 +403,19 @@ export function SalvarCotacaoCompra({
         ) : (
           <p className="text-[11px] text-slate-600">
             Base de cálculo igual à auditoria de NF: mercadoria + frete, com
-            ICMS de 10% sobre essa soma. O frete é distribuído entre os itens
-            proporcionalmente ao valor cotado.
+            ICMS de 10% sobre essa soma. Frete fixo é rateado pelo valor; para
+            tarifa por kg, linhas cotadas em KG usam a quantidade da própria
+            linha e outros itens usam rateio estimado pelo valor.
+          </p>
+        )}
+        {simulacao.rateioFreteEstimado && (
+          <p className="rounded border border-amber-300 bg-amber-50 p-2 text-[11px] font-medium text-amber-900">
+            Frete por kg: a tarifa e o peso total estão calculados, mas sem pesos individuais o custo de cada item é estimado pelo valor cotado. A revisão da NF pode fechar o custo real por item.
+          </p>
+        )}
+        {simulacao.diferencaPesoKg != null && Math.abs(simulacao.diferencaPesoKg) > 0.01 && (
+          <p className="rounded border border-amber-300 bg-amber-50 p-2 text-[11px] text-amber-900">
+            O peso informado difere em {fmtNum(simulacao.diferencaPesoKg, 3)} kg da soma das linhas em KG. A simulação por item usa as quantidades cotadas.
           </p>
         )}
         <details className="text-sm">
@@ -447,6 +458,9 @@ export function SalvarCotacaoCompra({
                           </strong>
                           <span className="block text-xs text-emerald-800">
                             Total final do item: {fmtBrl(linha.custoFinalTotal)}
+                          </span>
+                          <span className="block text-[10px] text-emerald-800">
+                            Mercadoria {fmtBrl(totalPuro)} + frete {fmtBrl(linha.rateioFrete)} + ICMS {fmtBrl(linha.rateioIcms)}
                           </span>
                         </>
                       ) : (
@@ -1065,6 +1079,7 @@ export function ComprasHistorico({
   const [logisticaId, setLogisticaId] = useState<number | null>(null);
   const [receberOrdem, setReceberOrdem] = useState<CompraOrdemRegistro | null>(null);
   const [historicoComercialId, setHistoricoComercialId] = useState<number | null>(null);
+  const [ordemParaAprovar, setOrdemParaAprovar] = useState<CompraOrdemRegistro | null>(null);
   const [editarOrdem, setEditarOrdem] = useState<CompraOrdemRegistro | null>(
     null
   );
@@ -1193,6 +1208,7 @@ export function ComprasHistorico({
       await aprovarOrdem.mutateAsync({ id });
       await Promise.all([ordens.refetch(), utils.compras.listarOrdens.invalidate()]);
       toast.success(`Ordem OC-${id} aprovada.`);
+      setOrdemParaAprovar(null);
     } catch (e) { erro(e); }
   };
   const sincronizarFornecedores = async () => {
@@ -1749,7 +1765,7 @@ export function ComprasHistorico({
                         {o.statusAprovacao === "pendente" ? "PDF após aprovação" : "Baixar PDF"}
                       </button>
                       {o.statusAprovacao === "pendente" && politicaAprovacao.data?.podeAprovar && (
-                        <button className="block text-emerald-700" disabled={aprovarOrdem.isPending} onClick={() => void aprovar(o.id)}>
+                        <button className="block text-emerald-700" disabled={aprovarOrdem.isPending} onClick={() => setOrdemParaAprovar({ ordem: o, fornecedor: f })}>
                           Aprovar ordem
                         </button>
                       )}
@@ -1947,6 +1963,12 @@ export function ComprasHistorico({
       />
       <RegistrarRecebimentoDialog registro={receberOrdem} fechar={() => setReceberOrdem(null)} />
       <HistoricoOrdemDialog id={historicoComercialId} fechar={() => setHistoricoComercialId(null)} />
+      <AprovarOrdemCustoDialog
+        registro={ordemParaAprovar}
+        fechar={() => setOrdemParaAprovar(null)}
+        aprovar={() => { if (ordemParaAprovar) void aprovar(ordemParaAprovar.ordem.id); }}
+        aprovando={aprovarOrdem.isPending}
+      />
       <AlertDialog
         open={excluirOrdem != null}
         onOpenChange={aberto => {
@@ -1993,6 +2015,151 @@ export function ComprasHistorico({
   );
 }
 
+function AprovarOrdemCustoDialog({
+  registro,
+  fechar,
+  aprovar,
+  aprovando,
+}: {
+  registro: CompraOrdemRegistro | null;
+  fechar: () => void;
+  aprovar: () => void;
+  aprovando: boolean;
+}) {
+  const utils = trpc.useUtils();
+  const ordem = registro?.ordem ?? null;
+  const cotacaoQuery = trpc.compras.obterCotacao.useQuery(
+    { id: ordem?.cotacaoId ?? 0 },
+    { enabled: ordem != null },
+  );
+  const [historicos, setHistoricos] = useState<Record<number, any>>({});
+  const [carregandoHistorico, setCarregandoHistorico] = useState(false);
+  const [erroHistorico, setErroHistorico] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!ordem || !cotacaoQuery.data) {
+      setHistoricos({});
+      setErroHistorico(null);
+      return;
+    }
+    let ativo = true;
+    const linhasComMp = ordem.itens.filter(linha => linha.materiaPrimaId != null);
+    const unicas = [...new Map(linhasComMp.map(linha => [linha.materiaPrimaId!, linha])).values()];
+    setCarregandoHistorico(true);
+    setErroHistorico(null);
+    void Promise.all(unicas.map(async linha => {
+      const resumo = await utils.nfCompra.historicoCotacaoPorMateriaPrima.fetch({
+        materiaPrimaId: linha.materiaPrimaId!,
+        fornecedor: registro?.fornecedor,
+        cnpjFornecedor: cotacaoQuery.data.cnpjFornecedor ?? undefined,
+        precoCotado: linha.precoUnitario,
+        unidadeCotada: linha.unidade,
+        dataReferencia: /^\d{4}-\d{2}-\d{2}$/.test(cotacaoQuery.data.dataCotacao ?? "") ? cotacaoQuery.data.dataCotacao : undefined,
+        excluirCotacaoId: cotacaoQuery.data.id,
+      });
+      return [linha.materiaPrimaId!, resumo] as const;
+    })).then(resultados => {
+      if (ativo) setHistoricos(Object.fromEntries(resultados));
+    }).catch(error => {
+      if (ativo) setErroHistorico(error instanceof Error ? error.message : "Falha ao carregar o histórico de custos.");
+    }).finally(() => {
+      if (ativo) setCarregandoHistorico(false);
+    });
+    return () => { ativo = false; };
+  }, [ordem, cotacaoQuery.data, registro?.fornecedor, utils]);
+
+  const simulacao = useMemo(() => {
+    if (!ordem) return null;
+    const modo = (ordem.freteModo ?? "valor_total") as ModoFreteCompra;
+    const valorFrete = modo === "gratis"
+      ? 0
+      : ordem.freteValorInformado == null
+        ? Number(ordem.frete)
+        : Number(ordem.freteValorInformado);
+    return simularCustoFinalCotacao({
+      itens: ordem.itens.map(linha => ({ quantidade: Number(linha.quantidade), unidade: linha.unidade, precoUnitario: Number(linha.precoUnitario) })),
+      freteModo: modo,
+      valorFreteInformado: valorFrete,
+      pesoTotalKg: ordem.pesoPrevistoKg == null ? null : Number(ordem.pesoPrevistoKg),
+      descontoTotal: Number(ordem.descontoTotal ?? 0),
+    });
+  }, [ordem]);
+
+  return (
+    <Dialog open={registro != null} onOpenChange={aberto => { if (!aberto) fechar(); }}>
+      <DialogContent className="!max-w-5xl max-h-[90vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle>Revisão de custo antes da aprovação · OC-{ordem?.id}</DialogTitle>
+        </DialogHeader>
+        <p className="text-sm text-slate-600">
+          Custo final por unidade de consumo: mercadoria + frete rateado - desconto da ordem + ICMS simulado de 10%. Compare com MubiSys, NFs auditadas e propostas anteriores disponíveis.
+        </p>
+        {cotacaoQuery.isLoading || carregandoHistorico ? <Spinner /> : null}
+        {cotacaoQuery.error && <p className="rounded border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">Não foi possível carregar a cotação original: {cotacaoQuery.error.message}. A aprovação continua disponível; confira os valores manualmente.</p>}
+        {erroHistorico && <p className="rounded border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">O histórico comparativo não carregou: {erroHistorico}. Custo final da ordem: {simulacao?.totalFinal == null ? "pendente" : fmtBrl(simulacao.totalFinal)}.</p>}
+        {simulacao?.pendencia && <p className="rounded border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">Custo final pendente: informe {simulacao.pendencia === "peso" ? "o peso total para calcular o frete por kg" : "o frete"} na ordem.</p>}
+        {simulacao?.rateioFreteEstimado && <p className="rounded border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">Faltam pesos por item. O custo por MP estima o frete por rateio de valor; o total do frete está calculado.</p>}
+        {simulacao?.diferencaPesoKg != null && Math.abs(simulacao.diferencaPesoKg) > 0.01 && <p className="rounded border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">O peso informado difere em {fmtNum(simulacao.diferencaPesoKg, 3)} kg da soma das linhas cotadas em KG; o cálculo por item usa as quantidades cotadas.</p>}
+        {simulacao?.totalFinal != null && <p className="rounded border border-blue-200 bg-blue-50 p-3 text-sm text-blue-950">Custo total estimado da ordem com frete, desconto e ICMS: <strong>{fmtBrl(simulacao.totalFinal)}</strong>.</p>}
+        {ordem && simulacao && (
+          <Table className={compacta}>
+            <TableHeader><TableRow>
+              <TableHead>Matéria-prima cotada</TableHead>
+              <TableHead className="text-right">Custo final da ordem</TableHead>
+              <TableHead className="text-right">MubiSys atual</TableHead>
+              <TableHead className="text-right">Última NF auditada</TableHead>
+              <TableHead className="text-right">Proposta anterior do fornecedor</TableHead>
+              <TableHead className="text-right">Melhor proposta de outro fornecedor</TableHead>
+            </TableRow></TableHeader>
+            <TableBody>
+              {ordem.itens.map((linha, indice) => {
+                const resumo = linha.materiaPrimaId ? historicos[linha.materiaPrimaId] : null;
+                const destino = resumo?.unidadeMubisysAtual ?? linha.unidadeDestino ?? "";
+                const unidadeIgual = destino && unidadeConsumo(linha.unidade) === unidadeConsumo(destino);
+                const fator = linha.fatorConversao && linha.fatorConversao > 0 ? Number(linha.fatorConversao) : unidadeIgual ? 1 : null;
+                const custoFinal = fator && simulacao.itens[indice] && resumo?.unidadeMubisysAtual && unidadeConsumo(destino) === unidadeConsumo(resumo.unidadeMubisysAtual)
+                  ? Number((simulacao.itens[indice].custoFinalUnitario / fator).toFixed(6))
+                  : null;
+                const mesmaProposta = (resumo?.propostasAnterioresMesmoFornecedor ?? []).find((p: any) => p.custoFinalUnidadeConsumo != null);
+                const outraProposta = (resumo?.propostasAnterioresOutrosFornecedores ?? []).find((p: any) => p.custoFinalUnidadeConsumo != null);
+                const ultimaNf = resumo?.ultimaCompraGeral?.custoRealErp != null && unidadeConsumo(resumo.ultimaCompraGeral.unidadeErp ?? "") === unidadeConsumo(destino)
+                  ? Number(resumo.ultimaCompraGeral.custoRealErp)
+                  : null;
+                const variacao = (referencia: number | null | undefined) => custoFinal != null && referencia != null && referencia > 0 ? (custoFinal / referencia - 1) * 100 : null;
+                const cell = (valor: number | null | undefined, detalhe?: string) => (
+                  <span className="block">
+                    {valor == null ? "Sem referência" : `${fmtBrl(valor)}/${destino || linha.unidade}`}
+                    {variacao(valor) != null && <span className={`ml-1 ${variacao(valor)! > 0 ? "text-red-700" : "text-emerald-700"}`}>{fmtPct(variacao(valor)!, 2)}</span>}
+                    {detalhe && <span className="block text-[10px] text-slate-500">{detalhe}</span>}
+                  </span>
+                );
+                return (
+                  <TableRow key={linha.itemId}>
+                    <TableCell><strong>{linha.descricao}</strong><span className="block text-[10px] text-slate-500">{fmtNum(linha.quantidade, 3)} {linha.unidade}{linha.materiaPrimaId ? ` · ${destino}` : " · sem vínculo de MP"}</span></TableCell>
+                    <TableCell className="text-right">
+                      {cell(custoFinal)}
+                      {simulacao.itens[indice] && <span className="block text-[10px] text-slate-500">Mercadoria {fmtBrl(linha.total)} + frete {fmtBrl(simulacao.itens[indice].rateioFrete)} - desconto {fmtBrl(simulacao.itens[indice].rateioDesconto)} + ICMS {fmtBrl(simulacao.itens[indice].rateioIcms)}</span>}
+                      {custoFinal != null && resumo?.custoMubisysAtual != null && Number(resumo.custoMubisysAtual) > 0 && custoFinal > Number(resumo.custoMubisysAtual) && <span className="mt-1 block rounded bg-red-50 p-1 text-[10px] font-semibold text-red-800">Avaliar reajuste do custo no MubiSys antes de aprovar.</span>}
+                      {custoFinal == null && <span className="block text-[10px] text-amber-700">Vínculo ou conversão para a unidade de consumo pendente.</span>}
+                    </TableCell>
+                    <TableCell className="text-right">{cell(resumo?.custoMubisysAtual == null ? null : Number(resumo.custoMubisysAtual))}{resumo && resumo.custoMubisysAtual == null && <span className="block text-[10px] text-amber-700">Sem custo cadastrado no MubiSys</span>}</TableCell>
+                    <TableCell className="text-right">{cell(ultimaNf, resumo?.ultimaCompraGeral ? `${resumo.ultimaCompraGeral.fornecedor} · ${resumo.ultimaCompraGeral.data}` : undefined)}</TableCell>
+                    <TableCell className="text-right">{cell(mesmaProposta?.custoFinalUnidadeConsumo ?? null, mesmaProposta ? `${mesmaProposta.fornecedor} · ${mesmaProposta.data}` : undefined)}</TableCell>
+                    <TableCell className="text-right">{cell(outraProposta?.custoFinalUnidadeConsumo ?? null, outraProposta ? `${outraProposta.fornecedor} · ${outraProposta.data}` : undefined)}</TableCell>
+                  </TableRow>
+                );
+              })}
+            </TableBody>
+          </Table>
+        )}
+        <div className="flex justify-end gap-2">
+          <Button variant="outline" onClick={fechar}>Voltar</Button>
+          <Button disabled={aprovando} onClick={aprovar}>{aprovando ? "Aprovando..." : "Confirmar aprovação"}</Button>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
 function AuditoriaOrdem({
   id,
   fechar,

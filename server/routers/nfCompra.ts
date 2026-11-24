@@ -12,6 +12,8 @@ import {
   nfCompraItens,
   nfMpVinculos,
   comprasOrdemNfs,
+  comprasCotacoes,
+  comprasCotacaoItens,
 } from "../../drizzle/schema";
 import { eq, inArray, ilike, or, and, desc, sql, isNotNull } from "drizzle-orm";
 import { parseNfXml } from "../services/nfXmlParser";
@@ -25,6 +27,7 @@ import {
 import { calcularNfCompra, type ItemCalculoEntrada } from "../services/nfCalculo";
 import { sincronizarCatalogoMubiSys } from "../services/mubisysEspelho";
 import { consultarOrdemFrete, fornecedorDaOrdemConfere, snapshotFreteNf } from "../services/comprasFrete";
+import { simularCustoFinalCotacao } from "../../shared/compras-cotacao-simulacao";
 
 function digitosCnpj(valor: string | null | undefined): string {
   return (valor ?? "").replace(/\D/g, "");
@@ -223,6 +226,146 @@ async function buscarHistoricoComprasCotacao(
   }
 
   return { comprasGerais, comprasFornecedor };
+}
+
+async function buscarPropostasAnterioresMateriaPrima(
+  db: NonNullable<Awaited<ReturnType<typeof getDb>>>,
+  materiaPrimaId: number,
+  fornecedorAtual: { cnpjFornecedor?: string | null; nomeFornecedor?: string | null },
+  opcoes: { dataReferencia?: string; excluirCotacaoId?: number } = {}
+) {
+  const [materiaPrima] = await db
+    .select({ unidade: materiasPrimas.unidadeMedida, custo: materiasPrimas.custoUnitario })
+    .from(materiasPrimas)
+    .where(eq(materiasPrimas.id, materiaPrimaId))
+    .limit(1);
+  const unidadeMubisysAtual = materiaPrima?.unidade ?? "";
+  const custoMubisysAtual = materiaPrima?.custo == null || Number(materiaPrima.custo) <= 0
+    ? null
+    : Number(materiaPrima.custo);
+  const propostasComItem = await db
+    .select({
+      cotacaoId: comprasCotacaoItens.cotacaoId,
+      itemId: comprasCotacaoItens.id,
+      descricao: comprasCotacaoItens.descricao,
+      quantidade: comprasCotacaoItens.quantidade,
+      unidade: comprasCotacaoItens.unidade,
+      precoUnitario: comprasCotacaoItens.precoUnitario,
+      unidadeDestino: comprasCotacaoItens.unidadeDestino,
+      fatorConversao: comprasCotacaoItens.fatorConversao,
+      dataCotacao: comprasCotacoes.dataCotacao,
+      fornecedor: comprasCotacoes.fornecedor,
+      cnpjFornecedor: comprasCotacoes.cnpjFornecedor,
+      frete: comprasCotacoes.frete,
+      freteModo: comprasCotacoes.freteModo,
+      freteValorInformado: comprasCotacoes.freteValorInformado,
+      pesoFreteKg: comprasCotacoes.pesoFreteKg,
+    })
+    .from(comprasCotacaoItens)
+    .innerJoin(comprasCotacoes, eq(comprasCotacoes.id, comprasCotacaoItens.cotacaoId))
+    .where(eq(comprasCotacaoItens.materiaPrimaId, materiaPrimaId))
+    .orderBy(desc(comprasCotacoes.dataCotacao), desc(comprasCotacoes.id))
+    .limit(500);
+  const candidatas = propostasComItem.filter(proposta =>
+    proposta.cotacaoId !== opcoes.excluirCotacaoId &&
+    (!opcoes.dataReferencia || proposta.dataCotacao <= opcoes.dataReferencia)
+  );
+  const ids = [...new Set(candidatas.map(proposta => proposta.cotacaoId))];
+  if (!ids.length) {
+    return {
+      custoMubisysAtual,
+      unidadeMubisysAtual,
+      propostasAnterioresMesmoFornecedor: [],
+      propostasAnterioresOutrosFornecedores: [],
+    };
+  }
+
+  const linhas = await db
+    .select({
+      id: comprasCotacaoItens.id,
+      cotacaoId: comprasCotacaoItens.cotacaoId,
+      quantidade: comprasCotacaoItens.quantidade,
+      unidade: comprasCotacaoItens.unidade,
+      precoUnitario: comprasCotacaoItens.precoUnitario,
+    })
+    .from(comprasCotacaoItens)
+    .where(inArray(comprasCotacaoItens.cotacaoId, ids));
+  const linhasPorCotacao = new Map<number, typeof linhas>();
+  for (const linha of linhas) {
+    linhasPorCotacao.set(linha.cotacaoId, [...(linhasPorCotacao.get(linha.cotacaoId) ?? []), linha]);
+  }
+  const analisadas = candidatas.flatMap(proposta => {
+    const linhasCotacao = linhasPorCotacao.get(proposta.cotacaoId) ?? [];
+    const modo = (proposta.freteModo ?? "valor_total") as "valor_total" | "por_kg" | "gratis";
+    const peso = proposta.pesoFreteKg == null ? null : Number(proposta.pesoFreteKg);
+    const freteSalvo = proposta.frete == null ? null : Number(proposta.frete);
+    const freteInformadoSalvo = proposta.freteValorInformado == null ? null : Number(proposta.freteValorInformado);
+    const freteInformado = modo === "gratis"
+      ? 0
+      : freteInformadoSalvo ?? (modo === "por_kg" && peso && peso > 0 && freteSalvo != null ? freteSalvo / peso : freteSalvo);
+    const simulacao = simularCustoFinalCotacao({
+      itens: linhasCotacao.map(linha => ({
+        quantidade: Number(linha.quantidade),
+        unidade: linha.unidade,
+        precoUnitario: Number(linha.precoUnitario),
+      })),
+      freteModo: modo,
+      valorFreteInformado: freteInformado,
+      pesoTotalKg: peso,
+    });
+    const indice = linhasCotacao.findIndex(linha => linha.id === proposta.itemId);
+    const custoFinalLinha = indice >= 0 ? simulacao.itens[indice] : null;
+    const unidadeCompra = normalizarUnidadeCotacao(proposta.unidade);
+    const unidadeDestino = proposta.unidadeDestino ?? unidadeMubisysAtual;
+    const unidadeCompativel = Boolean(
+      unidadeMubisysAtual && unidadeDestino &&
+      normalizarUnidadeCotacao(unidadeDestino) === normalizarUnidadeCotacao(unidadeMubisysAtual)
+    );
+    const fatorSalvo = proposta.fatorConversao == null ? null : Number(proposta.fatorConversao);
+    const fator = fatorSalvo && fatorSalvo > 0
+      ? fatorSalvo
+      : unidadeMubisysAtual && unidadeCompra === normalizarUnidadeCotacao(unidadeMubisysAtual)
+        ? 1
+        : null;
+    const custoFinalUnidadeConsumo = custoFinalLinha && fator && unidadeCompativel
+      ? Number((custoFinalLinha.custoFinalUnitario / fator).toFixed(6))
+      : null;
+    return [{
+      cotacaoId: proposta.cotacaoId,
+      itemId: proposta.itemId,
+      data: proposta.dataCotacao,
+      fornecedor: proposta.fornecedor,
+      cnpjFornecedor: proposta.cnpjFornecedor,
+      descricao: proposta.descricao,
+      precoUnitario: Number(proposta.precoUnitario),
+      unidade: proposta.unidade,
+      custoFinalUnidadeCompra: custoFinalLinha?.custoFinalUnitario ?? null,
+      custoFinalUnidadeConsumo,
+      rateioFreteEstimado: simulacao.rateioFreteEstimado,
+      unidadeMubisys: unidadeMubisysAtual,
+      fatorConversao: fator,
+      freteRateado: custoFinalLinha?.rateioFrete ?? null,
+      icmsRateado: custoFinalLinha?.rateioIcms ?? null,
+    }];
+  });
+  const propostasAnterioresMesmoFornecedor = analisadas
+    .filter(proposta => mesmoFornecedor(fornecedorAtual, { cnpjFornecedor: proposta.cnpjFornecedor, nomeFornecedor: proposta.fornecedor }))
+    .sort((a, b) => b.data.localeCompare(a.data) || b.cotacaoId - a.cotacaoId)
+    .slice(0, 10);
+  const propostasAnterioresOutrosFornecedores = analisadas
+    .filter(proposta => !mesmoFornecedor(fornecedorAtual, { cnpjFornecedor: proposta.cnpjFornecedor, nomeFornecedor: proposta.fornecedor }))
+    .sort((a, b) => {
+      if (a.custoFinalUnidadeConsumo == null) return 1;
+      if (b.custoFinalUnidadeConsumo == null) return -1;
+      return a.custoFinalUnidadeConsumo - b.custoFinalUnidadeConsumo || b.data.localeCompare(a.data);
+    })
+    .slice(0, 10);
+  return {
+    custoMubisysAtual,
+    unidadeMubisysAtual,
+    propostasAnterioresMesmoFornecedor,
+    propostasAnterioresOutrosFornecedores,
+  };
 }
 
 export const nfCompraRouter = router({
@@ -888,6 +1031,8 @@ export const nfCompraRouter = router({
       fornecedor: z.string().optional(),
       precoCotado: z.number().nonnegative(),
       unidadeCotada: z.string().min(1),
+      dataReferencia: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+      excluirCotacaoId: z.number().int().positive().optional(),
     }))
     .query(async ({ input }) => {
       const db = await getDb();
@@ -903,13 +1048,20 @@ export const nfCompraRouter = router({
         fornecedorAtual
       );
 
-      return resumirComprasCotacao(
+      const resumoCompras = resumirComprasCotacao(
         comprasGerais,
         fornecedorAtual,
         input.precoCotado,
         input.unidadeCotada,
         comprasFornecedor
       );
+      const propostas = await buscarPropostasAnterioresMateriaPrima(
+        db,
+        input.materiaPrimaId,
+        fornecedorAtual,
+        { dataReferencia: input.dataReferencia, excluirCotacaoId: input.excluirCotacaoId }
+      );
+      return { ...resumoCompras, ...propostas };
     }),
 
   analisarCotacaoPdf: protectedProcedure
@@ -1095,6 +1247,12 @@ export const nfCompraRouter = router({
             variacaoPrecoCotadoVsUltimaCompra: null as number | null,
             historicoUnidadeCompativel: false,
           };
+          let propostasResumo: Awaited<ReturnType<typeof buscarPropostasAnterioresMateriaPrima>> = {
+            custoMubisysAtual: melhorMp?.custoUnitario == null ? null : Number(melhorMp.custoUnitario),
+            unidadeMubisysAtual: melhorMp?.unidadeMedida ?? "",
+            propostasAnterioresMesmoFornecedor: [],
+            propostasAnterioresOutrosFornecedores: [],
+          };
           let variacaoPrecoCotadoVsMubisys: number | null = null;
 
           if (melhorMp) {
@@ -1109,6 +1267,12 @@ export const nfCompraRouter = router({
               itemCotado.precoUnitario,
               itemCotado.unidade,
               comprasFornecedor
+            );
+            propostasResumo = await buscarPropostasAnterioresMateriaPrima(
+              db,
+              melhorMp.id,
+              fornecedorAtual,
+              { dataReferencia: /^\d{4}-\d{2}-\d{2}$/.test(cotacao.dataCotacao ?? "") ? cotacao.dataCotacao! : undefined }
             );
 
             const custoErp = melhorMp.custoUnitario ? Number(melhorMp.custoUnitario) : null;
@@ -1141,6 +1305,7 @@ export const nfCompraRouter = router({
             })),
             origemVinculo,
             ...comprasResumo,
+            ...propostasResumo,
             variacaoPrecoCotadoVsMubisys,
             semHistoricoCompras: Boolean(melhorMp && !comprasResumo.ultimaCompraGeral),
           };
