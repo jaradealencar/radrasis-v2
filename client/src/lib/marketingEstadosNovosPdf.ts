@@ -8,6 +8,9 @@ export interface MarketingEstadosNovosPdfLinha {
   pedidos: number;
   faturamento: number;
   conversao: number | null;
+  clientesUnicos: number;
+  clientesComRecompra: number;
+  taxaRecompra: number | null;
 }
 
 export interface MarketingEstadosNovosPdfResumo {
@@ -15,6 +18,9 @@ export interface MarketingEstadosNovosPdfResumo {
   pedidos: number;
   faturamento: number;
   conversao: number | null;
+  clientesUnicos: number;
+  clientesComRecompra: number;
+  taxaRecompra: number | null;
 }
 
 export function exportarMarketingEstadosNovosPdf(args: {
@@ -25,9 +31,11 @@ export function exportarMarketingEstadosNovosPdf(args: {
   fontesIndisponiveis?: string[];
   cotacoesSemValor: number;
 }) {
-  const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
+  const doc = new jsPDF({ orientation: "landscape", unit: "mm", format: "a4" });
   const larguraUtil = doc.internal.pageSize.getWidth() - 28;
   const pct = (valor: number | null) => valor == null ? "—" : fmtPct(valor, 1);
+  const taxaRecompraComBase = (taxa: number | null, clientesComRecompra: number, clientesUnicos: number, casas = 0) =>
+    taxa == null ? "—" : `${fmtPct(taxa, 1)}\n${fmtNum(clientesComRecompra, casas)} / ${fmtNum(clientesUnicos, casas)} clientes`;
 
   doc.setProperties({
     title: "ROI Marketing — Cotações, pedidos e faturamento por Estado",
@@ -43,7 +51,7 @@ export function exportarMarketingEstadosNovosPdf(args: {
   doc.setTextColor(71, 85, 105);
   doc.text(`Período: ${args.periodo}  |  Gerado em: ${fmtDate(new Date())}`, 14, 25);
 
-  const metodo = "Inclui cotações e O.S. normais de clientes sem compra em meses anteriores; clientes marcados como recorrentes ficam fora. Cada O.S. conta como uma venda. Taxa Conv. Novos = pedidos (O.S.) ÷ cotações por UF; como o ERP não relaciona a O.S. à cotação de origem, a taxa compara volumes por Estado. A média por Estado considera as UFs identificadas; registros sem UF entram no total geral, mas não na média.";
+  const metodo = "Inclui cotações e O.S. normais de clientes sem compra em meses anteriores; clientes marcados como recorrentes ficam fora. Cada O.S. conta como uma venda. Taxa Conv. Novos = pedidos (O.S.) ÷ cotações por UF; como o ERP não relaciona a O.S. à cotação de origem, a taxa compara volumes por Estado. Clientes únicos são empresas com primeira compra no período, agrupadas pela UF da primeira compra. Taxa de recompra = percentual desses clientes com outra O.S. normal depois da compra de entrada, observada até hoje; coortes recentes tiveram menos tempo para recomprar. A média por Estado considera as UFs identificadas; registros sem UF entram no total geral, mas não na média.";
   const metodoLinhas = doc.splitTextToSize(metodo, larguraUtil);
   doc.text(metodoLinhas, 14, 31);
 
@@ -60,29 +68,39 @@ export function exportarMarketingEstadosNovosPdf(args: {
         linha.estado,
         fmtNum(linha.cotacoes),
         fmtNum(linha.pedidos),
+        fmtNum(linha.clientesUnicos),
         fmtBrl(linha.faturamento),
         pct(linha.conversao),
+        taxaRecompraComBase(linha.taxaRecompra, linha.clientesComRecompra, linha.clientesUnicos),
       ])
-    : [["Nenhum Estado com dados no período", "—", "—", "—", "—"]];
+    : [["Nenhum Estado com dados no período", "—", "—", "—", "—", "—", "—"]];
   const linhaMedia = args.media
-    ? ["Média por Estado", fmtNum(args.media.cotacoes, 1), fmtNum(args.media.pedidos, 1), fmtBrl(args.media.faturamento), pct(args.media.conversao)]
-    : ["Média por Estado", "—", "—", "—", "—"];
+    ? ["Média por Estado", fmtNum(args.media.cotacoes, 1), fmtNum(args.media.pedidos, 1), fmtNum(args.media.clientesUnicos, 1), fmtBrl(args.media.faturamento), pct(args.media.conversao), taxaRecompraComBase(args.media.taxaRecompra, args.media.clientesComRecompra, args.media.clientesUnicos, 1)]
+    : ["Média por Estado", "—", "—", "—", "—", "—", "—"];
 
   autoTable(doc, {
     startY: inicioTabela,
     margin: { left: 14, right: 14, top: 14, bottom: 18 },
-    head: [["Estado", "Cotações", "Pedidos (O.S.)", "Faturamento", "Taxa Conv. Novos"]],
+    head: [["Estado", "Cotações", "Pedidos (O.S.)", "Clientes únicos", "Faturamento", "Taxa Conv. Novos", "Taxa Recompra"]],
     body: corpo,
     foot: [
-      ["Total geral", fmtNum(args.total.cotacoes), fmtNum(args.total.pedidos), fmtBrl(args.total.faturamento), pct(args.total.conversao)],
+      [
+        "Total geral",
+        fmtNum(args.total.cotacoes),
+        fmtNum(args.total.pedidos),
+        fmtNum(args.total.clientesUnicos),
+        fmtBrl(args.total.faturamento),
+        pct(args.total.conversao),
+        taxaRecompraComBase(args.total.taxaRecompra, args.total.clientesComRecompra, args.total.clientesUnicos),
+      ],
       linhaMedia,
     ],
     showFoot: "lastPage",
     theme: "grid",
     styles: {
       font: "helvetica",
-      fontSize: 8.5,
-      cellPadding: 2.1,
+      fontSize: 8.2,
+      cellPadding: 1.9,
       textColor: [15, 23, 42],
       lineColor: [203, 213, 225],
       lineWidth: 0.15,
@@ -91,11 +109,13 @@ export function exportarMarketingEstadosNovosPdf(args: {
     footStyles: { fillColor: [226, 232, 240], textColor: [15, 23, 42], fontStyle: "bold" },
     alternateRowStyles: { fillColor: [248, 250, 252] },
     columnStyles: {
-      0: { cellWidth: 58 },
+      0: { cellWidth: 52 },
       1: { cellWidth: 24, halign: "right" },
-      2: { cellWidth: 31, halign: "right" },
-      3: { cellWidth: 37, halign: "right" },
-      4: { cellWidth: 32, halign: "right" },
+      2: { cellWidth: 28, halign: "right" },
+      3: { cellWidth: 29, halign: "right" },
+      4: { cellWidth: 36, halign: "right" },
+      5: { cellWidth: 37, halign: "right" },
+      6: { cellWidth: 52, halign: "right" },
     },
     didParseCell: celula => {
       if (celula.section === "foot" && celula.row.index === 1) {
@@ -112,7 +132,7 @@ export function exportarMarketingEstadosNovosPdf(args: {
     doc.setFontSize(8);
     doc.setTextColor(100, 116, 139);
     const rodapeY = doc.internal.pageSize.getHeight() - 7;
-    doc.text("Faturamento da O.S. após descontos do ERP; não representa lucro.", 14, rodapeY);
+    doc.text("Faturamento da O.S. após descontos do ERP; não representa lucro. Recompra observada até hoje.", 14, rodapeY);
     doc.text(`Página ${pagina} de ${paginas}`, doc.internal.pageSize.getWidth() - 14, rodapeY, { align: "right" });
   }
 

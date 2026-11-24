@@ -282,7 +282,14 @@ export const marketingFinanceiroRouter = router({
     .input(periodoMarketingSchema)
     .query(async ({ input }) => {
       const db = await getDb();
-      if (!db) return { ...resumirEstadosNovos([], []), fontesIndisponiveis: ["base de dados"] };
+      if (!db) return {
+        ...resumirEstadosNovos([], []),
+        clientesComRecompraSemUf: 0,
+        taxaRecompraSemUf: null,
+        totalClientesComRecompra: 0,
+        taxaRecompraGeral: null,
+        fontesIndisponiveis: ["base de dados"],
+      };
 
       const fontesIndisponiveis: string[] = [];
       const marcarFonteIndisponivel = (fonte: string, error: unknown) => {
@@ -460,6 +467,33 @@ export const marketingFinanceiroRouter = router({
         }];
       });
 
+      // Recompra usa a definiÃ§Ã£o jÃ¡ adotada na Performance Comercial: entre os
+      // clientes cuja primeira compra caiu na coorte do relatÃ³rio, conta quem
+      // teve outra O.S. normal depois da compra de entrada, observada atÃ© hoje.
+      // A UF permanece a da primeira compra, para medir a qualidade do Estado
+      // que conquistou o cliente, mesmo se a O.S. seguinte tiver outra UF.
+      const dataReferenciaRecompra = new Date();
+      const clientesComRecompra = new Set<string>();
+      for (const os of osHistoricas) {
+        if (!isOsNormalDb(os)) continue;
+        const clienteKey = normalizeEmpresaKey(os.empresa ?? "");
+        if (!clienteKey) continue;
+        const primeiraCompra = primeiraCompraPorCliente.get(clienteKey);
+        if (!primeiraCompra) continue;
+        const data = dataOsMarketing(os.dataAprovacao, os.mes, os.ano);
+        if (data > primeiraCompra && data <= dataReferenciaRecompra) {
+          clientesComRecompra.add(clienteKey);
+        }
+      }
+      const recompraPorUf = new Map<string, { clientes: Set<string>; recompradores: Set<string> }>();
+      for (const cliente of compradoresNovos) {
+        const uf = ufMarketing(cliente.estado) ?? "";
+        const resumo = recompraPorUf.get(uf) ?? { clientes: new Set<string>(), recompradores: new Set<string>() };
+        resumo.clientes.add(cliente.clienteKey);
+        if (clientesComRecompra.has(cliente.clienteKey)) resumo.recompradores.add(cliente.clienteKey);
+        recompraPorUf.set(uf, resumo);
+      }
+
       const propostasNovas: Array<{
         id: number;
         orcNumero: string | null;
@@ -498,11 +532,29 @@ export const marketingFinanceiroRouter = router({
         });
       }
 
+      const resumoEstados = resumirEstadosNovos(compradoresNovos, propostasNovas);
+      const recompraSemUf = recompraPorUf.get("") ?? { clientes: new Set<string>(), recompradores: new Set<string>() };
+      const totalClientesComRecompra = [...recompraPorUf.values()]
+        .reduce((soma, resumo) => soma + resumo.recompradores.size, 0);
       return {
-        ...resumirEstadosNovos(
-          compradoresNovos,
-          propostasNovas,
-        ),
+        ...resumoEstados,
+        clientesPrimeiraCompra: resumoEstados.clientesPrimeiraCompra.map(estado => {
+          const recompra = recompraPorUf.get(estado.uf);
+          const clientesComRecompraEstado = recompra?.recompradores.size ?? 0;
+          return {
+            ...estado,
+            clientesComRecompra: clientesComRecompraEstado,
+            taxaRecompra: estado.clientes > 0 ? (clientesComRecompraEstado / estado.clientes) * 100 : null,
+          };
+        }),
+        clientesComRecompraSemUf: recompraSemUf.recompradores.size,
+        taxaRecompraSemUf: recompraSemUf.clientes.size > 0
+          ? (recompraSemUf.recompradores.size / recompraSemUf.clientes.size) * 100
+          : null,
+        totalClientesComRecompra,
+        taxaRecompraGeral: resumoEstados.totalClientesPrimeiraCompra > 0
+          ? (totalClientesComRecompra / resumoEstados.totalClientesPrimeiraCompra) * 100
+          : null,
         fontesIndisponiveis,
       };
     }),
