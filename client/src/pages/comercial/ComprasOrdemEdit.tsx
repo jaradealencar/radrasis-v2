@@ -22,6 +22,7 @@ import {
 import { Spinner } from "@/components/ui/spinner";
 import {
   COMPRADORES_RESPONSAVEIS,
+  calcularTotaisItemFornecedor,
   compradorSchema,
   editarOrdemCompraSchema,
   type CompradorCompra,
@@ -184,8 +185,25 @@ function EditorSalva({
         return total + Math.round(quantidade * preco * 100) / 100;
       }, 0)
     : null;
+  const subtotalFornecedor = validos
+    ? linhasAtivas.reduce((total, item) => {
+        const quantidade = numero(quantidades[item.id] ?? "")!;
+        const preco = numero(precos[item.id] ?? "")!;
+        return total + calcularTotaisItemFornecedor({
+          quantidade,
+          precoUnitario: preco,
+          quantidadeCotada: Number(item.quantidade),
+          precoUnitarioCotado: Number(item.precoUnitario),
+          totalFornecedorCotado: item.totalFornecedor == null ? null : Number(item.totalFornecedor),
+          icmsAliquota: item.icmsAliquota == null ? null : Number(item.icmsAliquota),
+          icmsValorCotado: item.icmsValor == null ? null : Number(item.icmsValor),
+          ipiAliquota: item.ipiAliquota == null ? null : Number(item.ipiAliquota),
+          ipiValorCotado: item.ipiValor == null ? null : Number(item.ipiValor),
+        }).totalFornecedor;
+      }, 0)
+    : null;
   const totalBruto =
-    subtotal == null ? null : subtotal + Number(ordem.frete ?? 0);
+    subtotalFornecedor == null ? null : subtotalFornecedor + Number(ordem.frete ?? 0);
   const fretePendente =
     (ordem.freteModo === "por_kg" && ordem.pesoPrevistoKg == null) ||
     (ordem.freteModo === "cif" && ordem.freteValorInformado == null);
@@ -402,6 +420,19 @@ function EditorSalva({
             const incluído = incluidos.has(item.id);
             const quantidade = numero(quantidades[item.id] ?? "");
             const preco = numero(precos[item.id] ?? "");
+            const tributos = quantidade != null && preco != null && quantidade > 0
+              ? calcularTotaisItemFornecedor({
+                  quantidade,
+                  precoUnitario: preco,
+                  quantidadeCotada: Number(item.quantidade),
+                  precoUnitarioCotado: Number(item.precoUnitario),
+                  totalFornecedorCotado: item.totalFornecedor == null ? null : Number(item.totalFornecedor),
+                  icmsAliquota: item.icmsAliquota == null ? null : Number(item.icmsAliquota),
+                  icmsValorCotado: item.icmsValor == null ? null : Number(item.icmsValor),
+                  ipiAliquota: item.ipiAliquota == null ? null : Number(item.ipiAliquota),
+                  ipiValorCotado: item.ipiValor == null ? null : Number(item.ipiValor),
+                })
+              : null;
             return (
               <TableRow
                 key={item.id}
@@ -414,6 +445,13 @@ function EditorSalva({
                   <span className="block text-[10px] text-slate-400">
                     {item.codigo} · {item.unidade}
                   </span>
+                  {(item.icmsAliquota != null || item.icmsValor != null || item.ipiAliquota != null || item.ipiValor != null) && (
+                    <span className="mt-1 block text-[10px] text-amber-800">
+                      {(item.icmsAliquota != null || item.icmsValor != null) && `ICMS${item.icmsAliquota == null ? "" : ` ${Number(item.icmsAliquota)}%`}${item.icmsValor == null ? "" : ` · ${fmtBrl(tributos?.icmsValor ?? Number(item.icmsValor))}`}`}
+                      {(item.icmsAliquota != null || item.icmsValor != null) && (item.ipiAliquota != null || item.ipiValor != null) ? " · " : ""}
+                      {(item.ipiAliquota != null || item.ipiValor != null) && `IPI${item.ipiAliquota == null ? "" : ` ${Number(item.ipiAliquota)}%`}${(tributos?.ipiValor ?? item.ipiValor) == null ? "" : ` · ${fmtBrl(tributos?.ipiValor ?? Number(item.ipiValor))}`}`}
+                    </span>
+                  )}
                 </TableCell>
                 <TableCell>
                   <Input
@@ -444,7 +482,7 @@ function EditorSalva({
                 </TableCell>
                 <TableCell>
                   {quantidade != null && quantidade > 0 && preco != null
-                    ? fmtBrl(Math.round(quantidade * preco * 100) / 100)
+                    ? fmtBrl(tributos?.totalFornecedor ?? Math.round(quantidade * preco * 100) / 100)
                     : "—"}
                 </TableCell>
                 <TableCell>
@@ -484,12 +522,14 @@ function EditorSalva({
       </p>
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="space-y-1 text-sm">
+          <div>Base dos preços unitários: {subtotal == null ? "Revise os itens" : fmtBrl(subtotal)}</div>
+          <div>Total dos itens conforme fornecedor: {subtotalFornecedor == null ? "Revise os itens" : fmtBrl(subtotalFornecedor)}</div>
           <div>
             {freteCifPendente
-              ? "Subtotal dos itens · CIF pendente: "
+              ? "Itens conforme fornecedor · CIF pendente: "
               : fretePendente
-                ? "Subtotal sem frete: "
-                : "Subtotal + frete: "}
+                ? "Itens conforme fornecedor sem frete: "
+                : "Itens conforme fornecedor + frete: "}
             {totalBruto == null ? "Revise os itens" : fmtBrl(totalBruto)}
           </div>
           <div>Desconto obtido: -{fmtBrl(descontoObtidoNumero ?? 0)}</div>
@@ -497,7 +537,7 @@ function EditorSalva({
             {freteCifPendente
               ? "Total líquido sem frete CIF: "
               : fretePendente
-                ? "Subtotal líquido sem frete: "
+                ? "Total líquido sem frete: "
                 : "Total líquido: "}
             {totalAtualizado == null ? "Revise itens e desconto" : fmtBrl(totalAtualizado)}
           </strong>

@@ -55,6 +55,11 @@ export const itemCotacaoCompraSchema = z.object({
   quantidade: z.number().finite().positive().max(1e8),
   unidade: z.string().trim().min(1).max(80),
   precoUnitario: z.number().finite().positive().max(1e9),
+  icmsAliquota: z.number().finite().nonnegative().max(100).nullable().default(null),
+  icmsValor: z.number().finite().nonnegative().max(1e12).nullable().default(null),
+  ipiAliquota: z.number().finite().nonnegative().max(100).nullable().default(null),
+  ipiValor: z.number().finite().nonnegative().max(1e12).nullable().default(null),
+  totalFornecedor: z.number().finite().nonnegative().max(1e12).nullable().default(null),
   materiaPrimaId: z.number().int().positive().nullable(),
   unidadeDestino: z.string().max(80).nullable(),
   fatorConversao: z.number().finite().positive().max(1e10).nullable(),
@@ -322,11 +327,55 @@ export type LinhaOrdemCompra = {
   quantidade: number;
   precoUnitario: number;
   precoCotadoUnitario?: number;
+  icmsAliquota?: number | null;
+  icmsValor?: number | null;
+  ipiAliquota?: number | null;
+  ipiValor?: number | null;
   total: number;
+  totalFornecedor?: number;
   unidadeDestino: string | null;
   fatorConversao: number | null;
   formula: string | null;
 };
+
+export function calcularTotaisItemFornecedor(input: {
+  quantidade: number;
+  precoUnitario: number;
+  quantidadeCotada: number;
+  precoUnitarioCotado: number;
+  totalFornecedorCotado: number | null;
+  icmsAliquota: number | null;
+  icmsValorCotado: number | null;
+  ipiAliquota: number | null;
+  ipiValorCotado: number | null;
+}): {
+  total: number;
+  icmsValor: number | null;
+  ipiValor: number | null;
+  totalFornecedor: number;
+} {
+  const moeda = (valor: number) => Math.round((valor + Number.EPSILON) * 100) / 100;
+  const total = moeda(input.quantidade * input.precoUnitario);
+  const totalCotado = moeda(input.quantidadeCotada * input.precoUnitarioCotado);
+  const fatorAjuste = totalCotado > 0 ? total / totalCotado : 1;
+  const ipiValor = input.ipiValorCotado != null && totalCotado > 0
+    ? moeda(input.ipiValorCotado * fatorAjuste)
+    : input.totalFornecedorCotado == null && input.ipiAliquota != null
+      ? moeda(total * input.ipiAliquota / 100)
+      : null;
+  const totalFornecedor = input.totalFornecedorCotado != null && totalCotado > 0
+    ? moeda(input.totalFornecedorCotado * fatorAjuste)
+    : moeda(
+        total +
+          (input.icmsValorCotado != null ? input.icmsValorCotado * fatorAjuste : 0) +
+          (ipiValor ?? 0)
+      );
+  const icmsValor = input.icmsValorCotado != null && totalCotado > 0
+    ? moeda(input.icmsValorCotado * fatorAjuste)
+    : null;
+
+  return { total, icmsValor, ipiValor, totalFornecedor };
+}
 
 export function precoConsumo(
   preco: number,

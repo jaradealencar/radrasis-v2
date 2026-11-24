@@ -1065,6 +1065,13 @@
       "when": 1795514179963,
       "tag": "0153_historico_orcamentos_regiao",
       "breakpoints": true
+    },
+    {
+      "idx": 152,
+      "version": "7",
+      "when": 1795532953382,
+      "tag": "0154_compras_impostos_fornecedor",
+      "breakpoints": true
     }
   ]
 }

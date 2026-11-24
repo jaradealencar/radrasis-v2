@@ -1,6 +1,6 @@
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
-import { fmtBrl, fmtDate, fmtNum } from "@/lib/format";
+import { fmtBrl, fmtDate, fmtNum, fmtPct } from "@/lib/format";
 import type {
   ComparacaoCotacoesSnapshot,
   CompradorCompra,
@@ -85,7 +85,7 @@ export function criarOrdemCompraPdf(
       fmtNum(i.quantidade, 3),
       i.unidade,
       `${fmtBrl(i.precoUnitario)}${i.precoCotadoUnitario != null && i.precoCotadoUnitario !== i.precoUnitario ? `\nCotado: ${fmtBrl(i.precoCotadoUnitario)}` : ""}`,
-      fmtBrl(i.total),
+      fmtBrl(i.totalFornecedor ?? i.total),
     ]),
     styles: {
       font: "helvetica",
@@ -105,8 +105,47 @@ export function criarOrdemCompraPdf(
   y =
     (doc as jsPDF & { lastAutoTable: { finalY: number } }).lastAutoTable
       .finalY + 9;
+  const detalhesTributosPorItem = ordem.itens
+    .filter(item => item.icmsAliquota != null || item.icmsValor != null || item.ipiAliquota != null || item.ipiValor != null)
+    .map(item => {
+      const tributos = [
+        item.icmsAliquota == null && item.icmsValor == null ? null : `ICMS${item.icmsAliquota == null ? "" : ` ${fmtPct(item.icmsAliquota, 2)}`}${item.icmsValor == null ? "" : ` · ${fmtBrl(item.icmsValor)}`}`,
+        item.ipiAliquota == null && item.ipiValor == null ? null : `IPI ${item.ipiAliquota == null ? "" : fmtPct(item.ipiAliquota, 2)}${item.ipiValor == null ? "" : ` · ${fmtBrl(item.ipiValor)}`}`,
+      ].filter((valor): valor is string => valor != null);
+      return `${item.descricao}: ${tributos.join(" · ")} · total fornecedor ${fmtBrl(item.totalFornecedor ?? item.total)}`;
+    });
+  if (detalhesTributosPorItem.length > 0) {
+    doc.setFont("helvetica", "bold");
+    doc.text("Impostos destacados pelo fornecedor", 14, y);
+    y += 6;
+    doc.setFont("helvetica", "normal");
+    for (const detalhe of detalhesTributosPorItem) {
+      for (const linha of doc.splitTextToSize(detalhe, 180)) {
+        if (y > 275) {
+          doc.addPage();
+          y = 20;
+        }
+        doc.text(linha, 14, y);
+        y += 5;
+      }
+      y += 2;
+    }
+    y += 2;
+  }
   const subtotalMercadorias = ordem.itens.reduce(
     (soma, item) => soma + Number(item.total || 0),
+    0
+  );
+  const totalFornecedorItens = ordem.itens.reduce(
+    (soma, item) => soma + Number(item.totalFornecedor ?? item.total ?? 0),
+    0
+  );
+  const totalIcmsDestacado = ordem.itens.reduce(
+    (soma, item) => soma + Number(item.icmsValor ?? 0),
+    0
+  );
+  const totalIpiDestacado = ordem.itens.reduce(
+    (soma, item) => soma + Number(item.ipiValor ?? 0),
     0
   );
   const descontoTotal = Number(ordem.descontoTotal ?? 0);
@@ -119,7 +158,10 @@ export function criarOrdemCompraPdf(
           : `Frete: CIF · ${fmtBrl(Number(ordem.frete))}`
         : `Frete: ${ordem.freteModo === "gratis" ? "Grátis" : fmtBrl(Number(ordem.frete))}`;
   const bloco = [
-    `Subtotal dos itens: ${fmtBrl(subtotalMercadorias)}`,
+    `Base pelos preços unitários: ${fmtBrl(subtotalMercadorias)}`,
+    ...(totalIcmsDestacado > 0 ? [`ICMS destacado pelo fornecedor: ${fmtBrl(totalIcmsDestacado)}`] : []),
+    ...(totalIpiDestacado > 0 ? [`IPI destacado pelo fornecedor: ${fmtBrl(totalIpiDestacado)}`] : []),
+    `Total dos itens conforme fornecedor: ${fmtBrl(totalFornecedorItens)}`,
     freteResumo,
     ...(descontoTotal > 0
       ? [`Desconto obtido (bônus total, sem alterar preços unitários): -${fmtBrl(descontoTotal)}`]

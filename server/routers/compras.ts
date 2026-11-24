@@ -41,6 +41,7 @@ import {
   recebimentoCompraSchema,
   decisaoCotacaoCompraSchema,
   cotacoesMesmoEscopo,
+  calcularTotaisItemFornecedor,
   quantidadeAceitaNoRecebimento,
   type ComparacaoCotacoesSnapshot,
   type LinhaOrdemCompra,
@@ -235,6 +236,11 @@ export const comprasRouter = router({
             quantidade: String(i.quantidade),
             unidade: i.unidade,
             precoUnitario: String(i.precoUnitario),
+            icmsAliquota: i.icmsAliquota == null ? null : String(i.icmsAliquota),
+            icmsValor: i.icmsValor == null ? null : String(i.icmsValor),
+            ipiAliquota: i.ipiAliquota == null ? null : String(i.ipiAliquota),
+            ipiValor: i.ipiValor == null ? null : String(i.ipiValor),
+            totalFornecedor: i.totalFornecedor == null ? null : String(i.totalFornecedor),
             unidadeOrigem: i.unidadeOrigem ?? i.unidade,
             unidadeDestino: destino,
             fatorConversao: fator ? String(fator) : null,
@@ -427,6 +433,17 @@ export const comprasRouter = router({
               message:
                 "O preço deste item não está disponível na cotação. Atualize o preço antes de emitir a ordem.",
             });
+          const tributos = calcularTotaisItemFornecedor({
+            quantidade: i.quantidade,
+            precoUnitario: preco,
+            quantidadeCotada: Number(origem.quantidade),
+            precoUnitarioCotado: precoCotado,
+            totalFornecedorCotado: origem.totalFornecedor == null ? null : Number(origem.totalFornecedor),
+            icmsAliquota: origem.icmsAliquota == null ? null : Number(origem.icmsAliquota),
+            icmsValorCotado: origem.icmsValor == null ? null : Number(origem.icmsValor),
+            ipiAliquota: origem.ipiAliquota == null ? null : Number(origem.ipiAliquota),
+            ipiValorCotado: origem.ipiValor == null ? null : Number(origem.ipiValor),
+          });
           return {
             itemId: origem.id,
             materiaPrimaId: origem.materiaPrimaId,
@@ -436,7 +453,12 @@ export const comprasRouter = router({
             quantidade: i.quantidade,
             precoUnitario: preco,
             precoCotadoUnitario: precoCotado,
-            total: Math.round(i.quantidade * preco * 100) / 100,
+            icmsAliquota: origem.icmsAliquota == null ? null : Number(origem.icmsAliquota),
+            icmsValor: tributos.icmsValor,
+            ipiAliquota: origem.ipiAliquota == null ? null : Number(origem.ipiAliquota),
+            ipiValor: tributos.ipiValor,
+            total: tributos.total,
+            totalFornecedor: tributos.totalFornecedor,
             unidadeDestino: origem.unidadeDestino,
             fatorConversao: origem.fatorConversao
               ? Number(origem.fatorConversao)
@@ -452,7 +474,7 @@ export const comprasRouter = router({
           valorInformado,
           input.pesoPrevistoKg
         ).total;
-        const subtotal = linhas.reduce((s, l) => s + l.total, 0);
+        const subtotal = linhas.reduce((s, l) => s + (l.totalFornecedor ?? l.total), 0);
         const totalBruto = Math.round((subtotal + (frete ?? 0)) * 100) / 100;
         const descontoTotal = Math.round(input.descontoTotal * 100) / 100;
         if (descontoTotal > totalBruto) {
@@ -721,6 +743,17 @@ export const comprasRouter = router({
               message: "Item não pertence à cotação desta ordem.",
             });
           const precoCotado = Number(origem.precoUnitario);
+          const tributos = calcularTotaisItemFornecedor({
+            quantidade: i.quantidade,
+            precoUnitario: i.precoUnitario,
+            quantidadeCotada: Number(origem.quantidade),
+            precoUnitarioCotado: precoCotado,
+            totalFornecedorCotado: origem.totalFornecedor == null ? null : Number(origem.totalFornecedor),
+            icmsAliquota: origem.icmsAliquota == null ? null : Number(origem.icmsAliquota),
+            icmsValorCotado: origem.icmsValor == null ? null : Number(origem.icmsValor),
+            ipiAliquota: origem.ipiAliquota == null ? null : Number(origem.ipiAliquota),
+            ipiValorCotado: origem.ipiValor == null ? null : Number(origem.ipiValor),
+          });
           return {
             itemId: origem.id,
             materiaPrimaId: origem.materiaPrimaId,
@@ -730,7 +763,12 @@ export const comprasRouter = router({
             quantidade: i.quantidade,
             precoUnitario: i.precoUnitario,
             precoCotadoUnitario: precoCotado,
-            total: Math.round(i.quantidade * i.precoUnitario * 100) / 100,
+            icmsAliquota: origem.icmsAliquota == null ? null : Number(origem.icmsAliquota),
+            icmsValor: tributos.icmsValor,
+            ipiAliquota: origem.ipiAliquota == null ? null : Number(origem.ipiAliquota),
+            ipiValor: tributos.ipiValor,
+            total: tributos.total,
+            totalFornecedor: tributos.totalFornecedor,
             unidadeDestino: origem.unidadeDestino,
             fatorConversao: origem.fatorConversao
               ? Number(origem.fatorConversao)
@@ -757,7 +795,7 @@ export const comprasRouter = router({
             throw new TRPCError({ code: "BAD_REQUEST", message: "A quantidade da ordem não pode ficar abaixo do que já foi recebido." });
           }
         }
-        const subtotal = linhas.reduce((s, linha) => s + linha.total, 0);
+        const subtotal = linhas.reduce((s, linha) => s + (linha.totalFornecedor ?? linha.total), 0);
         const frete = calcularFreteCompra(
           atual.freteModo as "valor_total" | "por_kg" | "gratis" | "cif",
           atual.freteModo === "cif" && atual.freteValorInformado == null
@@ -910,7 +948,7 @@ export const comprasRouter = router({
           });
         const revisao = input.revisao + 1;
         const { ordemId, revisao: _, ...dados } = input;
-        const subtotal = atual.ordem.itens.reduce((s, i) => s + i.total, 0);
+        const subtotal = atual.ordem.itens.reduce((s, i) => s + (i.totalFornecedor ?? i.total), 0);
         const descontoTotal = Number(atual.ordem.descontoTotal ?? 0);
         const totalLiquido = Math.max(0, subtotal + (frete ?? 0) - descontoTotal);
         const [politicaAprovacao] = await tx.select().from(politicas).where(eq(politicas.id, 1));

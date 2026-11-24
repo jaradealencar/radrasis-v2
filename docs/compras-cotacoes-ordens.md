@@ -102,3 +102,13 @@ No mesmo painel, **Fornecedores com maior frete por kg** ordena a tarifa conheci
 Ao salvar qualquer cotação, o servidor localiza ou cria o fornecedor no cadastro usando CNPJ e, quando necessário, nome normalizado. Cotações não são contabilizadas como compras; somente NFs identificadas entram em `fornecedor_compras`. Para registros antigos, **Sincronizar cadastro** faz a reconciliação idempotente com as cotações salvas e informa quantos cadastros novos foram criados.
 
 A migration `0152_compras_controle_profissional` guarda o PDF da cotação, os snapshots de comparação, previsão de entrega, aprovação, histórico comercial e recebimentos físicos. Ela preserva os documentos e ordens já existentes.
+
+## Impostos destacados pelo fornecedor
+
+Na análise do PDF, ICMS e IPI são extraídos por item quando estiverem discriminados. A tela de revisão permite corrigir as alíquotas, os valores destacados e o total exato da linha após os impostos, sem incluir frete ou taxas de envio. Esses dados ficam salvos na cotação e são copiados para o snapshot da ordem e para o PDF enviado ao fornecedor; ao reabrir uma cotação salva, os campos fiscais permanecem editáveis.
+
+O total exato da linha informado pelo fornecedor prevalece sobre qualquer cálculo. Sem esse total, valores explicitamente cobrados à parte são somados; uma alíquota de IPI pode calcular o adicional quando não houver valor total exato. Alíquota de ICMS sem valor separado permanece identificada, sem somar novamente um imposto já embutido no preço unitário. Um total maior que a base não é usado para inventar ou classificar um imposto que não foi destacado. Frete continua em campo separado, e a simulação interna de ICMS de 10% continua sendo apenas uma análise gerencial.
+
+A migration `0154_compras_impostos_fornecedor` adiciona colunas opcionais de ICMS, IPI e total do fornecedor em `compras_cotacao_itens`. Cotações antigas permanecem intactas; para emitir uma nova ordem com os tributos, reabra a cotação salva, confira ou preencha manualmente os campos fiscais com o PDF original e salve uma nova versão.
+
+Na mesma aplicação protegida em produção, a migration `0153_historico_orcamentos_regiao` foi aplicada antes da 0154 (recibos `1795514179963` e `1795532953382`, respectivamente), após confirmar que a base ainda estava na 0152.

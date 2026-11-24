@@ -59,6 +59,7 @@ import {
 import { EditarOrdemModal, type CompraOrdemRegistro } from "./ComprasOrdemEdit";
 import {
   unidadeConsumo,
+  calcularTotaisItemFornecedor,
   compradorSchema,
   cotacaoCompraSchema,
   cotacoesMesmoEscopo,
@@ -166,6 +167,22 @@ export function SalvarCotacaoCompra({
     }
   );
   const [observacoes, setObservacoes] = useState(resultado.observacoes ?? "");
+  const [impostosItens, setImpostosItens] = useState<Record<number, {
+    icmsAliquota: string;
+    icmsValor: string;
+    ipiAliquota: string;
+    ipiValor: string;
+    totalFornecedor: string;
+  }>>(() => Object.fromEntries(resultado.itens.map((item: any, indice: number) => [
+    indice,
+    {
+      icmsAliquota: item.icmsAliquota == null ? "" : String(item.icmsAliquota).replace(".", ","),
+      icmsValor: item.icmsValor == null ? "" : String(item.icmsValor).replace(".", ","),
+      ipiAliquota: item.ipiAliquota == null ? "" : String(item.ipiAliquota).replace(".", ","),
+      ipiValor: item.ipiValor == null ? "" : String(item.ipiValor).replace(".", ","),
+      totalFornecedor: item.totalFornecedor == null ? "" : String(item.totalFornecedor).replace(".", ","),
+    },
+  ])));
   const [arquivoFonte, setArquivoFonte] = useState(() => ({
     arquivoPdfUrl: resultado.arquivoPdfUrl ?? null,
     arquivoPdfKey: resultado.arquivoPdfKey ?? null,
@@ -219,7 +236,7 @@ export function SalvarCotacaoCompra({
     observacoes,
     nomeArquivo,
     ...arquivoFonte,
-    itens: resultado.itens.map((i: any) => {
+    itens: resultado.itens.map((i: any, indice: number) => {
       const mp = i.materiaPrimaVinculada;
       const identica =
         mp && unidadeConsumo(i.unidade) === unidadeConsumo(mp.unidadeMubisys);
@@ -229,6 +246,11 @@ export function SalvarCotacaoCompra({
         quantidade: Number(i.quantidade),
         unidade: i.unidade,
         precoUnitario: Number(i.precoUnitario),
+        icmsAliquota: numeroOpcional(impostosItens[indice]?.icmsAliquota ?? ""),
+        icmsValor: numeroOpcional(impostosItens[indice]?.icmsValor ?? ""),
+        ipiAliquota: numeroOpcional(impostosItens[indice]?.ipiAliquota ?? ""),
+        ipiValor: numeroOpcional(impostosItens[indice]?.ipiValor ?? ""),
+        totalFornecedor: numeroOpcional(impostosItens[indice]?.totalFornecedor ?? ""),
         materiaPrimaId: mp?.id ?? null,
         unidadeDestino:
           i.unidadeDestinoConversaoCotacao ?? mp?.unidadeMubisys ?? null,
@@ -387,6 +409,50 @@ export function SalvarCotacaoCompra({
       />
       <div className="rounded border bg-white px-3 py-2 text-xs text-slate-600">
         <strong>Documento da cotação:</strong> {nomeArquivo || "PDF não informado"} · {arquivoFonte.arquivoPdfUrl ? <><a className="text-blue-700 underline" href={arquivoFonte.arquivoPdfUrl} target="_blank" rel="noreferrer">abrir original</a>{arquivoFonte.arquivoPdfSha256 && <span> · SHA-256 {arquivoFonte.arquivoPdfSha256.slice(0, 16)}…</span>}</> : arquivoPdf ? "o PDF será armazenado ao salvar a cotação" : "sem arquivo original"}
+      </div>
+      <div className="space-y-2 rounded-lg border border-amber-200 bg-amber-50 p-3">
+        <div>
+          <strong className="block text-sm text-slate-800">Impostos destacados pelo fornecedor</strong>
+          <p className="mt-1 text-[11px] text-slate-600">
+            Revise os dados extraídos do PDF. O ICMS em alíquota fica identificado; um valor de ICMS em R$ só é somado quando estiver destacado separadamente. O total exato da linha do fornecedor tem prioridade e evita diferenças de arredondamento.
+          </p>
+        </div>
+        {resultado.itens.map((item: any, indice: number) => {
+          const impostos = impostosItens[indice] ?? { icmsAliquota: "", icmsValor: "", ipiAliquota: "", ipiValor: "", totalFornecedor: "" };
+          const quantidade = Number(item.quantidade);
+          const precoUnitario = Number(item.precoUnitario);
+          const icmsAliquota = numeroOpcional(impostos.icmsAliquota);
+          const icmsValor = numeroOpcional(impostos.icmsValor);
+          const ipiAliquota = numeroOpcional(impostos.ipiAliquota);
+          const ipiValor = numeroOpcional(impostos.ipiValor);
+          const totalFornecedorInformado = numeroOpcional(impostos.totalFornecedor);
+          const calculo = calcularTotaisItemFornecedor({
+            quantidade,
+            precoUnitario,
+            quantidadeCotada: quantidade,
+            precoUnitarioCotado: precoUnitario,
+            totalFornecedorCotado: totalFornecedorInformado,
+            icmsAliquota,
+            icmsValorCotado: icmsValor,
+            ipiAliquota,
+            ipiValorCotado: ipiValor,
+          });
+          return (
+            <div key={`${item.codigo ?? item.descricao}-${indice}`} className="grid gap-2 border-t border-amber-200 pt-2 sm:grid-cols-[minmax(180px,1.4fr)_repeat(5,minmax(90px,1fr))]">
+              <div className="text-xs font-medium text-slate-700">{item.descricao}<span className="block text-[10px] font-normal text-slate-500">{fmtNum(quantidade, 3)} {item.unidade} · preço unitário {fmtBrl(precoUnitario)}</span></div>
+              {(["icmsAliquota", "icmsValor", "ipiAliquota", "ipiValor", "totalFornecedor"] as const).map(campo => (
+                <Campo key={campo} titulo={{ icmsAliquota: "ICMS (%)", icmsValor: "ICMS destacado (R$)", ipiAliquota: "IPI (%)", ipiValor: "IPI destacado (R$)", totalFornecedor: "Total da linha (R$)" }[campo]}>
+                  <Input
+                    inputMode="decimal"
+                    value={impostos[campo]}
+                    placeholder={campo === "totalFornecedor" ? fmtBrl(calculo.totalFornecedor) : "Não destacado"}
+                    onChange={e => setImpostosItens(atual => ({ ...atual, [indice]: { ...impostos, [campo]: e.target.value } }))}
+                  />
+                </Campo>
+              ))}
+            </div>
+          );
+        })}
       </div>
       <div className="rounded-lg border border-blue-200 bg-blue-50 p-3 space-y-2">
         <strong className="block text-sm text-slate-800">
@@ -662,6 +728,18 @@ function EditorOrdem({
   const chave = useRef({ assinatura: "", valor: crypto.randomUUID() });
   const perfil = dados[tipo];
   const linhasAtivas = cotacao.itens.filter(i => !excluidos.has(i.id));
+  const totaisFornecedorPorItem = (item: Cotacao["itens"][number], quantidade: number, precoUnitario: number) =>
+    calcularTotaisItemFornecedor({
+      quantidade,
+      precoUnitario,
+      quantidadeCotada: Number(item.quantidade),
+      precoUnitarioCotado: Number(item.precoUnitario),
+      totalFornecedorCotado: item.totalFornecedor == null ? null : Number(item.totalFornecedor),
+      icmsAliquota: item.icmsAliquota == null ? null : Number(item.icmsAliquota),
+      icmsValorCotado: item.icmsValor == null ? null : Number(item.icmsValor),
+      ipiAliquota: item.ipiAliquota == null ? null : Number(item.ipiAliquota),
+      ipiValorCotado: item.ipiValor == null ? null : Number(item.ipiValor),
+    });
   const numeroEditado = (valor: string) => {
     const numero = Number(valor.replace(",", "."));
     return valor.trim() && Number.isFinite(numero) ? numero : null;
@@ -697,15 +775,36 @@ function EditorOrdem({
         return s + Math.round(quantidade * preco * 100) / 100;
       }, 0)
     : null;
+  const subtotalFornecedor = itensValidos
+    ? linhasAtivas.reduce((soma, item) => {
+        const quantidade = numeroEditado(quantidades[item.id] ?? "")!;
+        const preco = numeroEditado(precos[item.id] ?? "")!;
+        return soma + totaisFornecedorPorItem(item, quantidade, preco).totalFornecedor;
+      }, 0)
+    : null;
+  const icmsDestacado = itensValidos
+    ? linhasAtivas.reduce((soma, item) => {
+        const quantidade = numeroEditado(quantidades[item.id] ?? "")!;
+        const preco = numeroEditado(precos[item.id] ?? "")!;
+        return soma + (totaisFornecedorPorItem(item, quantidade, preco).icmsValor ?? 0);
+      }, 0)
+    : null;
+  const ipiDestacado = itensValidos
+    ? linhasAtivas.reduce((soma, item) => {
+        const quantidade = numeroEditado(quantidades[item.id] ?? "")!;
+        const preco = numeroEditado(precos[item.id] ?? "")!;
+        return soma + (totaisFornecedorPorItem(item, quantidade, preco).ipiValor ?? 0);
+      }, 0)
+    : null;
   const freteCifPendente = freteModo === "cif" && freteCalculado.total == null;
   const totalBruto =
-    subtotalMercadorias == null
+    subtotalFornecedor == null
       ? null
       : freteCalculado.total == null
         ? freteCifPendente
-          ? subtotalMercadorias
+          ? subtotalFornecedor
           : null
-        : subtotalMercadorias + freteCalculado.total;
+        : subtotalFornecedor + freteCalculado.total;
   const descontoObtidoNumero = descontoObtido.trim()
     ? numeroEditado(descontoObtido)
     : 0;
@@ -919,6 +1018,9 @@ function EditorOrdem({
             const excluido = excluidos.has(i.id);
             const quantidade = numeroEditado(quantidades[i.id] ?? "");
             const preco = numeroEditado(precos[i.id] ?? "");
+            const tributos = quantidade != null && preco != null && quantidade > 0
+              ? totaisFornecedorPorItem(i, quantidade, preco)
+              : null;
             return (
               <TableRow
                 key={i.id}
@@ -931,6 +1033,13 @@ function EditorOrdem({
                   <span className="block text-[10px] text-slate-400">
                     {i.codigo} · {i.unidade}
                   </span>
+                  {(i.icmsAliquota != null || i.icmsValor != null || i.ipiAliquota != null || i.ipiValor != null) && (
+                    <span className="mt-1 block text-[10px] text-amber-800">
+                      {(i.icmsAliquota != null || i.icmsValor != null) && `ICMS${i.icmsAliquota == null ? "" : ` ${fmtPct(Number(i.icmsAliquota), 2)}`}${i.icmsValor == null ? "" : ` · ${fmtBrl(tributos?.icmsValor ?? Number(i.icmsValor))}`}`}
+                      {(i.icmsAliquota != null || i.icmsValor != null) && (i.ipiAliquota != null || i.ipiValor != null) ? " · " : ""}
+                      {(i.ipiAliquota != null || i.ipiValor != null) && `IPI${i.ipiAliquota == null ? "" : ` ${fmtPct(Number(i.ipiAliquota), 2)}`}${(tributos?.ipiValor ?? i.ipiValor) == null ? "" : ` · ${fmtBrl(tributos?.ipiValor ?? Number(i.ipiValor))}`}`}
+                    </span>
+                  )}
                 </TableCell>
                 <TableCell>
                   <Input
@@ -961,7 +1070,7 @@ function EditorOrdem({
                 </TableCell>
                 <TableCell>
                   {quantidade != null && quantidade > 0 && preco != null
-                    ? fmtBrl(Math.round(quantidade * preco * 100) / 100)
+                    ? fmtBrl(tributos?.totalFornecedor ?? Math.round(quantidade * preco * 100) / 100)
                     : "—"}
                 </TableCell>
                 <TableCell>
@@ -1119,14 +1228,17 @@ function EditorOrdem({
       />
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="space-y-1 text-sm">
+          {subtotalMercadorias != null && <div>Base dos preços unitários: {fmtBrl(subtotalMercadorias)}</div>}
+          {icmsDestacado != null && icmsDestacado > 0 && <div>ICMS destacado à parte: {fmtBrl(icmsDestacado)}</div>}
+          {ipiDestacado != null && ipiDestacado > 0 && <div>IPI: {fmtBrl(ipiDestacado)}</div>}
           <div>
             {totalBruto == null
-              ? subtotalMercadorias == null
-                ? "Subtotal dos itens: revise os itens"
-                : `Subtotal dos itens: ${fmtBrl(subtotalMercadorias)} · frete pendente`
+              ? subtotalFornecedor == null
+                ? "Total do fornecedor: revise os itens"
+                : `Itens conforme fornecedor: ${fmtBrl(subtotalFornecedor)} · frete pendente`
                 : freteCifPendente
-                  ? `Subtotal dos itens: ${fmtBrl(totalBruto)} · CIF sem frete lançado`
-                  : `Subtotal + frete: ${fmtBrl(totalBruto)}`}
+                  ? `Itens conforme fornecedor: ${fmtBrl(totalBruto)} · CIF sem frete lançado`
+                  : `Itens conforme fornecedor + frete: ${fmtBrl(totalBruto)}`}
             {totalBruto != null && freteModo === "por_kg"
               ? " (estimado)"
               : ""}

@@ -1080,6 +1080,57 @@ export const nfCompraRouter = router({
 
       const buffer = Buffer.from(input.pdfBase64, "base64");
       const cotacao = await extrairCotacaoDePdf(buffer, input.nomeArquivo);
+      const valorFiscal = (valor: unknown) =>
+        typeof valor === "number" && Number.isFinite(valor) && valor >= 0 && valor <= 1e12
+          ? Number(valor.toFixed(2))
+          : null;
+      const aliquotaFiscal = (valor: unknown) =>
+        typeof valor === "number" && Number.isFinite(valor) && valor >= 0 && valor <= 100
+          ? Number(valor.toFixed(4))
+          : null;
+      const basesItens = cotacao.itens.map(item =>
+        Math.round(item.quantidade * item.precoUnitario * 100) / 100
+      );
+      const baseTotalCotacao = basesItens.reduce((soma, valor) => soma + valor, 0);
+      const ratearImpostoGlobal = (valor: unknown, campo: "icmsValor" | "ipiValor") => {
+        const total = valorFiscal(valor);
+        if (total == null || baseTotalCotacao <= 0 || cotacao.itens.some(item => valorFiscal(item[campo]) != null)) {
+          return cotacao.itens.map(() => null as number | null);
+        }
+        let centavosRestantes = Math.round(total * 100);
+        return basesItens.map((base, indice) => {
+          const centavos = indice === basesItens.length - 1
+            ? centavosRestantes
+            : Math.round(total * base / baseTotalCotacao * 100);
+          centavosRestantes -= centavos;
+          return centavos / 100;
+        });
+      };
+      const ratearTotalFornecedorGlobal = () => {
+        const total = valorFiscal(cotacao.totalFornecedor);
+        if (total == null || baseTotalCotacao <= 0 || cotacao.itens.some(item => valorFiscal(item.totalFornecedor) != null)) {
+          return cotacao.itens.map(() => null as number | null);
+        }
+        let centavosRestantes = Math.round(total * 100);
+        return basesItens.map((base, indice) => {
+          const centavos = indice === basesItens.length - 1
+            ? centavosRestantes
+            : Math.round(total * base / baseTotalCotacao * 100);
+          centavosRestantes -= centavos;
+          return centavos / 100;
+        });
+      };
+      const icmsGlobalRateado = ratearImpostoGlobal(cotacao.icmsValor, "icmsValor");
+      const ipiGlobalRateado = ratearImpostoGlobal(cotacao.ipiValor, "ipiValor");
+      const totalFornecedorGlobalRateado = ratearTotalFornecedorGlobal();
+      const itensCotados = cotacao.itens.map((item, indice) => ({
+        ...item,
+        icmsAliquota: aliquotaFiscal(item.icmsAliquota) ?? aliquotaFiscal(cotacao.icmsAliquota),
+        icmsValor: valorFiscal(item.icmsValor) ?? icmsGlobalRateado[indice],
+        ipiAliquota: aliquotaFiscal(item.ipiAliquota) ?? aliquotaFiscal(cotacao.ipiAliquota),
+        ipiValor: valorFiscal(item.ipiValor) ?? ipiGlobalRateado[indice],
+        totalFornecedor: valorFiscal(item.totalFornecedor) ?? totalFornecedorGlobalRateado[indice],
+      }));
       const freteModo = ["valor_total", "por_kg", "gratis", "cif"].includes(
         cotacao.freteModo ?? ""
       )
@@ -1120,7 +1171,7 @@ export const nfCompraRouter = router({
 
       // Para cada item da cotação, buscar histórico de última compra e comparar
       const itensAnalisados = await Promise.all(
-        cotacao.itens.map(async itemCotado => {
+        itensCotados.map(async itemCotado => {
           const tokensBusca = tokensDescricao(itemCotado.descricao).filter(token => token.length >= 3).slice(0, 8);
           const condicoesHistorico = [
             ...(itemCotado.codigo?.trim() ? [eq(nfCompraItens.codigoFornecedor, itemCotado.codigo.trim())] : []),

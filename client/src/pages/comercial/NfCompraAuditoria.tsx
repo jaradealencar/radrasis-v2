@@ -1748,6 +1748,9 @@ export default function NfCompraAuditoria() {
         const linhas = await Promise.all(c.itens.map(async i => {
           const historico = i.materiaPrimaId ? await utils.nfCompra.historicoCotacaoPorMateriaPrima.fetch({ materiaPrimaId: i.materiaPrimaId, fornecedor: c.fornecedor, cnpjFornecedor: c.cnpjFornecedor ?? undefined, precoCotado: Number(i.precoUnitario), unidadeCotada: i.unidade, dataReferencia: /^\d{4}-\d{2}-\d{2}$/.test(c.dataCotacao ?? "") ? c.dataCotacao : undefined, excluirCotacaoId: c.id }) : {};
           return { ...historico, codigo: i.codigo, descricao: i.descricao, quantidade: Number(i.quantidade), unidade: i.unidade, precoUnitario: Number(i.precoUnitario),
+            icmsAliquota: i.icmsAliquota == null ? null : Number(i.icmsAliquota), icmsValor: i.icmsValor == null ? null : Number(i.icmsValor),
+            ipiAliquota: i.ipiAliquota == null ? null : Number(i.ipiAliquota), ipiValor: i.ipiValor == null ? null : Number(i.ipiValor),
+            totalFornecedor: i.totalFornecedor == null ? null : Number(i.totalFornecedor),
             materiaPrimaVinculada: i.materiaPrimaId ? { id: i.materiaPrimaId, nome: i.nomeMateriaPrima, unidadeMubisys: i.unidadeDestino, custoUnitarioMubisys: i.custoMubisys == null ? null : Number(i.custoMubisys) } : null,
             fatorConversaoCotacao: i.fatorConversao == null ? null : Number(i.fatorConversao), unidadeOrigemConversaoCotacao: i.unidadeOrigem, unidadeDestinoConversaoCotacao: i.unidadeDestino, baseCalculoConversaoCotacao: i.formula, origemVinculo: "cotação salva (snapshot)" };
         }));
