@@ -30,26 +30,56 @@ export default function MarketingEstadosNovos({ dataInicial, dataFinal }: { data
   );
   const periodoTexto = `${fmtDate(dataIsoLocal(dataInicial))} a ${fmtDate(dataIsoLocal(dataFinal))}`;
 
-  function conversaoPct(clientes: number, propostas: number): number | null {
-    if (!propostas || propostas === 0) return null;
-    return (clientes / propostas) * 100;
+  function conversaoPct(num: number, den: number): number | null {
+    if (!den || den === 0) return null;
+    return (num / den) * 100;
   }
 
-  if (isLoading) return <p className="text-sm text-muted-foreground">Carregando clientes novos e propostas por estado…</p>;
+  if (isLoading) return <p className="text-sm text-muted-foreground">Carregando desempenho de novos clientes por estado…</p>;
   if (isError || !data) return (
     <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700">
-      <span className="flex items-center gap-2"><AlertTriangle size={16} /> Não foi possível carregar a origem por estado.</span>
+      <span className="flex items-center gap-2"><AlertTriangle size={16} /> Não foi possível carregar o desempenho por estado.</span>
       <Button size="sm" variant="outline" onClick={() => refetch()}><RotateCcw size={14} className="mr-1.5" /> Tentar novamente</Button>
     </div>
   );
 
+  // Junta, por UF, os clientes de primeira compra (pedidos) e as propostas para
+  // clientes novos, já devolvidos juntos pela procedure do servidor.
+  const clientesPorUf = new Map<string, (typeof data.clientesPrimeiraCompra)[number]>();
+  for (const c of data.clientesPrimeiraCompra) clientesPorUf.set(c.uf, c);
+  const propostasPorUf = new Map<string, (typeof data.propostasNovosClientes)[number]>();
+  for (const p of data.propostasNovosClientes) propostasPorUf.set(p.uf, p);
+
+  const ufs = new Set([...clientesPorUf.keys(), ...propostasPorUf.keys()]);
+  const linhas = Array.from(ufs).map(uf => {
+    const c = clientesPorUf.get(uf);
+    const p = propostasPorUf.get(uf);
+    const clientes = c?.clientes ?? 0;
+    const oss = c?.os ?? 0;
+    const faturamento = c?.faturamento ?? 0;
+    const propostas = p?.propostas ?? 0;
+    const clientesConvertidos = p?.clientesConvertidos ?? 0;
+    const valorCotado = p?.valorPropostas ?? 0;
+    const conversao = conversaoPct(clientesConvertidos, propostas);
+    return { uf, clientes, oss, faturamento, propostas, clientesConvertidos, valorCotado, conversao };
+  })
+    .sort((a, b) => b.propostas - a.propostas || b.oss - a.oss || a.uf.localeCompare(b.uf));
+
+  const conversaoTotal = conversaoPct(data.clientesComPropostaAntesDaCompra, data.totalPropostasNovosClientes);
+
   return (
     <div className="space-y-2">
       <p className="text-xs text-muted-foreground">
-        Desempenho de clientes cuja primeira O.S. normal registrada ocorreu no período ({periodoTexto}), calculado pelo histórico local até a última sincronização. A consulta não depende da API do ERP; compras ainda não sincronizadas não entram. O faturamento soma as O.S. normais desses mesmos clientes no intervalo; o investimento de campanha não é rateado por Estado.
+        Desempenho de novos clientes por Estado no período ({periodoTexto}), em uma única tabela: propostas de
+        novos clientes, pedidos (O.S.) de novos clientes, faturamento e taxa de conversão por Estado. O cálculo
+        não depende da API do ERP; compras ainda não sincronizadas não entram.
       </p>
       <div role="note" className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-xs text-slate-700">
-        “Novo cliente” significa primeira O.S. normal encontrada no histórico disponível, que começa em março de 2023. A UF é a registrada no histórico da primeira O.S.; compras anteriores ao início da base e mudanças de endereço não podem ser confirmadas por este relatório.
+        “Novo cliente” significa primeira O.S. normal encontrada no histórico disponível, que começa em março de 2023.
+        A UF é a registrada no histórico da primeira O.S. para os pedidos, e a do endereço da proposta para as
+        propostas; mudanças de endereço não podem ser confirmadas por este relatório. A taxa de conversão é
+        clientes convertidos ÷ propostas de novos clientes. Clientes podem aparecer em UFs diferentes quando os
+        endereços das propostas divergem do histórico da primeira compra; as taxas por UF são independentes nesse caso.
       </div>
       {data.fontesIndisponiveis?.length ? (
         <div role="status" className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900">
@@ -57,138 +87,71 @@ export default function MarketingEstadosNovos({ dataInicial, dataFinal }: { data
           <span>Fontes indisponíveis: {data.fontesIndisponiveis.join(", ")}. A análise pode ficar incompleta ou imprecisa; registros sem UF continuam nos totais correspondentes.</span>
         </div>
       ) : null}
-      <div className="grid gap-4 xl:grid-cols-2">
       <Card>
         <CardHeader className="pb-2">
           <CardTitle className="flex items-center gap-2 text-base">
-            <Users size={17} className="text-blue-600" /> Desempenho dos novos clientes por Estado
+            <Users size={17} className="text-blue-600" /> Desempenho de novos clientes por Estado
           </CardTitle>
           <p className="text-xs text-muted-foreground">
-            Ordenado pelo faturamento. Propostas são vinculadas ao mesmo cliente e só entram se foram emitidas antes da primeira compra, dentro do período. Conversão = clientes com proposta prévia ÷ novos clientes.
+            Propostas de novos clientes, pedidos (O.S.) e taxa de conversão por Estado, em uma única janela.
+            Ordenado por propostas e, empatando, por pedidos.
           </p>
         </CardHeader>
         <CardContent>
-          {data.totalClientesPrimeiraCompra === 0 ? (
-            <p className="text-sm text-muted-foreground">Nenhum cliente de primeira compra identificado no período.</p>
+          {linhas.length === 0 ? (
+            <p className="text-sm text-muted-foreground">Nenhum dado de novos clientes por Estado no período.</p>
           ) : (
             <div className="max-h-96 overflow-auto">
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>Estado da 1ª O.S.</TableHead>
+                    <TableHead>Estado</TableHead>
                     <TableHead className="text-right">Novos clientes</TableHead>
-                    <TableHead className="text-right">O.S. no período</TableHead>
+                    <TableHead className="text-right">Propostas de novos clientes</TableHead>
+                    <TableHead className="text-right">Pedidos (O.S.)</TableHead>
                     <TableHead className="text-right">Faturamento O.S.</TableHead>
-                    <TableHead className="text-right">Média / cliente</TableHead>
-                    <TableHead className="text-right">Clientes com proposta prévia</TableHead>
-                    <TableHead className="text-right">Propostas antes da compra</TableHead>
-                    <TableHead className="text-right">Com proposta (%)</TableHead>
-                    <TableHead className="text-right">Valor cotado antes da compra</TableHead>
+                    <TableHead className="text-right">Clientes convertidos</TableHead>
+                    <TableHead className="text-right">Valor cotado</TableHead>
+                    <TableHead className="text-right">Taxa de conversão</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {data.clientesPrimeiraCompra.map(item => {
-                    const conversao = conversaoPct(item.clientesComPropostaAntesDaCompra, item.clientes);
-                    return (
-                      <TableRow key={item.uf}>
-                        <TableCell>{nomeEstado(item.uf)}</TableCell>
-                        <TableCell className="text-right font-medium">{fmtNum(item.clientes)}</TableCell>
-                        <TableCell className="text-right">{fmtNum(item.os)}</TableCell>
-                        <TableCell className="text-right font-medium">{fmtBrl(item.faturamento)}</TableCell>
-                        <TableCell className="text-right">{fmtBrl(item.ticketMedioPorCliente)}</TableCell>
-                        <TableCell className="text-right">{fmtNum(item.clientesComPropostaAntesDaCompra)}</TableCell>
-                        <TableCell className="text-right">{fmtNum(item.propostasAntesDaCompra)}</TableCell>
-                        <TableCell className="text-right">{conversao == null ? "—" : `${conversao.toFixed(1)}%`}</TableCell>
-                        <TableCell className="text-right">{fmtBrl(item.valorPropostasAntesDaCompra)}</TableCell>
-                      </TableRow>
-                    );
-                  })}
-                  {data.clientesPrimeiraCompraSemUf > 0 && (
-                    <TableRow className="text-muted-foreground">
-                      <TableCell>Sem UF confiável</TableCell>
-                      <TableCell className="text-right">{fmtNum(data.clientesPrimeiraCompraSemUf)}</TableCell>
-                      <TableCell className="text-right">{fmtNum(data.osPrimeiraCompraSemUf)}</TableCell>
-                      <TableCell className="text-right">{fmtBrl(data.faturamentoPrimeiraCompraSemUf)}</TableCell>
-                      <TableCell className="text-right">{fmtBrl(data.clientesPrimeiraCompraSemUf > 0 ? data.faturamentoPrimeiraCompraSemUf / data.clientesPrimeiraCompraSemUf : 0)}</TableCell>
-                      <TableCell className="text-right">{fmtNum(data.clientesComPropostaAntesDaCompraSemUf)}</TableCell>
-                      <TableCell className="text-right">{fmtNum(data.propostasAntesDaCompraSemUf)}</TableCell>
-                      <TableCell className="text-right">{conversaoPct(data.clientesComPropostaAntesDaCompraSemUf, data.clientesPrimeiraCompraSemUf) == null ? "—" : `${conversaoPct(data.clientesComPropostaAntesDaCompraSemUf, data.clientesPrimeiraCompraSemUf)!.toFixed(1)}%`}</TableCell>
-                      <TableCell className="text-right">{fmtBrl(data.valorPropostasAntesDaCompraSemUf)}</TableCell>
+                  {linhas.map(item => (
+                    <TableRow key={item.uf}>
+                      <TableCell>{nomeEstado(item.uf)}</TableCell>
+                      <TableCell className="text-right font-medium">{fmtNum(item.clientes)}</TableCell>
+                      <TableCell className="text-right">{fmtNum(item.propostas)}</TableCell>
+                      <TableCell className="text-right">{fmtNum(item.oss)}</TableCell>
+                      <TableCell className="text-right font-medium">{fmtBrl(item.faturamento)}</TableCell>
+                      <TableCell className="text-right">{fmtNum(item.clientesConvertidos)}</TableCell>
+                      <TableCell className="text-right">{fmtBrl(item.valorCotado)}</TableCell>
+                      <TableCell className="text-right">{item.conversao == null ? "—" : `${item.conversao.toFixed(1)}%`}</TableCell>
                     </TableRow>
-                  )}
+                  ))}
                   <TableRow className="bg-muted/40 font-semibold">
                     <TableCell>Total</TableCell>
                     <TableCell className="text-right">{fmtNum(data.totalClientesPrimeiraCompra)}</TableCell>
+                    <TableCell className="text-right">{fmtNum(data.totalPropostasNovosClientes)}</TableCell>
                     <TableCell className="text-right">{fmtNum(data.totalOsPrimeiraCompra)}</TableCell>
                     <TableCell className="text-right">{fmtBrl(data.faturamentoPrimeiraCompra)}</TableCell>
-                    <TableCell className="text-right">{fmtBrl(data.totalClientesPrimeiraCompra > 0 ? data.faturamentoPrimeiraCompra / data.totalClientesPrimeiraCompra : 0)}</TableCell>
                     <TableCell className="text-right">{fmtNum(data.clientesComPropostaAntesDaCompra)}</TableCell>
-                    <TableCell className="text-right">{fmtNum(data.totalPropostasAntesDaCompra)}</TableCell>
-                    <TableCell className="text-right">{conversaoPct(data.clientesComPropostaAntesDaCompra, data.totalClientesPrimeiraCompra) == null ? "—" : `${conversaoPct(data.clientesComPropostaAntesDaCompra, data.totalClientesPrimeiraCompra)!.toFixed(1)}%`}</TableCell>
-                    <TableCell className="text-right">{fmtBrl(data.valorPropostasAntesDaCompra)}</TableCell>
+                    <TableCell className="text-right">{fmtBrl(data.valorPropostasNovosClientes)}</TableCell>
+                    <TableCell className="text-right">{conversaoTotal == null ? "—" : `${conversaoTotal.toFixed(1)}%`}</TableCell>
                   </TableRow>
                 </TableBody>
               </Table>
             </div>
           )}
           <p className="mt-3 text-xs text-muted-foreground">
-            Faturamento usa valor da O.S. após descontos do ERP; não é lucro. O cruzamento proposta→compra usa o nome normalizado do cliente, pois o histórico não guarda vínculo direto entre número da proposta e número da O.S.
+            Faturamento usa valor da O.S. após descontos do ERP; não é lucro. O cruzamento proposta→compra usa o
+            nome normalizado do cliente, pois o histórico não guarda vínculo direto entre número da proposta e
+            número da O.S.
             {data.clientesPrimeiraCompraSemUf > 0 && ` ${fmtNum(data.clientesPrimeiraCompraSemUf)} ${data.clientesPrimeiraCompraSemUf === 1 ? "cliente" : "clientes"} (${fmtNum(data.osPrimeiraCompraSemUf)} O.S., ${fmtBrl(data.faturamentoPrimeiraCompraSemUf)}) sem UF da primeira compra confiável.`}
-          </p>
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader className="pb-2">
-          <CardTitle className="flex items-center gap-2 text-base">
-            <MapPin size={17} className="text-violet-600" /> Pipeline de propostas para prospects por Estado
-          </CardTitle>
-          <p className="text-xs text-muted-foreground">
-            Ordenado pelo número de propostas. Propostas emitidas no período ({periodoTexto}) antes de qualquer compra válida registrada para o cliente. O Estado vem do endereço da proposta quando disponível.
-          </p>
-        </CardHeader>
-        <CardContent>
-          {data.propostasNovosClientes.length === 0 ? (
-            <p className="text-sm text-muted-foreground">Nenhuma proposta de cliente novo identificada no período.</p>
-          ) : (
-            <div className="max-h-80 overflow-y-auto">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Estado</TableHead>
-                    <TableHead className="text-right">Clientes cotados</TableHead>
-                    <TableHead className="text-right">Propostas</TableHead>
-                    <TableHead className="text-right">Valor cotado</TableHead>
-                    <TableHead className="text-right">Vendas</TableHead>
-                    <TableHead className="text-right">Conversão</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {data.propostasNovosClientes.map(item => {
-                    const conversao = conversaoPct(item.clientesConvertidos, item.clientes);
-                    return (
-                      <TableRow key={item.uf}>
-                        <TableCell>{nomeEstado(item.uf)}</TableCell>
-                        <TableCell className="text-right">{fmtNum(item.clientes)}</TableCell>
-                        <TableCell className="text-right font-medium">{fmtNum(item.propostas)}</TableCell>
-                        <TableCell className="text-right">{fmtBrl(item.valorPropostas)}</TableCell>
-                        <TableCell className="text-right">{fmtNum(item.clientesConvertidos)}</TableCell>
-                        <TableCell className="text-right">{conversao == null ? "—" : `${conversao.toFixed(1)}%`}</TableCell>
-                      </TableRow>
-                    );
-                  })}
-                </TableBody>
-              </Table>
-            </div>
-          )}
-          <p className="mt-3 text-xs text-muted-foreground">
-            {fmtNum(data.totalPropostasNovosClientes)} propostas · {fmtBrl(data.valorPropostasNovosClientes)} no total com valor disponível. O período selecionado considera a data de emissão das propostas. Vendas são clientes cuja primeira compra ocorreu depois de uma proposta do período, observadas até a última sincronização do histórico, mesmo que aconteçam fora do período; vínculo por nome normalizado. Taxa = vendas ÷ clientes cotados. Clientes podem aparecer em UFs diferentes quando os endereços das propostas divergem; as taxas por UF são independentes nesse caso.
-            {data.propostasNovosClientesSemUf > 0 && ` ${fmtNum(data.propostasNovosClientesSemUf)} propostas (${fmtBrl(data.valorPropostasNovosClientesSemUf)}) sem UF confiável.`}
+            {data.propostasNovosClientesSemUf > 0 && ` ${fmtNum(data.propostasNovosClientesSemUf)} ${data.propostasNovosClientesSemUf === 1 ? "proposta" : "propostas"} (${fmtBrl(data.valorPropostasNovosClientesSemUf)}) sem UF confiável.`}
             {data.propostasNovosClientesSemValor > 0 && ` ${fmtNum(data.propostasNovosClientesSemValor)} ${data.propostasNovosClientesSemValor === 1 ? "proposta sem valor disponível." : "propostas sem valor disponível."}`}
           </p>
         </CardContent>
       </Card>
-      </div>
     </div>
   );
 }
