@@ -1509,11 +1509,13 @@ export default function NfCompraAuditoria() {
               <Table className="table-fixed text-[11px] [&_th]:whitespace-normal [&_th]:px-1.5 [&_td]:whitespace-normal [&_td]:break-words [&_td]:p-1.5 [&_td]:align-top">
                 <TableHeader>
                   <TableRow>
-                    <TableHead className="w-[19%]">Item do PDF</TableHead>
-                    <TableHead className="w-[12%] text-right">Cotado</TableHead>
-                    <TableHead className="w-[17%]">Matéria-prima</TableHead>
-                    <TableHead className="w-[15%] text-right">Últimas compras (origem)</TableHead>
-                    <TableHead className="w-[37%] text-right">Cotação × compra anterior × MubiSys — mesma unidade</TableHead>
+                    <TableHead className="w-[18%]">Item do PDF</TableHead>
+                    <TableHead className="w-[16%] text-right">
+                      Preço puro / final simulado
+                    </TableHead>
+                    <TableHead className="w-[16%]">Matéria-prima</TableHead>
+                    <TableHead className="w-[14%] text-right">Últimas compras (origem)</TableHead>
+                    <TableHead className="w-[36%] text-right">Cotação × compra anterior × MubiSys — mesma unidade</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -1580,21 +1582,39 @@ export default function NfCompraAuditoria() {
                             <span className="text-[10px] text-slate-400 font-mono">Cód: {item.codigo}</span>
                           )}
                         </TableCell>
-                        <TableCell className="text-right font-mono text-xs font-bold text-slate-800">
-                          {fmtBrl(item.precoUnitario)}/{item.unidade}
-                          <span className="block font-normal text-[10px]">Qtd.: {fmtNum(item.quantidade, 3)} {item.unidade}</span>
-                          {cotacaoSimulacao?.totalFinal != null &&
-                            cotacaoSimulacao.itens[i] && (
-                              <span className="mt-1 block rounded bg-emerald-50 px-1 py-0.5 text-[10px] font-semibold text-emerald-800">
-                                Final c/ frete + ICMS 10%: {fmtBrl(cotacaoSimulacao.itens[i].custoFinalUnitario)}/{item.unidade}
+                        <TableCell className="text-right">
+                          <div className="space-y-2 font-sans">
+                            <div className="rounded-md border border-slate-200 bg-slate-50 p-2">
+                              <span className="block text-[11px] font-semibold text-slate-500">
+                                Puro · preço original da cotação
                               </span>
-                            )}
-                          {cotacaoSimulacao?.totalFinal == null &&
-                            cotacaoSimulacao?.pendencia === "peso" && (
-                              <span className="mt-1 block text-[10px] font-normal text-amber-700">
-                                Custo final pendente: informe o peso total.
+                              <strong className="block whitespace-nowrap font-mono text-lg leading-6 text-slate-900">
+                                {fmtBrl(item.precoUnitario)}/{item.unidade}
+                              </strong>
+                              <span className="block text-xs font-normal text-slate-600">
+                                Qtd. {fmtNum(item.quantidade, 3)} {item.unidade}
+                                {" · "}
+                                Total puro: {fmtBrl(Number(item.precoUnitario) * Number(item.quantidade))}
                               </span>
-                            )}
+                            </div>
+                            {cotacaoSimulacao?.itens[i] ? (
+                              <div className="rounded-md border border-emerald-200 bg-emerald-50 p-2">
+                                <span className="block text-[11px] font-semibold text-emerald-800">
+                                  Final simulado · frete + ICMS 10%
+                                </span>
+                                <strong className="block whitespace-nowrap font-mono text-lg leading-6 text-emerald-900">
+                                  {fmtBrl(cotacaoSimulacao.itens[i].custoFinalUnitario)}/{item.unidade}
+                                </strong>
+                                <span className="block text-xs font-normal text-emerald-800">
+                                  Total final: {fmtBrl(cotacaoSimulacao.itens[i].custoFinalTotal)}
+                                </span>
+                              </div>
+                            ) : cotacaoSimulacao?.pendencia ? (
+                              <div className="rounded-md border border-amber-200 bg-amber-50 p-2 text-xs font-medium text-amber-800">
+                                Final pendente: informe {cotacaoSimulacao.pendencia === "peso" ? "o peso total" : "o frete"}.
+                              </div>
+                            ) : null}
+                          </div>
                         </TableCell>
                         <TableCell>
                           <div className="space-y-1">

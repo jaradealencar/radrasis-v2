@@ -310,32 +310,42 @@ export function SalvarCotacaoCompra({
       />
       <div className="rounded-lg border border-blue-200 bg-blue-50 p-3 space-y-2">
         <strong className="block text-sm text-slate-800">
-          Simulação do preço final — ICMS 10%
+          Preço puro cotado x preço final — ICMS 10%
         </strong>
-        <div className="grid gap-2 text-xs sm:grid-cols-2 lg:grid-cols-4">
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           <div>
-            <span className="block text-slate-500">Mercadoria</span>
-            <strong>{fmtBrl(simulacao.subtotalMercadoria)}</strong>
+            <span className="block text-xs font-medium text-slate-500">
+              Total puro cotado (sem frete/ICMS)
+            </span>
+            <strong className="mt-1 block text-lg leading-6 text-slate-900">
+              {fmtBrl(simulacao.subtotalMercadoria)}
+            </strong>
           </div>
           <div>
-            <span className="block text-slate-500">Frete calculado</span>
-            <strong>
+            <span className="block text-xs font-medium text-slate-500">
+              Frete calculado
+            </span>
+            <strong className="mt-1 block text-lg leading-6 text-slate-900">
               {simulacao.valorFrete == null
                 ? "Pendente"
                 : fmtBrl(simulacao.valorFrete)}
             </strong>
           </div>
           <div>
-            <span className="block text-slate-500">ICMS (10%)</span>
-            <strong>
+            <span className="block text-xs font-medium text-slate-500">
+              ICMS (10%)
+            </span>
+            <strong className="mt-1 block text-lg leading-6 text-slate-900">
               {simulacao.valorIcms == null
                 ? "Pendente"
                 : fmtBrl(simulacao.valorIcms)}
             </strong>
           </div>
-          <div>
-            <span className="block text-slate-500">Preço final</span>
-            <strong>
+          <div className="rounded-md bg-white/80 p-2 ring-1 ring-blue-200">
+            <span className="block text-xs font-semibold text-emerald-800">
+              Total final com frete + ICMS
+            </span>
+            <strong className="mt-1 block text-2xl leading-7 text-emerald-900">
               {simulacao.totalFinal == null
                 ? "Não calculado"
                 : fmtBrl(simulacao.totalFinal)}
@@ -355,32 +365,60 @@ export function SalvarCotacaoCompra({
             proporcionalmente ao valor cotado.
           </p>
         )}
-        {simulacao.totalFinal != null && (
-          <details className="text-xs">
-            <summary className="cursor-pointer text-blue-700">
-              Conferir preço final por item
-            </summary>
-            <div className="mt-2 space-y-1">
-              {resultado.itens.map((item: any, indice: number) => {
-                const linha = simulacao.itens[indice];
-                return linha ? (
-                  <div
-                    key={`${item.codigo ?? item.descricao}-${indice}`}
-                    className="flex flex-wrap justify-between gap-x-3 border-t border-blue-100 pt-1"
-                  >
-                    <span>
-                      {item.descricao} · {fmtNum(Number(item.quantidade), 3)}{" "}
-                      {item.unidade}
-                    </span>
-                    <strong>
-                      {fmtBrl(linha.custoFinalUnitario)}/{item.unidade}
-                    </strong>
+        <details className="text-sm">
+          <summary className="cursor-pointer font-semibold text-blue-700">
+            Comparar preço puro e preço final por item
+          </summary>
+          <div className="mt-2 space-y-2">
+            {resultado.itens.map((item: any, indice: number) => {
+              const linha = simulacao.itens[indice];
+              const quantidade = Number(item.quantidade);
+              const totalPuro = quantidade * Number(item.precoUnitario);
+              return (
+                <div
+                  key={`${item.codigo ?? item.descricao}-${indice}`}
+                  className="grid gap-2 border-t border-blue-100 pt-2 sm:grid-cols-[minmax(0,1fr)_minmax(260px,1fr)]"
+                >
+                  <span className="self-center text-xs text-slate-600">
+                    {item.descricao} · {fmtNum(quantidade, 3)} {item.unidade}
+                  </span>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div className="rounded border bg-white p-2">
+                      <span className="block text-[11px] font-medium text-slate-500">
+                        Original puro
+                      </span>
+                      <strong className="block text-base text-slate-900">
+                        {fmtBrl(Number(item.precoUnitario))}/{item.unidade}
+                      </strong>
+                      <span className="block text-xs text-slate-600">
+                        Total do item: {fmtBrl(totalPuro)}
+                      </span>
+                    </div>
+                    <div className="rounded border border-emerald-200 bg-emerald-50 p-2">
+                      <span className="block text-[11px] font-medium text-emerald-800">
+                        Final / un. · frete + ICMS
+                      </span>
+                      {linha ? (
+                        <>
+                          <strong className="block text-base text-emerald-900">
+                            {fmtBrl(linha.custoFinalUnitario)}/{item.unidade}
+                          </strong>
+                          <span className="block text-xs text-emerald-800">
+                            Total final do item: {fmtBrl(linha.custoFinalTotal)}
+                          </span>
+                        </>
+                      ) : (
+                        <strong className="block text-sm text-amber-800">
+                          Pendente: informe frete e peso, se for por kg
+                        </strong>
+                      )}
+                    </div>
                   </div>
-                ) : null;
-              })}
-            </div>
-          </details>
-        )}
+                </div>
+              );
+            })}
+          </div>
+        </details>
       </div>
       <div className="flex flex-wrap items-center gap-2">
         <Button
