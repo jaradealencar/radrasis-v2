@@ -203,6 +203,12 @@ existente antes da migração (`master, admin, gestor, vendas, logistica,
 producao, financeiro, empacotamento`, ver `AppRole`/`APP_ROLES` em
 `drizzle/schema.ts`):
 
+- Na Vercel em produção, o `baseURL` e `trustedOrigins` usam o domínio
+  canônico `https://www.radrasis.com`. `VERCEL_URL` aponta para o host do
+  deploy (`*.vercel.app`) e sozinho não cobre o domínio customizado; se o
+  login retornar `Invalid origin`, confira primeiro o domínio recebido e
+  mantenha o canônico explicitamente confiável em `server/_core/auth.ts`.
+
 - **Hash de senha em bcrypt** (`emailAndPassword.password.hash/verify`
   sobrescritos com `bcryptjs`), não o scrypt padrão do Better Auth — mesma
   lib usada em todo o resto do app pra senha admin-provisionada.

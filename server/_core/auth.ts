@@ -22,6 +22,7 @@ function vercelOrigin(host: string | undefined): string | undefined {
 
 const vercelDeploymentOrigin = vercelOrigin(process.env.VERCEL_URL);
 const vercelBranchOrigin = vercelOrigin(process.env.VERCEL_BRANCH_URL);
+const productionAppOrigin = "https://www.radrasis.com";
 
 /** Em Preview, prefere o alias estável da branch ao host exclusivo do deploy. */
 function resolveBaseURL(): string | undefined {
@@ -32,6 +33,7 @@ function resolveBaseURL(): string | undefined {
       process.env.BETTER_AUTH_URL
     );
   }
+  if (process.env.VERCEL_ENV === "production") return productionAppOrigin;
   if (process.env.BETTER_AUTH_URL) return process.env.BETTER_AUTH_URL;
   return vercelDeploymentOrigin;
 }
@@ -45,6 +47,7 @@ export const auth = betterAuth({
   // isto cobre o caso de a requisição chegar pelo domínio de produção
   // enquanto a função roda num deploy de preview.
   trustedOrigins: [
+    ...(process.env.VERCEL_ENV === "production" ? [productionAppOrigin] : []),
     ...(process.env.BETTER_AUTH_URL ? [process.env.BETTER_AUTH_URL] : []),
     ...(vercelDeploymentOrigin ? [vercelDeploymentOrigin] : []),
     ...(vercelBranchOrigin ? [vercelBranchOrigin] : []),
