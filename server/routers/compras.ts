@@ -23,10 +23,14 @@ import {
   comprasOrdemNfs as vinculos,
   comprasCompradores as compradores,
   comprasPoliticas as politicas,
+  fornecedorCompras,
   materiasPrimas,
   nfCompraImportacoes as nfs,
   nfCompraItens as nfItens,
+  suppliers,
 } from "../../drizzle/schema";
+import { simularCustoFinalCotacao } from "../../shared/compras-cotacao-simulacao";
+import { integrarFornecedorDocumento, normalizarNomeFornecedorDocumento } from "../services/fornecedorDocumentos";
 import {
   cotacaoCompraSchema,
   editarOrdemCompraSchema,
@@ -75,6 +79,13 @@ const filtrosSchema = z.object({
 });
 
 const uploadThingDomains = ["ufs.sh", "utfs.io", "uploadthing.com"];
+function identidadeFornecedorCompra(cnpj: string | null, nome: string) {
+  const normalizado = (cnpj ?? "").replace(/\D/g, "");
+  return normalizado.length === 14
+    ? `cnpj:${normalizado}`
+    : `nome:${normalizarNomeFornecedorDocumento(nome) || nome.trim().toUpperCase()}`;
+}
+
 function arquivoUploadThingValido(urlBruta: string, key: string) {
   try {
     const url = new URL(urlBruta);
@@ -165,6 +176,11 @@ export const comprasRouter = router({
       )) {
         throw new TRPCError({ code: "BAD_REQUEST", message: "O PDF original da cotação precisa ter metadados válidos do UploadThing." });
       }
+      await integrarFornecedorDocumento({
+        cnpj: input.cnpjFornecedor ?? null,
+        nome: input.fornecedor,
+        criadoPor: ctx.user.name,
+      });
       const db = await banco();
       return db.transaction(async tx => {
         const [existente] = await tx
@@ -1210,22 +1226,214 @@ export const comprasRouter = router({
       limiteAtingido: cotados.length === 5000 || comprados.length === 5000,
     };
   }),
+  sincronizarCadastroFornecedores: protectedProcedure.mutation(async ({ ctx }) => {
+    const db = await banco();
+    const cotacoesSalvas = await db.select({ fornecedor: cotacoes.fornecedor, cnpjFornecedor: cotacoes.cnpjFornecedor }).from(cotacoes);
+    const unicas = new Map<string, { fornecedor: string; cnpjFornecedor: string | null }>();
+    for (const cotacao of cotacoesSalvas) {
+      const chave = identidadeFornecedorCompra(cotacao.cnpjFornecedor, cotacao.fornecedor);
+      if (!unicas.has(chave)) unicas.set(chave, cotacao);
+    }
+    let cadastrosCriados = 0;
+    for (const cotacao of unicas.values()) {
+      const resultado = await integrarFornecedorDocumento({
+        cnpj: cotacao.cnpjFornecedor,
+        nome: cotacao.fornecedor,
+        criadoPor: ctx.user.name,
+      });
+      if (resultado?.criado) cadastrosCriados++;
+    }
+    return { fornecedoresSincronizados: unicas.size, cadastrosCriados };
+  }),
   indicadoresFornecedores: protectedProcedure.query(async () => {
     const db = await banco();
-    const listaOrdens = await db
-      .select({ ordem: ordens, fornecedor: cotacoes.fornecedor, cnpj: cotacoes.cnpjFornecedor })
-      .from(ordens)
-      .innerJoin(cotacoes, eq(cotacoes.id, ordens.cotacaoId))
-      .where(isNull(ordens.excluidaEm));
+    const [listaOrdens, cotacoesSalvas, cadastroFornecedores, comprasCadastro, mpConciliadas] = await Promise.all([
+      db
+        .select({ ordem: ordens, fornecedor: cotacoes.fornecedor, cnpj: cotacoes.cnpjFornecedor })
+        .from(ordens)
+        .innerJoin(cotacoes, eq(cotacoes.id, ordens.cotacaoId))
+        .where(isNull(ordens.excluidaEm)),
+      db.select().from(cotacoes).orderBy(desc(cotacoes.dataCotacao), desc(cotacoes.id)),
+      db.select().from(suppliers),
+      db.select({ fornecedorId: fornecedorCompras.fornecedorId }).from(fornecedorCompras),
+      db
+        .select({ total: sql<number>`count(distinct ${nfItens.materiaPrimaId})` })
+        .from(nfItens)
+        .innerJoin(nfs, eq(nfs.id, nfItens.importacaoId))
+        .where(and(
+          eq(nfs.status, "concluida"),
+          sql`${nfItens.materiaPrimaId} is not null`,
+          sql`${nfItens.quantidadeErp} > 0`,
+          sql`${nfItens.unidadeErp} is not null`,
+          sql`${nfItens.custoRealErp} > 0`,
+        )),
+    ]);
+
+    const digitos = (valor: string | null | undefined) => (valor ?? "").replace(/\D/g, "");
+    const porCnpj = new Map<string, typeof cadastroFornecedores>();
+    const porNome = new Map<string, typeof cadastroFornecedores>();
+    for (const fornecedor of cadastroFornecedores) {
+      const cnpj = digitos(fornecedor.nfeCnpj);
+      if (cnpj.length === 14) porCnpj.set(cnpj, [...(porCnpj.get(cnpj) ?? []), fornecedor]);
+      const nomes = [fornecedor.name, fornecedor.company, fornecedor.nfeRazaoSocial, fornecedor.nfeNomeFantasia];
+      for (const nome of nomes) {
+        if (!nome) continue;
+        const chave = normalizarNomeFornecedorDocumento(nome);
+        if (chave) porNome.set(chave, [...(porNome.get(chave) ?? []), fornecedor]);
+      }
+    }
+    const localizarCadastro = (cnpjFornecedor: string | null, nomeFornecedor: string) => {
+      const cnpj = digitos(cnpjFornecedor);
+      if (cnpj.length === 14) {
+        const exatos = porCnpj.get(cnpj) ?? [];
+        if (exatos.length === 1) return exatos[0];
+        if (exatos.length > 1) return null;
+      }
+      const nome = normalizarNomeFornecedorDocumento(nomeFornecedor);
+      const candidatos = [...new Map((porNome.get(nome) ?? [])
+        .filter(s => !cnpj || !s.nfeCnpj || digitos(s.nfeCnpj) === cnpj)
+        .map(s => [s.id, s])).values()];
+      return candidatos.length === 1 ? candidatos[0] : null;
+    };
+    const fornecedoresDasCotacoes = new Map<string, { fornecedor: string; cnpj: string | null; cadastro: typeof cadastroFornecedores[number] | null }>();
+    for (const cotacao of cotacoesSalvas) {
+      const chave = identidadeFornecedorCompra(cotacao.cnpjFornecedor, cotacao.fornecedor);
+      if (!fornecedoresDasCotacoes.has(chave)) {
+        fornecedoresDasCotacoes.set(chave, {
+          fornecedor: cotacao.fornecedor,
+          cnpj: cotacao.cnpjFornecedor,
+          cadastro: localizarCadastro(cotacao.cnpjFornecedor, cotacao.fornecedor),
+        });
+      }
+    }
+    const idsFornecedoresIntegrados = new Set(
+      [...fornecedoresDasCotacoes.values()].flatMap(f => f.cadastro ? [f.cadastro.id] : [])
+    );
+
+    const cotacaoIds = cotacoesSalvas.map(c => c.id);
+    const itensDasCotacoes = cotacaoIds.length
+      ? await db.select().from(itens).where(inArray(itens.cotacaoId, cotacaoIds)).orderBy(itens.id)
+      : [];
+    const itensPorCotacao = new Map<number, typeof itensDasCotacoes>();
+    for (const linha of itensDasCotacoes) itensPorCotacao.set(linha.cotacaoId, [...(itensPorCotacao.get(linha.cotacaoId) ?? []), linha]);
+
+    const rankingMaisRecentePorFornecedor = new Map<string, {
+      cotacaoId: number;
+      fornecedor: string;
+      cnpj: string | null;
+      cadastroFornecedorId: number | null;
+      cadastroFornecedorNome: string | null;
+      cadastroConcluido: boolean | null;
+      dataCotacao: string;
+      validadeDias: number | null;
+      fretePorKg: number;
+      percentualFretePrecoFinalMp: number | null;
+      materiasPrimas: Array<{
+        materiaPrimaId: number;
+        nome: string;
+        unidade: string;
+        precoFinalUnitario: number;
+        freteUnitario: number;
+        percentualFretePrecoFinal: number;
+      }>;
+    }>();
+    let cotacoesSemPesoParaFreteKg = 0;
+    for (const cotacao of cotacoesSalvas) {
+      const linhas = itensPorCotacao.get(cotacao.id) ?? [];
+      const modo = (cotacao.freteModo ?? "valor_total") as "valor_total" | "por_kg" | "gratis";
+      const peso = cotacao.pesoFreteKg == null ? null : Number(cotacao.pesoFreteKg);
+      let informado: number | null = modo === "gratis"
+        ? 0
+        : cotacao.freteValorInformado == null
+          ? modo === "por_kg"
+            ? peso != null && peso > 0 && cotacao.frete != null ? Number(cotacao.frete) / peso : null
+            : cotacao.frete == null ? null : Number(cotacao.frete)
+          : Number(cotacao.freteValorInformado);
+      const freteCalculado = informado == null
+        ? null
+        : calcularFreteCompra(modo, informado, peso).total;
+      let fretePorKg: number | null = null;
+      if (modo === "gratis") fretePorKg = 0;
+      else if (modo === "por_kg" && informado != null) fretePorKg = informado;
+      else if (modo === "valor_total" && freteCalculado != null && peso != null && peso > 0) fretePorKg = freteCalculado / peso;
+      if (fretePorKg == null && modo === "valor_total" && informado != null && !(peso != null && peso > 0)) cotacoesSemPesoParaFreteKg++;
+      if (fretePorKg == null) continue;
+
+      const simulacao = simularCustoFinalCotacao({
+        itens: linhas.map(linha => ({
+          quantidade: Number(linha.quantidade),
+          unidade: linha.unidade,
+          precoUnitario: Number(linha.precoUnitario),
+        })),
+        freteModo: modo,
+        valorFreteInformado: informado,
+        pesoTotalKg: peso,
+      });
+      const partesPorMp = new Map<number, {
+        nome: string;
+        unidade: string;
+        quantidadeDestino: number;
+        totalFinal: number;
+        frete: number;
+      }>();
+      linhas.forEach((linha, indice) => {
+        const materiaPrimaId = linha.materiaPrimaId;
+        const destino = linha.unidadeDestino;
+        const fatorInformado = linha.fatorConversao == null ? null : Number(linha.fatorConversao);
+        const fator = fatorInformado ?? (destino && unidadeConsumo(linha.unidade) === unidadeConsumo(destino) ? 1 : null);
+        const quantidade = Number(linha.quantidade);
+        const custo = simulacao.itens[indice];
+        if (!materiaPrimaId || !destino || !fator || !(fator > 0) || !(quantidade > 0) || !custo || !(custo.custoFinalTotal > 0)) return;
+        const atual = partesPorMp.get(materiaPrimaId) ?? {
+          nome: linha.nomeMateriaPrima ?? linha.descricao,
+          unidade: destino,
+          quantidadeDestino: 0,
+          totalFinal: 0,
+          frete: 0,
+        };
+        atual.quantidadeDestino += quantidade * fator;
+        atual.totalFinal += custo.custoFinalTotal;
+        atual.frete += custo.rateioFrete;
+        partesPorMp.set(materiaPrimaId, atual);
+      });
+      const materiasPrimasDaCotacao = [...partesPorMp.entries()].map(([materiaPrimaId, mp]) => ({
+        materiaPrimaId,
+        nome: mp.nome,
+        unidade: mp.unidade,
+        precoFinalUnitario: mp.quantidadeDestino > 0 ? Number((mp.totalFinal / mp.quantidadeDestino).toFixed(6)) : 0,
+        freteUnitario: mp.quantidadeDestino > 0 ? Number((mp.frete / mp.quantidadeDestino).toFixed(6)) : 0,
+        percentualFretePrecoFinal: mp.totalFinal > 0 ? Number((mp.frete / mp.totalFinal * 100).toFixed(2)) : 0,
+      }));
+      const totalFinalMp = [...partesPorMp.values()].reduce((soma, mp) => soma + mp.totalFinal, 0);
+      const totalFreteMp = [...partesPorMp.values()].reduce((soma, mp) => soma + mp.frete, 0);
+      const chave = identidadeFornecedorCompra(cotacao.cnpjFornecedor, cotacao.fornecedor);
+      if (rankingMaisRecentePorFornecedor.has(chave)) continue;
+      const cadastro = localizarCadastro(cotacao.cnpjFornecedor, cotacao.fornecedor);
+      rankingMaisRecentePorFornecedor.set(chave, {
+        cotacaoId: cotacao.id,
+        fornecedor: cotacao.fornecedor,
+        cnpj: cotacao.cnpjFornecedor,
+        cadastroFornecedorId: cadastro?.id ?? null,
+        cadastroFornecedorNome: cadastro?.company || cadastro?.name || null,
+        cadastroConcluido: cadastro?.cadastroConcluido ?? null,
+        dataCotacao: cotacao.dataCotacao,
+        validadeDias: cotacao.validadeDias,
+        fretePorKg: Number(fretePorKg.toFixed(4)),
+        percentualFretePrecoFinalMp: totalFinalMp > 0 ? Number((totalFreteMp / totalFinalMp * 100).toFixed(2)) : null,
+        materiasPrimas: materiasPrimasDaCotacao,
+      });
+    }
+
     const ids = listaOrdens.map(linha => linha.ordem.id);
-    if (!ids.length) return [];
-    const recebimentos = await db.select().from(comprasOrdemRecebimentos).where(inArray(comprasOrdemRecebimentos.ordemId, ids));
-    const nfVinculadas = await db
+    const recebimentos = ids.length
+      ? await db.select().from(comprasOrdemRecebimentos).where(inArray(comprasOrdemRecebimentos.ordemId, ids))
+      : [];
+    const nfVinculadas = ids.length ? await db
       .select({ ordemId: vinculos.ordemId, item: nfItens })
       .from(vinculos)
       .innerJoin(nfs, eq(nfs.id, vinculos.importacaoId))
       .innerJoin(nfItens, eq(nfItens.importacaoId, nfs.id))
-      .where(and(inArray(vinculos.ordemId, ids), eq(nfs.status, "concluida")));
+      .where(and(inArray(vinculos.ordemId, ids), eq(nfs.status, "concluida"))) : [];
     const porOrdemRecebimento = new Map<number, typeof recebimentos>();
     for (const recebimento of recebimentos) porOrdemRecebimento.set(recebimento.ordemId, [...(porOrdemRecebimento.get(recebimento.ordemId) ?? []), recebimento]);
     const nfsPorOrdem = new Map<number, typeof nfVinculadas>();
@@ -1299,7 +1507,7 @@ export const comprasRouter = router({
       }
       agregados.set(chave, atual);
     }
-    return [...agregados.values()].map(a => ({
+    const fornecedores = [...agregados.values()].map(a => ({
       fornecedor: a.fornecedor,
       cnpj: a.cnpj,
       quantidadeOrdens: a.quantidadeOrdens,
@@ -1312,6 +1520,21 @@ export const comprasRouter = router({
       ordensComDivergenciaNf: a.ordensComDivergenciaNf,
       ordensComPrazo: a.ordensComPrazo,
     })).sort((a, b) => b.valorComprado - a.valorComprado);
+    return {
+      resumo: {
+        materiasPrimasConciliadas: Number(mpConciliadas[0]?.total ?? 0),
+        fornecedoresCadastrados: cadastroFornecedores.length,
+        fornecedoresComCompraRegistrada: new Set(comprasCadastro.map(c => c.fornecedorId)).size,
+        documentosDeCompraNoCadastro: comprasCadastro.length,
+        fornecedoresNasCotacoes: fornecedoresDasCotacoes.size,
+        fornecedoresVinculadosAoCadastro: idsFornecedoresIntegrados.size,
+        fornecedoresSemCadastro: [...fornecedoresDasCotacoes.values()].filter(f => !f.cadastro).length,
+        cadastrosPendentes: cadastroFornecedores.filter(f => !f.cadastroConcluido).length,
+      },
+      rankingFretePorKg: [...rankingMaisRecentePorFornecedor.values()].sort((a, b) => b.fretePorKg - a.fretePorKg || a.fornecedor.localeCompare(b.fornecedor, "pt-BR")),
+      cotacoesSemPesoParaFreteKg,
+      fornecedores,
+    };
   }),
   auditarOrdem: protectedProcedure
     .input(z.object({ id: z.number().int().positive() }))

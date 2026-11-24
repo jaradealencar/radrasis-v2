@@ -1093,6 +1093,7 @@ export function ComprasHistorico({
   const salvarPolitica = trpc.compras.salvarPoliticaAprovacao.useMutation();
   const aprovarOrdem = trpc.compras.aprovarOrdem.useMutation();
   const indicadoresFornecedores = trpc.compras.indicadoresFornecedores.useQuery(undefined, { enabled: aba === "fornecedores" });
+  const sincronizarCadastroFornecedores = trpc.compras.sincronizarCadastroFornecedores.useMutation();
   useEffect(() => {
     if (politicaAprovacao.data) setLimiteAprovacaoInput(politicaAprovacao.data.limiteAprovacao == null ? "" : String(politicaAprovacao.data.limiteAprovacao).replace(".", ","));
   }, [politicaAprovacao.data?.limiteAprovacao]);
@@ -1192,6 +1193,13 @@ export function ComprasHistorico({
       await aprovarOrdem.mutateAsync({ id });
       await Promise.all([ordens.refetch(), utils.compras.listarOrdens.invalidate()]);
       toast.success(`Ordem OC-${id} aprovada.`);
+    } catch (e) { erro(e); }
+  };
+  const sincronizarFornecedores = async () => {
+    try {
+      const resultado = await sincronizarCadastroFornecedores.mutateAsync();
+      await indicadoresFornecedores.refetch();
+      toast.success(`${resultado.fornecedoresSincronizados} fornecedores sincronizados; ${resultado.cadastrosCriados} cadastros novos criados.`);
     } catch (e) { erro(e); }
   };
   const carregarComparacao = async () => {
@@ -1798,21 +1806,124 @@ export function ComprasHistorico({
             <p className="text-sm text-red-600">{indicadoresFornecedores.error.message}</p>
           ) : (
             <>
-              <div className="grid gap-2 sm:grid-cols-2">
-                <KpiCard label="Fornecedores com ordens" value={indicadoresFornecedores.data?.length ?? 0} />
-                <KpiCard label="Valor líquido em ordens" value={fmtBrl((indicadoresFornecedores.data ?? []).reduce((s, f) => s + f.valorComprado, 0))} />
+              <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
+                <KpiCard
+                  label="Matérias-primas conciliadas"
+                  value={indicadoresFornecedores.data?.resumo.materiasPrimasConciliadas ?? 0}
+                  sub="Vínculo válido em NF concluída"
+                  tooltip="Conta MPs distintas que aparecem em NF concluída com quantidade, unidade de consumo e custo final válidos."
+                />
+                <KpiCard
+                  label="Fornecedores cadastrados"
+                  value={indicadoresFornecedores.data?.resumo.fornecedoresCadastrados ?? 0}
+                  sub={`${indicadoresFornecedores.data?.resumo.cadastrosPendentes ?? 0} com cadastro a completar`}
+                />
+                <KpiCard
+                  label="Fornecedores nas cotações"
+                  value={indicadoresFornecedores.data?.resumo.fornecedoresNasCotacoes ?? 0}
+                  sub={`${indicadoresFornecedores.data?.resumo.fornecedoresVinculadosAoCadastro ?? 0} vinculados ao cadastro`}
+                  tooltip="O vínculo usa CNPJ e, quando ele não existe, nome normalizado sem ambiguidade."
+                />
+                <KpiCard
+                  label="Fornecedores com compra registrada"
+                  value={indicadoresFornecedores.data?.resumo.fornecedoresComCompraRegistrada ?? 0}
+                  sub={`${indicadoresFornecedores.data?.resumo.documentosDeCompraNoCadastro ?? 0} NFs no cadastro de fornecedores`}
+                />
+                <KpiCard
+                  label="Fornecedores com ordens"
+                  value={indicadoresFornecedores.data?.fornecedores.length ?? 0}
+                />
+                <KpiCard
+                  label="Valor líquido em ordens"
+                  value={fmtBrl((indicadoresFornecedores.data?.fornecedores ?? []).reduce((s, f) => s + f.valorComprado, 0))}
+                />
               </div>
+              {(indicadoresFornecedores.data?.resumo.fornecedoresSemCadastro ?? 0) > 0 ? (
+                <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-950">
+                  <p>
+                    {indicadoresFornecedores.data?.resumo.fornecedoresSemCadastro} fornecedor(es) das cotações ainda não estão vinculados ao cadastro. A sincronização cria ou encontra o cadastro sem registrar uma compra; somente uma NF identificada entra como compra.
+                  </p>
+                  <Button size="sm" variant="outline" disabled={sincronizarCadastroFornecedores.isPending} onClick={() => void sincronizarFornecedores()}>
+                    {sincronizarCadastroFornecedores.isPending ? "Sincronizando..." : "Sincronizar cadastro"}
+                  </Button>
+                </div>
+              ) : (
+                <p className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-900">
+                  Integração ativa: todos os fornecedores das cotações estão vinculados ao cadastro. Cotações salvas também criam ou localizam o fornecedor automaticamente.
+                </p>
+              )}
               <p className="text-xs text-slate-500">
                 Indicadores calculados dos registros disponíveis. Prazo no prazo só considera ordens com data prevista preenchida; divergência de NF só é comparada quando há recebimento físico completo e unidade compatível.
               </p>
-              {!indicadoresFornecedores.data?.length ? <Empty><p>Registre ordens e recebimentos para formar o histórico de fornecedores.</p></Empty> : (
+              <section className="space-y-2 rounded-lg border bg-white p-3">
+                <div>
+                  <h3 className="font-semibold">Fornecedores com maior frete por kg</h3>
+                  <p className="text-xs text-slate-600">
+                    Usa a cotação mais recente por fornecedor com tarifa ou peso suficiente para calcular R$/kg. A participação é frete rateado ÷ preço final da MP (mercadoria + frete + ICMS simulado de 10%).
+                  </p>
+                </div>
+                {(indicadoresFornecedores.data?.cotacoesSemPesoParaFreteKg ?? 0) > 0 && (
+                  <p className="text-xs text-amber-800">
+                    {indicadoresFornecedores.data?.cotacoesSemPesoParaFreteKg} cotação(ões) com frete total sem peso não entram no ranking por kg.
+                  </p>
+                )}
+                {!indicadoresFornecedores.data?.rankingFretePorKg.length ? (
+                  <Empty><p>Não há cotações com base suficiente para comparar o frete por kg.</p></Empty>
+                ) : (
+                  <Table className={compacta}>
+                    <TableHeader><TableRow>
+                      <TableHead>Fornecedor</TableHead>
+                      <TableHead>Cotação mais recente com frete/kg</TableHead>
+                      <TableHead>Frete (R$/kg)</TableHead>
+                      <TableHead>Frete sobre preço final da MP</TableHead>
+                      <TableHead>Preço final e participação por MP</TableHead>
+                      <TableHead>Cadastro</TableHead>
+                    </TableRow></TableHeader>
+                    <TableBody>{indicadoresFornecedores.data?.rankingFretePorKg.map(f => (
+                      <TableRow key={f.cnpj || f.fornecedor}>
+                        <TableCell>
+                          <strong>{f.fornecedor}</strong>
+                          {f.cnpj && <span className="block text-xs text-slate-500">{f.cnpj}</span>}
+                        </TableCell>
+                        <TableCell>
+                          #{f.cotacaoId} · {fmtDate(f.dataCotacao + "T12:00:00")}
+                          <span className="block text-xs text-slate-500">
+                            Validade: {f.validadeDias == null ? "não informada" : `${f.validadeDias} dias`}
+                          </span>
+                        </TableCell>
+                        <TableCell className="font-semibold">{fmtBrl(f.fretePorKg)} / kg</TableCell>
+                        <TableCell className="font-semibold">
+                          {f.percentualFretePrecoFinalMp == null ? "Sem peso ou MP conciliada" : `${fmtNum(f.percentualFretePrecoFinalMp, 2)}%`}
+                        </TableCell>
+                        <TableCell>
+                          {f.materiasPrimas.length ? f.materiasPrimas.map(mp => (
+                            <div key={mp.materiaPrimaId} className="border-b py-1 last:border-b-0">
+                              <strong>{mp.nome}</strong>
+                              <span className="block text-xs text-slate-600">
+                                Final {fmtBrl(mp.precoFinalUnitario)}/{mp.unidade} · frete {fmtBrl(mp.freteUnitario)}/{mp.unidade} · {fmtNum(mp.percentualFretePrecoFinal, 2)}%
+                              </span>
+                            </div>
+                          )) : <span className="text-slate-500">Sem MP conciliada na cotação</span>}
+                        </TableCell>
+                        <TableCell>
+                          {f.cadastroFornecedorId == null ? <span className="text-red-700">Sem vínculo</span> : f.cadastroConcluido
+                            ? <span className="text-emerald-700">Cadastrado</span>
+                            : <span className="text-amber-700">Cadastro incompleto</span>}
+                          {f.cadastroFornecedorNome && <span className="block text-xs text-slate-500">{f.cadastroFornecedorNome}</span>}
+                        </TableCell>
+                      </TableRow>
+                    ))}</TableBody>
+                  </Table>
+                )}
+              </section>
+              {!indicadoresFornecedores.data?.fornecedores.length ? <Empty><p>Registre ordens e recebimentos para formar o histórico de fornecedores.</p></Empty> : (
                 <Table className={compacta}>
                   <TableHeader><TableRow>
                     <TableHead>Fornecedor</TableHead><TableHead>Ordens</TableHead><TableHead>Valor líquido</TableHead>
                     <TableHead>Descontos</TableHead><TableHead>1º recebimento (dias)</TableHead><TableHead>Entregas no prazo</TableHead>
                     <TableHead>Recebimentos com recusa</TableHead><TableHead>Ordens com diferença NF</TableHead>
                   </TableRow></TableHeader>
-                  <TableBody>{indicadoresFornecedores.data?.map(f => <TableRow key={f.cnpj || f.fornecedor}>
+                  <TableBody>{indicadoresFornecedores.data?.fornecedores.map(f => <TableRow key={f.cnpj || f.fornecedor}>
                     <TableCell><strong>{f.fornecedor}</strong>{f.cnpj && <span className="block text-slate-500">{f.cnpj}</span>}</TableCell>
                     <TableCell>{f.quantidadeOrdens}</TableCell><TableCell>{fmtBrl(f.valorComprado)}</TableCell><TableCell>{fmtBrl(f.descontos)}</TableCell>
                     <TableCell>{f.prazoMedioPrimeiroRecebimentoDias == null ? "Sem registros" : `${fmtNum(f.prazoMedioPrimeiroRecebimentoDias, 1)} dias`}</TableCell>
