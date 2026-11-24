@@ -1,10 +1,38 @@
 import { describe, expect, it } from "vitest";
-import { resumirEstadosNovos } from "../services/marketingFinanceiroEstados";
+import { ehClienteNovoPuroNoMes, resumirEstadosNovos } from "../services/marketingFinanceiroEstados";
 
 const data = (value: string) => new Date(`${value}T12:00:00.000Z`);
 
 describe("marketingFinanceiroEstados", () => {
-  it("cruza primeira compra e propostas anteriores por cliente sem contar proposta posterior ou no mesmo instante", () => {
+  it("classifica cliente novo puro por mês e respeita override recorrente", () => {
+    const mesOutubro = 2026 * 12 + 9;
+    expect(ehClienteNovoPuroNoMes(mesOutubro, null)).toBe(true);
+    expect(ehClienteNovoPuroNoMes(mesOutubro, mesOutubro)).toBe(true);
+    expect(ehClienteNovoPuroNoMes(mesOutubro, mesOutubro - 1)).toBe(false);
+    expect(ehClienteNovoPuroNoMes(mesOutubro, null, "recorrente")).toBe(false);
+    expect(ehClienteNovoPuroNoMes(mesOutubro, mesOutubro - 1, "novo")).toBe(false);
+  });
+
+  it("distribui cotações do mês e vendas pela UF de cada O.S.", () => {
+    const resumo = resumirEstadosNovos([{
+      clienteKey: "cliente",
+      estado: "MT",
+      dataPrimeiraCompra: data("2026-10-20"),
+      ordens: [
+        { chave: "os:1", estado: "SP", valor: 1200 },
+        { chave: "os:2", estado: "MT", valor: 800 },
+      ],
+    }], []);
+
+    expect(resumo.clientesPrimeiraCompra).toEqual([
+      { uf: "SP", clientes: 0, os: 1, faturamento: 1200, ticketMedioPorCliente: 0, clientesComPropostaAntesDaCompra: 0, propostasAntesDaCompra: 0, valorPropostasAntesDaCompra: 0 },
+      { uf: "MT", clientes: 1, os: 1, faturamento: 800, ticketMedioPorCliente: 800, clientesComPropostaAntesDaCompra: 0, propostasAntesDaCompra: 0, valorPropostasAntesDaCompra: 0 },
+    ]);
+    expect(resumo.totalOsPrimeiraCompra).toBe(2);
+    expect(resumo.faturamentoPrimeiraCompra).toBe(2000);
+  });
+
+  it("cruza primeiras compras e cotações na mesma coorte mensal, sem tratar pedidos do mesmo mês como compras anteriores", () => {
     const resumo = resumirEstadosNovos([
       {
         clienteKey: "cliente um",
@@ -32,7 +60,7 @@ describe("marketingFinanceiroEstados", () => {
       // Mesmo número: deve contar uma vez mesmo se o cache repetir ou divergir a UF.
       { id: 2, orcNumero: "P-1", clienteKey: "cliente um", estado: "SP", dataProposta: data("2026-10-05"), dataPrimeiraCompra: data("2026-10-20"), valor: 90000 },
       { id: 3, orcNumero: "P-2", clienteKey: "cliente um", estado: "SP", dataProposta: data("2026-10-21"), dataPrimeiraCompra: data("2026-10-20"), valor: 7000 },
-      // No mesmo dia sem horário confiável não prova que a proposta veio antes da compra.
+      // Mesmo dia: pela regra mensal, a cotação continua na coorte pura do mês.
       { id: 4, orcNumero: "P-3", clienteKey: "cliente dois", estado: "MT", dataProposta: data("2026-10-23"), dataPrimeiraCompra: data("2026-10-23"), valor: 2000 },
       { id: 5, orcNumero: "P-4", clienteKey: "cliente sem uf", estado: null, dataProposta: data("2026-10-10"), dataPrimeiraCompra: data("2026-10-24"), valor: 500 },
       { id: 6, orcNumero: "P-5", clienteKey: "prospect sem compra", estado: "PR", dataProposta: data("2026-10-12"), dataPrimeiraCompra: null, valor: 800 },
@@ -63,11 +91,12 @@ describe("marketingFinanceiroEstados", () => {
     expect(resumo.valorPropostasAntesDaCompra).toBe(4500);
 
     expect(resumo.propostasNovosClientes).toEqual([
-      { uf: "MT", propostas: 1, clientes: 1, clientesConvertidos: 1, valorPropostas: 4000, propostasSemValor: 0 },
+      { uf: "MT", propostas: 2, clientes: 2, clientesConvertidos: 1, valorPropostas: 6000, propostasSemValor: 0 },
+      { uf: "SP", propostas: 1, clientes: 1, clientesConvertidos: 0, valorPropostas: 7000, propostasSemValor: 0 },
       { uf: "PR", propostas: 1, clientes: 1, clientesConvertidos: 0, valorPropostas: 800, propostasSemValor: 0 },
     ]);
-    expect(resumo.totalPropostasNovosClientes).toBe(4);
-    expect(resumo.valorPropostasNovosClientes).toBe(6300);
+    expect(resumo.totalPropostasNovosClientes).toBe(6);
+    expect(resumo.valorPropostasNovosClientes).toBe(15300);
     expect(resumo.propostasNovosClientesSemUf).toBe(2);
     expect(resumo.valorPropostasNovosClientesSemUf).toBe(1500);
   });

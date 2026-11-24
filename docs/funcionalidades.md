@@ -310,13 +310,14 @@ semáforo de prazo, **quarentena anti-spam por telefone**, pós-venda por data d
 (`/api/v1/campaigns/:id/log-send`, `/api/v1/contacts/check-quarantine`). Detalhes em `docs/campanhas-whatsapp.md`.
 
 ### Desempenho de novos clientes por Estado
-No ROI Marketing, distribui cotações para novos clientes por UF da proposta e pedidos/faturamento pela UF da primeira
-O.S. normal, com total geral e média por Estado. A conversão compara empresas únicas cotadas com empresas cuja primeira
-compra foi localizada depois da cotação; a contagem de cotações permanece separada da contagem de empresas. O
-cruzamento usa o nome normalizado, pois o histórico não fornece uma chave direta proposta→O.S. O relatório usa apenas o
-histórico local, sem depender da API do ERP; compras ainda não sincronizadas não entram. O histórico disponível começa
-em março de 2023, UF pode estar ausente ou desatualizada e investimento de campanha não é rateado por Estado; esses
-valores não representam lucro ou ROI estadual.
+No ROI Marketing, distribui cotações pela UF da proposta e O.S./faturamento pela UF de cada pedido, com total geral e
+média por Estado. A Taxa Conv. Novos segue a Performance Comercial: O.S. de clientes sem compra em meses anteriores ÷
+cotações desses clientes, agrupadas por mês; clientes marcados manualmente como recorrentes são excluídos. Cada O.S.
+conta como venda, e compras posteriores em meses seguintes não entram na família de novos puros. O cruzamento usa o
+nome normalizado, pois o histórico não fornece uma chave direta proposta→O.S. O relatório usa apenas o histórico local,
+sem depender da API do ERP; compras ainda não sincronizadas não entram. O histórico disponível começa em março de 2023,
+UF pode estar ausente ou desatualizada e investimento de campanha não é rateado por Estado; esses valores não
+representam lucro ou ROI estadual.
 
 ---
 

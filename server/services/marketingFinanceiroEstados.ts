@@ -6,12 +6,14 @@ const UFS_VALIDAS = new Set([
 export interface OrdemClientePrimeiraCompraEstado {
   chave: string;
   valor: number;
+  estado?: string | null;
 }
 
 export interface ClientePrimeiraCompraEstado {
   clienteKey: string;
   estado: string | null;
   dataPrimeiraCompra: Date;
+  mesPrimeiraCompra?: number | null;
   ordens: OrdemClientePrimeiraCompraEstado[];
 }
 
@@ -21,6 +23,7 @@ export interface PropostaClienteNovoEstado {
   clienteKey: string;
   estado: string | null;
   dataProposta: Date;
+  mesReferencia?: number;
   dataPrimeiraCompra: Date | null;
   valor: number | null;
 }
@@ -34,10 +37,25 @@ function arredondar(valor: number): number {
   return Math.round((valor + Number.EPSILON) * 100) / 100;
 }
 
-/** Resume o desempenho de clientes cuja primeira O.S. normal ocorreu no
- * período. Propostas são vinculadas ao comprador pela chave de empresa
- * normalizada e só contam como precedentes quando emitidas antes da primeira
- * compra. O vínculo é por cliente, não por uma relação proposta→O.S. do ERP. */
+/** Repete a classificação mensal da Performance Comercial para o segmento puro:
+ * clientes sem compra em meses anteriores. Todas as vendas da primeira compra
+ * no mês contam como pedidos novos, inclusive se houver mais de uma O.S. */
+export function ehClienteNovoPuroNoMes(
+  mesReferencia: number,
+  mesPrimeiraCompra: number | null,
+  overrideStatus: "novo" | "recorrente" | null = null,
+): boolean {
+  return overrideStatus !== "recorrente"
+    && (mesPrimeiraCompra == null || mesPrimeiraCompra >= mesReferencia);
+}
+
+function indiceMes(data: Date): number {
+  return data.getFullYear() * 12 + data.getMonth();
+}
+
+/** Resume cotações e O.S. de clientes puros novos já classificados por mês.
+ * Pedidos e faturamento são distribuídos pela UF de cada O.S.; cotações usam a
+ * UF registrada para a proposta. O vínculo entre os eventos usa a empresa. */
 export function resumirEstadosNovos(
   clientes: ClientePrimeiraCompraEstado[],
   propostas: PropostaClienteNovoEstado[],
@@ -62,7 +80,7 @@ export function resumirEstadosNovos(
     const uf = normalizarUf(cliente.estado);
     const destino = uf ?? "";
     if (!uf) clientesSemUf.add(chave);
-    const resumo = vendasPorUf.get(destino) ?? {
+    const resumoCliente = vendasPorUf.get(destino) ?? {
       clientes: new Set<string>(),
       ordens: new Set<string>(),
       faturamento: 0,
@@ -70,17 +88,28 @@ export function resumirEstadosNovos(
       propostasAntesDaCompra: new Set<string>(),
       valorPropostasAntesDaCompra: 0,
     };
-    resumo.clientes.add(chave);
+    resumoCliente.clientes.add(chave);
+    vendasPorUf.set(destino, resumoCliente);
     for (const ordem of cliente.ordens) {
-      if (resumo.ordens.has(ordem.chave)) continue;
-      resumo.ordens.add(ordem.chave);
-      resumo.faturamento += Number.isFinite(ordem.valor) ? ordem.valor : 0;
-      if (!uf) {
+      const ufOrdem = normalizarUf(ordem.estado ?? null) ?? uf;
+      const destinoOrdem = ufOrdem ?? "";
+      const resumoOrdem = vendasPorUf.get(destinoOrdem) ?? {
+        clientes: new Set<string>(),
+        ordens: new Set<string>(),
+        faturamento: 0,
+        clientesComProposta: new Set<string>(),
+        propostasAntesDaCompra: new Set<string>(),
+        valorPropostasAntesDaCompra: 0,
+      };
+      if (resumoOrdem.ordens.has(ordem.chave)) continue;
+      resumoOrdem.ordens.add(ordem.chave);
+      resumoOrdem.faturamento += Number.isFinite(ordem.valor) ? ordem.valor : 0;
+      if (!ufOrdem) {
         ordensSemUf.add(ordem.chave);
         faturamentoSemUf += Number.isFinite(ordem.valor) ? ordem.valor : 0;
       }
+      vendasPorUf.set(destinoOrdem, resumoOrdem);
     }
-    vendasPorUf.set(destino, resumo);
   }
 
   const propostasPorUf = new Map<string, {
@@ -93,8 +122,6 @@ export function resumirEstadosNovos(
   const propostasSemUf = new Set<string>();
   const propostasSemValor = new Set<string>();
   const propostasVistas = new Set<string>();
-  const clientesCotados = new Set<string>();
-  const clientesConvertidos = new Set<string>();
   const clientesComPropostaAntesDaCompra = new Set<string>();
   const propostasAntesDaCompra = new Set<string>();
   let valorPropostasTotal = 0;
@@ -104,17 +131,14 @@ export function resumirEstadosNovos(
   for (const proposta of propostas) {
     const clienteKey = proposta.clienteKey.trim();
     const cliente = clientesPorChave.get(clienteKey);
-    if (cliente && proposta.dataProposta >= cliente.dataPrimeiraCompra) continue;
+    const mesProposta = proposta.mesReferencia ?? indiceMes(proposta.dataProposta);
+    const mesPrimeiraCompra = cliente?.mesPrimeiraCompra ?? (cliente ? indiceMes(cliente.dataPrimeiraCompra) : null);
+    if (cliente && mesPrimeiraCompra != null && mesProposta > mesPrimeiraCompra) continue;
 
     const numero = proposta.orcNumero?.trim();
     const chave = numero ? `orc:${numero}` : `id:${proposta.id}`;
     if (propostasVistas.has(chave)) continue;
     propostasVistas.add(chave);
-    if (clienteKey) clientesCotados.add(clienteKey);
-    if (clienteKey && proposta.dataPrimeiraCompra && proposta.dataPrimeiraCompra > proposta.dataProposta) {
-      clientesConvertidos.add(clienteKey);
-    }
-
     const valorValido = proposta.valor != null && Number.isFinite(proposta.valor);
     if (valorValido) valorPropostasTotal += proposta.valor!;
     else propostasSemValor.add(chave);
@@ -141,7 +165,7 @@ export function resumirEstadosNovos(
       propostasPorUf.set(uf, resumo);
     }
 
-    if (!cliente) continue;
+    if (!cliente || proposta.dataProposta >= cliente.dataPrimeiraCompra) continue;
     const ufCompra = normalizarUf(cliente.estado) ?? "";
     const resumoCompra = vendasPorUf.get(ufCompra);
     if (!resumoCompra) continue;
@@ -199,8 +223,6 @@ export function resumirEstadosNovos(
     valorPropostasAntesDaCompra: arredondar(valorPropostasAntesDaCompraTotal),
     propostasNovosClientes,
     totalPropostasNovosClientes: propostasVistas.size,
-    totalClientesCotadosNovosClientes: clientesCotados.size,
-    totalClientesConvertidosNovosClientes: clientesConvertidos.size,
     valorPropostasNovosClientes: arredondar(valorPropostasTotal),
     propostasNovosClientesSemUf: propostasSemUf.size,
     valorPropostasNovosClientesSemUf: arredondar(valorPropostasSemUf),

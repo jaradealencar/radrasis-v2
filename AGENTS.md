@@ -314,9 +314,10 @@ server/
   services/            lógica de domínio reutilizada por routers; manter funções
                        puras quando não precisarem de I/O:
                        inteligenciaClientes.ts (RFM/classificação/funil/previsão
-                       comercial), marketingFinanceiroEstados.ts (cotações por UF da proposta, pedidos e faturamento
-                       pela UF da primeira O.S., total e média por Estado e conversão de empresas cotadas que compraram;
-                       vínculo por nome normalizado, sem chave direta proposta→O.S.), crmProbabilidadeModel.ts (score por proposta
+                       comercial), marketingFinanceiroEstados.ts (cotações por UF da proposta e O.S./faturamento por UF
+                       do pedido; Taxa Conv. Novos = pedidos ÷ cotações de clientes sem compra em meses anteriores,
+                       excluindo overrides recorrentes; total e média por Estado; sem chave proposta→O.S.),
+                       crmProbabilidadeModel.ts (score por proposta
                        (calibracao propria para cliente sem O.S. valida anterior: no minimo 100 previsoes temporais, 10 ganhos e 10 perdas; limite pela conversao do grupo +15 p.p., teto de 30%),
                        com regressão logística, calibração temporal, RFM, coorte,
                        idade CNPJ e região; teto individual pela conversão registrada +15 p.p. (0% limita a 15%); auditoria agregada das propostas e

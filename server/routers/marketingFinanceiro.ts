@@ -5,7 +5,7 @@ import { getDb, insertAuditLogMarketingConfig } from "../db/db";
 import { safeErrorType } from "../db/db-connection";
 import {
   marketingConfig, custoMarketing, historicoOs, historicoOrcamentos, financeiroMensal, dreMensal,
-  mubisysApiCache, clientesPerfilCnpj,
+  mubisysApiCache, clientesPerfilCnpj, clienteOverrides,
   campanhasWhatsappContatosHistorico, campanhasWhatsappDisparoItens,
   campanhasWhatsappDisparos,
 } from "../../drizzle/schema";
@@ -16,7 +16,7 @@ import { carregarTelefonesClientes, completarTelefonesPeloCadastro } from "../sy
 import { parseDataFlexivel } from "../services/inteligenciaClientes";
 import { dataLocalParaIso } from "../services/campanhasWhatsapp";
 import { resumirEstadosCampanhas } from "../services/marketingFinanceiroCampanhas";
-import { resumirEstadosNovos } from "../services/marketingFinanceiroEstados";
+import { ehClienteNovoPuroNoMes, resumirEstadosNovos } from "../services/marketingFinanceiroEstados";
 import { hojeCampoGrande, normalizarTelefone } from "../../shared/campanhas-whatsapp";
 import {
   cacPonderado, custoReativacaoPonderado, calcularResultadoGrupo, calcularResultadoConsolidado,
@@ -276,8 +276,8 @@ export const marketingFinanceiroRouter = router({
       return { meses, reativacaoAnual, config, origem: "local" as const };
     }),
 
-  /** Origem estadual dos clientes de primeira compra e das propostas emitidas
-   * antes de uma compra anterior, no mesmo ano do relatório de Marketing. */
+  /** Distribuição estadual de cotações e pedidos de novos puros, com a mesma
+   * classificação mensal e o mesmo cálculo de pedidos/cotações da Performance Comercial. */
   getDistribuicaoEstadosNovos: publicProcedure
     .input(periodoMarketingSchema)
     .query(async ({ input }) => {
@@ -291,7 +291,7 @@ export const marketingFinanceiroRouter = router({
       };
       const anoInicial = Number(input.dataInicial.slice(0, 4));
       const anoFinal = Number(input.dataFinal.slice(0, 4));
-      const [osHistoricas, propostasHistoricas, cachesMubiSys, perfisCnpj] = await Promise.all([
+      const [osHistoricas, propostasHistoricas, cachesMubiSys, perfisCnpj, overrides] = await Promise.all([
         db.select({
           id: historicoOs.id,
           osNumero: historicoOs.osNumero,
@@ -335,9 +335,14 @@ export const marketingFinanceiroRouter = router({
             marcarFonteIndisponivel("perfil estadual por CNPJ", error);
             return [];
           }),
+        db.select({ empresa: clienteOverrides.empresa, status: clienteOverrides.status }).from(clienteOverrides)
+          .catch(error => {
+            marcarFonteIndisponivel("classificação manual de clientes", error);
+            return [];
+          }),
       ]);
-      const compradorPrimeiraCompra = new Map<string, { estado: string | null; data: Date }>();
       const primeiraCompraPorCliente = new Map<string, Date>();
+      const primeiraCompraMesPorCliente = new Map<string, number>();
       const estadoHistoricoPorCliente = new Map<string, { estado: string; data: Date; id: number }>();
       const estadoPrimeiraCompraPorCliente = new Map<string, { estado: string | null; data: Date; id: number }>();
       const guardarMaisRecente = (mapa: Map<string, { estado: string; data: Date; id: number }>, chave: string, estado: string | null, data: Date, id: number) => {
@@ -352,6 +357,11 @@ export const marketingFinanceiroRouter = router({
         const empresaKey = normalizeEmpresaKey(os.empresa ?? "");
         if (!empresaKey) continue;
         const data = dataOsMarketing(os.dataAprovacao, os.mes, os.ano);
+        const mesIndice = os.ano * 12 + os.mes - 1;
+        const primeiraCompraMes = primeiraCompraMesPorCliente.get(empresaKey);
+        if (primeiraCompraMes == null || mesIndice < primeiraCompraMes) {
+          primeiraCompraMesPorCliente.set(empresaKey, mesIndice);
+        }
         const primeira = primeiraCompraPorCliente.get(empresaKey);
         const estado = ufMarketing(os.estado);
         if (!primeira || data < primeira) {
@@ -365,11 +375,15 @@ export const marketingFinanceiroRouter = router({
         }
         guardarMaisRecente(estadoHistoricoPorCliente, empresaKey, estado, data, os.id);
       }
-      for (const [clienteKey, dados] of estadoPrimeiraCompraPorCliente) {
-        if (dataDentroPeriodoMarketing(dados.data, input.dataInicial, input.dataFinal)) {
-          compradorPrimeiraCompra.set(clienteKey, dados);
-        }
+      const overridePorCliente = new Map<string, "novo" | "recorrente">();
+      for (const override of overrides) {
+        overridePorCliente.set(normalizeEmpresaKey(override.empresa), override.status);
       }
+      const ehNovoPuroNoMes = (clienteKey: string, mesReferencia: number) => ehClienteNovoPuroNoMes(
+        mesReferencia,
+        primeiraCompraMesPorCliente.get(clienteKey) ?? null,
+        overridePorCliente.get(clienteKey) ?? null,
+      );
       const estadoCachePorOrcamento = new Map<string, { estado: string; id: number }>();
       for (const cache of cachesMubiSys) {
         if (cache.cacheKey !== `raw_${cache.mes}_${cache.ano}` || !cache.orcData) continue;
@@ -399,24 +413,31 @@ export const marketingFinanceiroRouter = router({
         if (estado) estadoPerfilPorCliente.set(perfil.empresaKey, estado);
       }
 
-      const ordensPorCliente = new Map<string, Map<string, number>>();
+      const ordensPorCliente = new Map<string, Map<string, { valor: number; estado: string | null }>>();
       for (const os of osHistoricas) {
         if (!isOsNormalDb(os)) continue;
         const clienteKey = normalizeEmpresaKey(os.empresa ?? "");
-        if (!clienteKey || !compradorPrimeiraCompra.has(clienteKey)) continue;
+        if (!clienteKey) continue;
         const data = dataOsMarketing(os.dataAprovacao, os.mes, os.ano);
         if (!dataDentroPeriodoMarketing(data, input.dataInicial, input.dataFinal)) continue;
+        if (!ehNovoPuroNoMes(clienteKey, os.ano * 12 + os.mes - 1)) continue;
         const chaveOs = os.osNumero?.trim() ? `os:${os.osNumero.trim()}` : `historico:${os.id}`;
-        const ordens = ordensPorCliente.get(clienteKey) ?? new Map<string, number>();
-        ordens.set(chaveOs, Number(os.valorOs ?? os.valorTotal ?? 0) || 0);
+        const ordens = ordensPorCliente.get(clienteKey) ?? new Map<string, { valor: number; estado: string | null }>();
+        ordens.set(chaveOs, { valor: Number(os.valorOs ?? os.valorTotal ?? 0) || 0, estado: ufMarketing(os.estado) });
         ordensPorCliente.set(clienteKey, ordens);
       }
-      const compradoresNovos = [...compradorPrimeiraCompra.entries()].map(([clienteKey, dados]) => ({
-        clienteKey,
-        estado: dados.estado,
-        dataPrimeiraCompra: dados.data,
-        ordens: [...(ordensPorCliente.get(clienteKey)?.entries() ?? [])].map(([chave, valor]) => ({ chave, valor })),
-      }));
+      const compradoresNovos = [...ordensPorCliente.entries()].flatMap(([clienteKey, ordens]) => {
+        const dadosPrimeiraCompra = estadoPrimeiraCompraPorCliente.get(clienteKey);
+        const dataPrimeiraCompra = primeiraCompraPorCliente.get(clienteKey);
+        if (!dataPrimeiraCompra) return [];
+        return [{
+          clienteKey,
+          estado: dadosPrimeiraCompra?.estado ?? null,
+          dataPrimeiraCompra,
+          mesPrimeiraCompra: primeiraCompraMesPorCliente.get(clienteKey) ?? null,
+          ordens: [...ordens.entries()].map(([chave, ordem]) => ({ chave, ...ordem })),
+        }];
+      });
 
       const propostasNovas: Array<{
         id: number;
@@ -424,6 +445,7 @@ export const marketingFinanceiroRouter = router({
         clienteKey: string;
         estado: string | null;
         dataProposta: Date;
+        mesReferencia: number;
         dataPrimeiraCompra: Date | null;
         valor: number | null;
       }> = [];
@@ -436,7 +458,7 @@ export const marketingFinanceiroRouter = router({
         const dataProposta = parseDataFlexivel(proposta.dataCadastro)
           ?? new Date(proposta.ano, proposta.mes - 1, 1);
         if (!dataDentroPeriodoMarketing(dataProposta, input.dataInicial, input.dataFinal)) continue;
-        if (primeiraCompra && primeiraCompra <= dataProposta) continue;
+        if (!ehNovoPuroNoMes(clienteKey, proposta.ano * 12 + proposta.mes - 1)) continue;
 
         const numero = proposta.orcNumero?.trim() ?? "";
         const estado = (numero ? estadoCachePorOrcamento.get(numero)?.estado : null)
@@ -449,6 +471,7 @@ export const marketingFinanceiroRouter = router({
           clienteKey,
           estado,
           dataProposta,
+          mesReferencia: proposta.ano * 12 + proposta.mes - 1,
           dataPrimeiraCompra: primeiraCompra ?? null,
           valor: proposta.total == null || !Number.isFinite(Number(proposta.total)) ? null : Number(proposta.total),
         });

@@ -30,9 +30,9 @@ export default function MarketingEstadosNovos({ dataInicial, dataFinal }: { data
   );
   const periodoTexto = `${fmtDate(dataIsoLocal(dataInicial))} a ${fmtDate(dataIsoLocal(dataFinal))}`;
 
-  function conversaoPct(convertidos: number, empresasCotadas: number): number | null {
-    if (!empresasCotadas) return null;
-    return (convertidos / empresasCotadas) * 100;
+  function conversaoPct(pedidos: number, cotacoes: number): number | null {
+    if (!cotacoes) return null;
+    return (pedidos / cotacoes) * 100;
   }
 
   if (isLoading) return <p className="text-sm text-muted-foreground">Carregando desempenho de novos clientes por estado…</p>;
@@ -57,14 +57,12 @@ export default function MarketingEstadosNovos({ dataInicial, dataFinal }: { data
     const oss = c?.os ?? 0;
     const faturamento = c?.faturamento ?? 0;
     const propostas = p?.propostas ?? 0;
-    const empresasCotadas = p?.clientes ?? 0;
-    const clientesConvertidos = p?.clientesConvertidos ?? 0;
-    const conversao = conversaoPct(clientesConvertidos, empresasCotadas);
-    return { uf, oss, faturamento, propostas, empresasCotadas, clientesConvertidos, conversao };
+    const conversao = conversaoPct(oss, propostas);
+    return { uf, oss, faturamento, propostas, conversao };
   })
     .sort((a, b) => b.propostas - a.propostas || b.faturamento - a.faturamento || a.uf.localeCompare(b.uf));
 
-  const conversaoTotal = conversaoPct(data.totalClientesConvertidosNovosClientes, data.totalClientesCotadosNovosClientes);
+  const conversaoTotal = conversaoPct(data.totalOsPrimeiraCompra, data.totalPropostasNovosClientes);
   const media = linhas.length ? {
     propostas: linhas.reduce((soma, item) => soma + item.propostas, 0) / linhas.length,
     oss: linhas.reduce((soma, item) => soma + item.oss, 0) / linhas.length,
@@ -78,15 +76,14 @@ export default function MarketingEstadosNovos({ dataInicial, dataFinal }: { data
   return (
     <div className="space-y-2">
       <p className="text-xs text-muted-foreground">
-        Cotações para novos clientes, pedidos (O.S.), faturamento e conversão por Estado no período ({periodoTexto}).
+        Cotações, pedidos (O.S.), faturamento e Taxa Conv. Novos por Estado no período ({periodoTexto}).
         A tabela mostra o total do período e a média por Estado; compras ainda não sincronizadas não entram.
       </p>
       <div role="note" className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-xs text-slate-700">
-        “Novo cliente” significa primeira O.S. normal encontrada no histórico disponível, que começa em março de 2023.
-        A UF é a registrada no histórico da primeira O.S. para pedidos e faturamento, e a do endereço da proposta
-        para cotações. A conversão compara empresas cotadas com empresas cuja primeira compra foi localizada depois
-        da proposta, usando o nome normalizado; não há vínculo direto entre uma proposta e uma O.S. Assim, a taxa é
-        por empresa única, enquanto cotações contam cada proposta.
+        A classificação segue a Performance Comercial: entram cotações e O.S. normais de clientes sem compra em meses
+        anteriores; clientes marcados manualmente como recorrentes são excluídos. A UF é a da proposta para cotações
+        e a de cada O.S. para pedidos/faturamento. Cada O.S. conta como uma venda, mesmo quando o cliente tem mais de
+        um pedido no mês.
       </div>
       {data.fontesIndisponiveis?.length ? (
         <div role="status" className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900">
@@ -100,7 +97,7 @@ export default function MarketingEstadosNovos({ dataInicial, dataFinal }: { data
             <Users size={17} className="text-blue-600" /> Cotações, pedidos e faturamento por Estado
           </CardTitle>
           <p className="text-xs text-muted-foreground">
-            Conversão = empresas com primeira compra localizada depois da cotação ÷ empresas cotadas. Ordenado
+            Taxa Conv. Novos = pedidos de clientes sem compra em meses anteriores ÷ cotações desses clientes. Ordenado
             por cotações e, em caso de empate, por faturamento.
           </p>
         </CardHeader>
@@ -116,7 +113,7 @@ export default function MarketingEstadosNovos({ dataInicial, dataFinal }: { data
                     <TableHead className="text-right">Cotações</TableHead>
                     <TableHead className="text-right">Pedidos (O.S.)</TableHead>
                     <TableHead className="text-right">Faturamento</TableHead>
-                    <TableHead className="text-right">Conversão de clientes</TableHead>
+                    <TableHead className="text-right">Taxa Conv. Novos</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -125,13 +122,12 @@ export default function MarketingEstadosNovos({ dataInicial, dataFinal }: { data
                       <TableCell>{nomeEstado(item.uf)}</TableCell>
                       <TableCell className="text-right">
                         <div className="font-medium">{fmtNum(item.propostas)}</div>
-                        <div className="text-xs text-muted-foreground">{fmtNum(item.empresasCotadas)} empresas</div>
                       </TableCell>
                       <TableCell className="text-right">{fmtNum(item.oss)}</TableCell>
                       <TableCell className="text-right font-medium">{fmtBrl(item.faturamento)}</TableCell>
                       <TableCell className="text-right">
                         <div className="font-medium">{item.conversao == null ? "—" : fmtPct(item.conversao, 1)}</div>
-                        <div className="text-xs text-muted-foreground">{fmtNum(item.clientesConvertidos)} empresas</div>
+                        <div className="text-xs text-muted-foreground">{fmtNum(item.oss)} / {fmtNum(item.propostas)} pedidos / cotações</div>
                       </TableCell>
                     </TableRow>
                   ))}
@@ -144,7 +140,7 @@ export default function MarketingEstadosNovos({ dataInicial, dataFinal }: { data
                     <TableCell className="text-right">{fmtBrl(data.faturamentoPrimeiraCompra)}</TableCell>
                     <TableCell className="text-right">
                       <div>{conversaoTotal == null ? "—" : fmtPct(conversaoTotal, 1)}</div>
-                      <div className="text-xs font-normal">{fmtNum(data.totalClientesConvertidosNovosClientes)} / {fmtNum(data.totalClientesCotadosNovosClientes)} empresas</div>
+                      <div className="text-xs font-normal">{fmtNum(data.totalOsPrimeiraCompra)} / {fmtNum(data.totalPropostasNovosClientes)} pedidos / cotações</div>
                     </TableCell>
                   </TableRow>
                   <TableRow>
@@ -160,8 +156,8 @@ export default function MarketingEstadosNovos({ dataInicial, dataFinal }: { data
           )}
           <p className="mt-3 text-xs text-muted-foreground">
             Faturamento usa valor da O.S. após descontos do ERP; não é lucro. A média por Estado considera somente
-            as UFs listadas; a conversão geral é ponderada por empresas únicas cotadas, e a média de conversão
-            estadual é a média simples das taxas de cada UF.
+            as UFs listadas; a taxa geral é pedidos ÷ cotações no período completo, e a média de conversão estadual
+            é a média simples das taxas por UF. Pedidos e cotações sem UF confiável continuam nos totais gerais.
             {data.clientesPrimeiraCompraSemUf > 0 && ` ${fmtNum(data.clientesPrimeiraCompraSemUf)} ${data.clientesPrimeiraCompraSemUf === 1 ? "cliente" : "clientes"} (${fmtNum(data.osPrimeiraCompraSemUf)} O.S., ${fmtBrl(data.faturamentoPrimeiraCompraSemUf)}) sem UF da primeira compra confiável.`}
             {data.propostasNovosClientesSemUf > 0 && ` ${fmtNum(data.propostasNovosClientesSemUf)} ${data.propostasNovosClientesSemUf === 1 ? "proposta" : "propostas"} (${fmtBrl(data.valorPropostasNovosClientesSemUf)}) sem UF confiável.`}
             {data.propostasNovosClientesSemValor > 0 && ` ${fmtNum(data.propostasNovosClientesSemValor)} ${data.propostasNovosClientesSemValor === 1 ? "proposta sem valor disponível." : "propostas sem valor disponível."}`}
