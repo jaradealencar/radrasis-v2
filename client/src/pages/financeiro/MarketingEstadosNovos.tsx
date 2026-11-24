@@ -1,8 +1,9 @@
-import { AlertTriangle, RotateCcw, Users } from "lucide-react";
+import { AlertTriangle, FileDown, RotateCcw, Users } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableFooter, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { fmtBrl, fmtDate, fmtNum, fmtPct } from "@/lib/format";
+import { exportarMarketingEstadosNovosPdf } from "@/lib/marketingEstadosNovosPdf";
 import { trpc } from "@/lib/trpc";
 
 const NOMES_UF: Record<string, string> = {
@@ -42,6 +43,8 @@ export default function MarketingEstadosNovos({ dataInicial, dataFinal }: { data
       <Button size="sm" variant="outline" onClick={() => refetch()}><RotateCcw size={14} className="mr-1.5" /> Tentar novamente</Button>
     </div>
   );
+
+  const reportData = data;
 
   // Junta, por UF, os clientes de primeira compra (pedidos) e as propostas para
   // clientes novos, já devolvidos juntos pela procedure do servidor.
@@ -84,6 +87,33 @@ export default function MarketingEstadosNovos({ dataInicial, dataFinal }: { data
     })(),
   } : null;
 
+  function exportarPdf() {
+    exportarMarketingEstadosNovosPdf({
+      periodo: periodoTexto,
+      linhas: linhas.map(item => ({
+        estado: item.uf ? nomeEstado(item.uf) : "UF não identificada",
+        cotacoes: item.propostas,
+        pedidos: item.oss,
+        faturamento: item.faturamento,
+        conversao: item.conversao,
+      })),
+      total: {
+        cotacoes: reportData.totalPropostasNovosClientes,
+        pedidos: reportData.totalOsPrimeiraCompra,
+        faturamento: reportData.faturamentoPrimeiraCompra,
+        conversao: conversaoTotal,
+      },
+      media: media ? {
+        cotacoes: media.propostas,
+        pedidos: media.oss,
+        faturamento: media.faturamento,
+        conversao: media.conversao,
+      } : null,
+      fontesIndisponiveis: reportData.fontesIndisponiveis,
+      cotacoesSemValor: reportData.propostasNovosClientesSemValor,
+    });
+  }
+
   return (
     <div className="space-y-2">
       <p className="text-xs text-muted-foreground">
@@ -98,9 +128,14 @@ export default function MarketingEstadosNovos({ dataInicial, dataFinal }: { data
       ) : null}
       <Card>
         <CardHeader className="pb-2">
-          <CardTitle className="flex items-center gap-2 text-base">
-            <Users size={17} className="text-blue-600" /> Cotações, pedidos e faturamento por Estado
-          </CardTitle>
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <CardTitle className="flex items-center gap-2 text-base">
+              <Users size={17} className="text-blue-600" /> Cotações, pedidos e faturamento por Estado
+            </CardTitle>
+            <Button type="button" size="sm" variant="outline" onClick={exportarPdf}>
+              <FileDown size={15} /> Exportar PDF
+            </Button>
+          </div>
           <p className="text-xs text-muted-foreground">
             Taxa Conv. Novos = pedidos (O.S.) ÷ cotações por UF. O ERP não liga cada O.S. à cotação de origem, então
             a taxa compara volumes. Ordenado por cotações e, em caso de empate, por faturamento.
@@ -133,7 +168,7 @@ export default function MarketingEstadosNovos({ dataInicial, dataFinal }: { data
                       {item.conversao == null ? "—" : fmtPct(item.conversao, 1)}
                     </TableCell>
                   </TableRow>
-                  ))}
+                ))}
               </TableBody>
               <TableFooter>
                 <TableRow className="h-8 bg-muted/40 font-semibold">
