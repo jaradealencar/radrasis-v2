@@ -2548,11 +2548,37 @@ export const performanceComercialRouter = router({
             // Usar getClientesNovosMes (mesma função "ao vivo" da Visão Geral, com fallback
             // pro banco local se a API falhar/estourar timeout) só pra este mês — meses
             // fechados continuam no cálculo local (rápido, sem round-trip de API).
+            //
+            // IMPORTANTE: quando a API ao vivo responde, TODOS os campos de clientes
+            // (novos, reativados, únicos e recompra) devem vir da mesma fonte para não
+            // divergir da Visão Geral. clientesUnicos/clientesComRecompra são
+            // re-calculados a partir das OS ao vivo quando disponíveis.
             const ehMesVigente = ano === now.getFullYear() && mes === now.getMonth() + 1;
             if (ehMesVigente) {
               try {
                 const aoVivo = await aoVivoPromises.get(`${mes}_${ano}`);
                 if (aoVivo) {
+                  // clientesUnicos/clientesComRecompra a partir das OS ao vivo (mesma fonte
+                  // dos demais campos), não do banco local que pode estar defasado.
+                  let clientesUnicosAoVivo = clientesUnicos;
+                  let clientesComRecompraAoVivo = clientesComRecompra;
+                  try {
+                    const rawMes = await getMesFromApi(mes, ano);
+                    if (rawMes?.allOs) {
+                      const osPorClienteAoVivo: Record<string, number> = {};
+                      for (const os of rawMes.allOs) {
+                        if (!isOsNormalApi(os)) continue;
+                        const chave = normalizeEmpresaKey(nomeClienteDaOsApi(os));
+                        if (!chave) continue;
+                        osPorClienteAoVivo[chave] = (osPorClienteAoVivo[chave] ?? 0) + 1;
+                      }
+                      clientesUnicosAoVivo = Object.keys(osPorClienteAoVivo).length;
+                      clientesComRecompraAoVivo = Object.values(osPorClienteAoVivo).filter(n => n >= 2).length;
+                    }
+                  } catch {
+                    // Mantém os valores do banco local como fallback.
+                  }
+
                   novosMap.set(`${mes}_${ano}`, {
                     osNovos: aoVivo.osNovos,
                     osNovosPuros: aoVivo.osNovosPuros,
@@ -2570,7 +2596,8 @@ export const performanceComercialRouter = router({
                     taxaConversaoNovosPuros: aoVivo.taxaConversaoNovosPuros,
                     taxaFaturamentoNovos: aoVivo.taxaFaturamentoNovos,
                     taxaFaturamentoNovosPuros: aoVivo.taxaFaturamentoNovosPuros,
-                    clientesUnicos, clientesComRecompra,
+                    clientesUnicos: clientesUnicosAoVivo,
+                    clientesComRecompra: clientesComRecompraAoVivo,
                   });
                   continue;
                 }
