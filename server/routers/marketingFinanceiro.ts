@@ -282,14 +282,22 @@ export const marketingFinanceiroRouter = router({
     .input(periodoMarketingSchema)
     .query(async ({ input }) => {
       const db = await getDb();
-      if (!db) return {
-        ...resumirEstadosNovos([], []),
-        clientesComRecompraSemUf: 0,
-        taxaRecompraSemUf: null,
-        totalClientesComRecompra: 0,
-        taxaRecompraGeral: null,
-        fontesIndisponiveis: ["base de dados"],
-      };
+      if (!db) {
+        const resumoSemBanco = resumirEstadosNovos([], []);
+        return {
+          ...resumoSemBanco,
+          clientesPrimeiraCompra: resumoSemBanco.clientesPrimeiraCompra.map(estado => ({
+            ...estado,
+            clientesComRecompra: 0,
+            taxaRecompra: null,
+          })),
+          clientesComRecompraSemUf: 0,
+          taxaRecompraSemUf: null,
+          totalClientesComRecompra: 0,
+          taxaRecompraGeral: null,
+          fontesIndisponiveis: ["base de dados"],
+        };
+      }
 
       const fontesIndisponiveis: string[] = [];
       const marcarFonteIndisponivel = (fonte: string, error: unknown) => {
