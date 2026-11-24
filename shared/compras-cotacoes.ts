@@ -41,6 +41,8 @@ export function unidadeConsumo(valor: string): string {
       "UNIDADES",
       "PECA",
       "PECAS",
+      // O MubiSys usa este rótulo genérico; a auditoria de cotação já o trata como UN.
+      "UNIDADE/GL/LT/KG",
     ].includes(u)
   )
     return "UN";

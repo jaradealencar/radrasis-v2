@@ -11,7 +11,7 @@ Depois de revisar os vínculos e conversões, use **Salvar cotação**. O docume
 
 Cada salvamento com dados alterados cria um novo documento. A chave de repetição impede duplicações por tentativas repetidas da mesma gravação. Ao reabrir um documento sem alterar dados, gerar uma ordem usa a cotação já salva. As cotações mostram os 200 documentos mais recentes; as ordens têm paginação de 50 registros e filtros por fornecedor/número, transportadora e datas de emissão em Campo Grande. Quando enviado, o PDF original fica guardado no UploadThing com URL, chave, hash SHA-256 e tamanho para consulta posterior.
 
-Itens sem vínculo ou sem conversão podem ser salvos, mas ficam pendentes na comparação por unidade de consumo. O cadastro da MP no servidor define a unidade de destino válida. Não se usa preço zero como substituto de custo ausente.
+Itens sem vínculo ou sem conversão podem ser salvos, mas ficam pendentes na comparação por unidade de consumo. O cadastro da MP no servidor define a unidade de destino válida. O rótulo genérico do MubiSys `Unidade/Gl/Lt/Kg` é normalizado como `UN`, seguindo a mesma convenção da auditoria da cotação. Não se usa preço zero como substituto de custo ausente.
 
 ## Ordem de compra
 
