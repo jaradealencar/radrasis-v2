@@ -62,13 +62,24 @@ export default function MarketingEstadosNovos({ dataInicial, dataFinal }: { data
   })
     .sort((a, b) => b.propostas - a.propostas || b.faturamento - a.faturamento || a.uf.localeCompare(b.uf));
 
+  if (data.propostasNovosClientesSemUf > 0 || data.osPrimeiraCompraSemUf > 0) {
+    linhas.push({
+      uf: "",
+      oss: data.osPrimeiraCompraSemUf,
+      faturamento: data.faturamentoPrimeiraCompraSemUf,
+      propostas: data.propostasNovosClientesSemUf,
+      conversao: null,
+    });
+  }
+
   const conversaoTotal = conversaoPct(data.totalOsPrimeiraCompra, data.totalPropostasNovosClientes);
-  const media = linhas.length ? {
-    propostas: linhas.reduce((soma, item) => soma + item.propostas, 0) / linhas.length,
-    oss: linhas.reduce((soma, item) => soma + item.oss, 0) / linhas.length,
-    faturamento: linhas.reduce((soma, item) => soma + item.faturamento, 0) / linhas.length,
+  const linhasPorEstado = linhas.filter(item => item.uf !== "");
+  const media = linhasPorEstado.length ? {
+    propostas: linhasPorEstado.reduce((soma, item) => soma + item.propostas, 0) / linhasPorEstado.length,
+    oss: linhasPorEstado.reduce((soma, item) => soma + item.oss, 0) / linhasPorEstado.length,
+    faturamento: linhasPorEstado.reduce((soma, item) => soma + item.faturamento, 0) / linhasPorEstado.length,
     conversao: (() => {
-      const taxas = linhas.flatMap(item => item.conversao == null ? [] : [item.conversao]);
+      const taxas = linhasPorEstado.flatMap(item => item.conversao == null ? [] : [item.conversao]);
       return taxas.length ? taxas.reduce((soma, taxa) => soma + taxa, 0) / taxas.length : null;
     })(),
   } : null;
@@ -76,15 +87,9 @@ export default function MarketingEstadosNovos({ dataInicial, dataFinal }: { data
   return (
     <div className="space-y-2">
       <p className="text-xs text-muted-foreground">
-        Cotações, pedidos (O.S.), faturamento e Taxa Conv. Novos por Estado no período ({periodoTexto}).
-        A tabela mostra o total do período e a média por Estado; compras ainda não sincronizadas não entram.
+        Período: {periodoTexto}. Inclui cotações e O.S. normais de clientes sem compra em meses anteriores; clientes
+        marcados como recorrentes ficam fora. Cada O.S. conta como uma venda.
       </p>
-      <div role="note" className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-xs text-slate-700">
-        A classificação segue a Performance Comercial: entram cotações e O.S. normais de clientes sem compra em meses
-        anteriores; clientes marcados manualmente como recorrentes são excluídos. A UF é a da proposta para cotações
-        e a de cada O.S. para pedidos/faturamento. Cada O.S. conta como uma venda, mesmo quando o cliente tem mais de
-        um pedido no mês.
-      </div>
       {data.fontesIndisponiveis?.length ? (
         <div role="status" className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900">
           <AlertTriangle size={15} className="mt-0.5 shrink-0" />
@@ -97,70 +102,62 @@ export default function MarketingEstadosNovos({ dataInicial, dataFinal }: { data
             <Users size={17} className="text-blue-600" /> Cotações, pedidos e faturamento por Estado
           </CardTitle>
           <p className="text-xs text-muted-foreground">
-            Por UF: pedidos (O.S.) de novos puros ÷ cotações de novos puros no Estado. Como o ERP não liga uma O.S. à
-            cotação de origem, a taxa compara volumes por UF. Ordenado por cotações e, em caso de empate, por faturamento.
+            Taxa Conv. Novos = pedidos (O.S.) ÷ cotações por UF. O ERP não liga cada O.S. à cotação de origem, então
+            a taxa compara volumes. Ordenado por cotações e, em caso de empate, por faturamento.
           </p>
         </CardHeader>
         <CardContent>
           {linhas.length === 0 ? (
             <p className="text-sm text-muted-foreground">Nenhum dado de novos clientes por Estado no período.</p>
           ) : (
-            <div className="max-h-96 overflow-auto">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Estado</TableHead>
-                    <TableHead className="text-right">Cotações</TableHead>
-                    <TableHead className="text-right">Pedidos (O.S.)</TableHead>
-                    <TableHead className="text-right">Faturamento</TableHead>
-                    <TableHead className="text-right">Taxa Conv. Novos</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {linhas.map(item => (
-                    <TableRow key={item.uf}>
-                      <TableCell>{nomeEstado(item.uf)}</TableCell>
-                      <TableCell className="text-right">
-                        <div className="font-medium">{fmtNum(item.propostas)}</div>
-                      </TableCell>
-                      <TableCell className="text-right">{fmtNum(item.oss)}</TableCell>
-                      <TableCell className="text-right font-medium">{fmtBrl(item.faturamento)}</TableCell>
-                      <TableCell className="text-right">
-                        <div className="font-medium">{item.conversao == null ? "—" : fmtPct(item.conversao, 1)}</div>
-                        <div className="text-xs text-muted-foreground">{fmtNum(item.oss)} / {fmtNum(item.propostas)} pedidos / cotações</div>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-                <TableFooter>
-                  <TableRow className="bg-muted/40 font-semibold">
-                    <TableCell>Total geral</TableCell>
-                    <TableCell className="text-right">{fmtNum(data.totalPropostasNovosClientes)}</TableCell>
-                    <TableCell className="text-right">{fmtNum(data.totalOsPrimeiraCompra)}</TableCell>
-                    <TableCell className="text-right">{fmtBrl(data.faturamentoPrimeiraCompra)}</TableCell>
-                    <TableCell className="text-right">
-                      <div>{conversaoTotal == null ? "—" : fmtPct(conversaoTotal, 1)}</div>
-                      <div className="text-xs font-normal">{fmtNum(data.totalOsPrimeiraCompra)} / {fmtNum(data.totalPropostasNovosClientes)} pedidos / cotações</div>
+            <Table className="text-sm">
+              <TableHeader>
+                <TableRow className="h-8">
+                  <TableHead className="py-1">Estado</TableHead>
+                  <TableHead className="py-1 text-right">Cotações</TableHead>
+                  <TableHead className="py-1 text-right">Pedidos (O.S.)</TableHead>
+                  <TableHead className="py-1 text-right">Faturamento</TableHead>
+                  <TableHead className="py-1 text-right">Taxa Conv. Novos</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {linhas.map(item => (
+                  <TableRow key={item.uf || "sem-uf"} className="h-8">
+                    <TableCell className="py-1">{item.uf ? nomeEstado(item.uf) : "UF não identificada"}</TableCell>
+                    <TableCell className="py-1 text-right">
+                      <div className="font-medium">{fmtNum(item.propostas)}</div>
+                    </TableCell>
+                    <TableCell className="py-1 text-right">{fmtNum(item.oss)}</TableCell>
+                    <TableCell className="py-1 text-right font-medium">{fmtBrl(item.faturamento)}</TableCell>
+                    <TableCell className="py-1 text-right">
+                      {item.conversao == null ? "—" : fmtPct(item.conversao, 1)}
                     </TableCell>
                   </TableRow>
-                  <TableRow>
-                    <TableCell>Média por Estado</TableCell>
-                    <TableCell className="text-right">{media ? fmtNum(media.propostas, 1) : "—"}</TableCell>
-                    <TableCell className="text-right">{media ? fmtNum(media.oss, 1) : "—"}</TableCell>
-                    <TableCell className="text-right">{media ? fmtBrl(media.faturamento) : "—"}</TableCell>
-                    <TableCell className="text-right">{media?.conversao == null ? "—" : fmtPct(media.conversao, 1)}</TableCell>
-                  </TableRow>
-                </TableFooter>
-              </Table>
-            </div>
+                  ))}
+              </TableBody>
+              <TableFooter>
+                <TableRow className="h-8 bg-muted/40 font-semibold">
+                  <TableCell className="py-1">Total geral</TableCell>
+                  <TableCell className="py-1 text-right">{fmtNum(data.totalPropostasNovosClientes)}</TableCell>
+                  <TableCell className="py-1 text-right">{fmtNum(data.totalOsPrimeiraCompra)}</TableCell>
+                  <TableCell className="py-1 text-right">{fmtBrl(data.faturamentoPrimeiraCompra)}</TableCell>
+                  <TableCell className="py-1 text-right">{conversaoTotal == null ? "—" : fmtPct(conversaoTotal, 1)}</TableCell>
+                </TableRow>
+                <TableRow className="h-8">
+                  <TableCell className="py-1">Média por Estado</TableCell>
+                  <TableCell className="py-1 text-right">{media ? fmtNum(media.propostas, 1) : "—"}</TableCell>
+                  <TableCell className="py-1 text-right">{media ? fmtNum(media.oss, 1) : "—"}</TableCell>
+                  <TableCell className="py-1 text-right">{media ? fmtBrl(media.faturamento) : "—"}</TableCell>
+                  <TableCell className="py-1 text-right">{media?.conversao == null ? "—" : fmtPct(media.conversao, 1)}</TableCell>
+                </TableRow>
+              </TableFooter>
+            </Table>
           )}
           <p className="mt-3 text-xs text-muted-foreground">
-            Faturamento usa valor da O.S. após descontos do ERP; não é lucro. A média por Estado considera somente
-            as UFs listadas; a taxa geral é pedidos ÷ cotações no período completo, e a média de conversão estadual
-            é a média simples das taxas por UF. Pedidos e cotações sem UF confiável continuam nos totais gerais.
-            {data.clientesPrimeiraCompraSemUf > 0 && ` ${fmtNum(data.clientesPrimeiraCompraSemUf)} ${data.clientesPrimeiraCompraSemUf === 1 ? "cliente" : "clientes"} (${fmtNum(data.osPrimeiraCompraSemUf)} O.S., ${fmtBrl(data.faturamentoPrimeiraCompraSemUf)}) sem UF da primeira compra confiável.`}
-            {data.propostasNovosClientesSemUf > 0 && ` ${fmtNum(data.propostasNovosClientesSemUf)} ${data.propostasNovosClientesSemUf === 1 ? "proposta" : "propostas"} (${fmtBrl(data.valorPropostasNovosClientesSemUf)}) sem UF confiável.`}
-            {data.propostasNovosClientesSemValor > 0 && ` ${fmtNum(data.propostasNovosClientesSemValor)} ${data.propostasNovosClientesSemValor === 1 ? "proposta sem valor disponível." : "propostas sem valor disponível."}`}
+            Faturamento usa valor da O.S. após descontos; não é lucro. Total Conv. = O.S. ÷ cotações do período; média
+            estadual é simples entre UFs identificadas. Registros sem UF aparecem na linha “UF não identificada” e entram
+            no total, mas não na média estadual.
+            {data.propostasNovosClientesSemValor > 0 && ` ${fmtNum(data.propostasNovosClientesSemValor)} ${data.propostasNovosClientesSemValor === 1 ? "cotação sem valor disponível." : "cotações sem valor disponível."}`}
           </p>
         </CardContent>
       </Card>

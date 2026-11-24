@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { eq, and, gte, lte, lt } from "drizzle-orm";
+import { eq, and, gte, lte, lt, inArray } from "drizzle-orm";
 import { router, publicProcedure, protectedProcedure } from "../_core/trpc";
 import { getDb, insertAuditLogMarketingConfig } from "../db/db";
 import { safeErrorType } from "../db/db-connection";
@@ -291,6 +291,33 @@ export const marketingFinanceiroRouter = router({
       };
       const anoInicial = Number(input.dataInicial.slice(0, 4));
       const anoFinal = Number(input.dataFinal.slice(0, 4));
+      const mesInicial = Number(input.dataInicial.slice(5, 7));
+      const mesFinal = Number(input.dataFinal.slice(5, 7));
+      const cacheKeysPorAno = new Map<number, string[]>();
+      for (let ano = anoInicial; ano <= anoFinal; ano++) {
+        const primeiroMes = ano === anoInicial ? mesInicial : 1;
+        const ultimoMes = ano === anoFinal ? mesFinal : 12;
+        cacheKeysPorAno.set(ano, Array.from(
+          { length: ultimoMes - primeiroMes + 1 },
+          (_, indice) => `raw_${primeiroMes + indice}_${ano}`,
+        ));
+      }
+      const carregarCachesMubiSys = async () => {
+        const caches: Array<{ cacheKey: string; mes: number; ano: number; orcData: string | null }> = [];
+        for (const chaves of cacheKeysPorAno.values()) {
+          const lote = await db.select({
+            cacheKey: mubisysApiCache.cacheKey,
+            mes: mubisysApiCache.mes,
+            ano: mubisysApiCache.ano,
+            orcData: mubisysApiCache.orcData,
+          }).from(mubisysApiCache).where(inArray(mubisysApiCache.cacheKey, chaves)).catch(error => {
+            marcarFonteIndisponivel("cache de enderecos do ERP", error);
+            return [];
+          });
+          caches.push(...lote);
+        }
+        return caches;
+      };
       const [osHistoricas, propostasHistoricas, cachesMubiSys, perfisCnpj, overrides] = await Promise.all([
         db.select({
           id: historicoOs.id,
@@ -323,13 +350,7 @@ export const marketingFinanceiroRouter = router({
             marcarFonteIndisponivel("histórico de propostas", error);
             return [];
           }),
-        db.select({ cacheKey: mubisysApiCache.cacheKey, mes: mubisysApiCache.mes, ano: mubisysApiCache.ano, orcData: mubisysApiCache.orcData })
-          .from(mubisysApiCache)
-          .where(and(gte(mubisysApiCache.ano, anoInicial), lte(mubisysApiCache.ano, anoFinal)))
-          .catch(error => {
-            marcarFonteIndisponivel("cache de enderecos do ERP", error);
-            return [];
-          }),
+        carregarCachesMubiSys(),
         db.select({ empresaKey: clientesPerfilCnpj.empresaKey, uf: clientesPerfilCnpj.uf }).from(clientesPerfilCnpj)
           .catch(error => {
             marcarFonteIndisponivel("perfil estadual por CNPJ", error);
