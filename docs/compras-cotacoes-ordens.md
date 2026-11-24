@@ -75,3 +75,11 @@ A aba **Ordens de compra** mantém as ordens emitidas com busca por fornecedor/t
 O nome do comprador responsável é obrigatório na interface atual, com pelo menos três caracteres. Para requests de interfaces anteriores, o servidor usa o nome legal validado como fallback; se elas omitirem o preço unitário, usa o preço salvo na cotação e bloqueia a emissão caso esse preço esteja ausente. Peso (kg) e volume (m³) são opcionais na emissão e podem ser completados ou atualizados em **Frete e coleta**. Valores preenchidos precisam ser maiores que zero. O peso previsto também participa da estimativa do frete por kg; o volume é armazenado para logística e aparece no histórico/PDF quando disponível.
 
 A migration `0150_ordens_itens_volume_exclusao` adiciona volume previsto e marcação de exclusão lógica em `compras_ordens`; não remove nem altera ordens existentes. O volume também entra no histórico de revisões logísticas.
+
+## Desconto obtido na ordem
+
+Na emissão e edição da ordem, **Desconto obtido no pedido (R$)** registra o bônus como um valor total separado. O sistema mantém os preços unitários e totais das linhas intactos, calcula o total líquido como subtotal dos itens + frete − desconto e impede que o desconto ultrapasse o total bruto. O PDF mostra subtotal, frete, desconto e total líquido em linhas separadas.
+
+A aba **Ordens de compra** mostra o valor acumulado dos descontos obtidos e o total por comprador responsável. O resumo considera todas as ordens ativas no período selecionado, sem depender da paginação da lista. A consulta agrupa o nome salvo na ordem; o campo oferece sugestões para Daniel, Débora, Suellen, Érick e Henrique, além de aceitar outros nomes.
+
+A migration `0151_desconto_obtido_ordem` adiciona `compras_ordens.desconto_total` com valor padrão zero para preservar o total das ordens existentes.

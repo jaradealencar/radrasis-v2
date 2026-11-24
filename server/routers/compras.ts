@@ -312,11 +312,21 @@ export const comprasRouter = router({
           valorInformado,
           input.pesoPrevistoKg
         ).total;
-        const total = linhas.reduce((s, l) => s + l.total, 0) + (frete ?? 0);
+        const subtotal = linhas.reduce((s, l) => s + l.total, 0);
+        const totalBruto = Math.round((subtotal + (frete ?? 0)) * 100) / 100;
+        const descontoTotal = Math.round(input.descontoTotal * 100) / 100;
+        if (descontoTotal > totalBruto) {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: "O desconto obtido não pode superar o total da ordem.",
+          });
+        }
+        const total = totalBruto - descontoTotal;
         const [ordem] = await tx
           .insert(ordens)
           .values({
             ...input,
+            descontoTotal: descontoTotal.toFixed(2),
             nomeComprador: input.nomeComprador ?? input.comprador.nome,
             itens: linhas,
             frete: (frete ?? 0).toFixed(2),
@@ -390,6 +400,55 @@ export const comprasRouter = router({
         .limit(50)
         .offset(input.pagina * 50)
     ),
+  descontosObtidos: protectedProcedure
+    .input(
+      z
+        .object({
+          inicio: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+          fim: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+        })
+        .default({})
+    )
+    .query(async ({ input }) => {
+      const db = await banco();
+      const nomeComprador = sql<string>`coalesce(nullif(btrim(${ordens.nomeComprador}), ''), 'Não informado')`;
+      const linhas = await db
+        .select({
+          comprador: nomeComprador,
+          descontoTotal: sql<string>`coalesce(sum(${ordens.descontoTotal}), 0)`,
+          quantidadeOrdens: sql<number>`count(*)::int`,
+        })
+        .from(ordens)
+        .where(
+          and(
+            isNull(ordens.excluidaEm),
+            input.inicio
+              ? sql`(${ordens.createdAt} at time zone 'UTC' at time zone 'America/Campo_Grande')::date >= ${input.inicio}::date`
+              : undefined,
+            input.fim
+              ? sql`(${ordens.createdAt} at time zone 'UTC' at time zone 'America/Campo_Grande')::date <= ${input.fim}::date`
+              : undefined
+          )
+        )
+        .groupBy(nomeComprador)
+        .orderBy(desc(sql`sum(${ordens.descontoTotal})`), nomeComprador);
+      const porComprador = linhas.map(linha => ({
+        comprador: linha.comprador,
+        descontoTotal: Number(linha.descontoTotal),
+        quantidadeOrdens: Number(linha.quantidadeOrdens),
+      }));
+      return {
+        descontoTotal: porComprador.reduce(
+          (total, linha) => total + linha.descontoTotal,
+          0
+        ),
+        quantidadeOrdens: porComprador.reduce(
+          (total, linha) => total + linha.quantidadeOrdens,
+          0
+        ),
+        porComprador,
+      };
+    }),
   editarOrdem: protectedProcedure
     .input(editarOrdemCompraSchema)
     .mutation(async ({ input, ctx }) => {
@@ -461,16 +520,27 @@ export const comprasRouter = router({
             : Number(atual.freteValorInformado),
           atual.pesoPrevistoKg == null ? null : Number(atual.pesoPrevistoKg)
         ).total;
+        const totalBruto = Math.round((subtotal + (frete ?? 0)) * 100) / 100;
+        const descontoTotal = Math.round(
+          (input.descontoTotal ?? Number(atual.descontoTotal ?? 0)) * 100
+        ) / 100;
+        if (descontoTotal > totalBruto) {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: "O desconto obtido não pode superar o total da ordem.",
+          });
+        }
         const [salva] = await tx
           .update(ordens)
           .set({
             nomeComprador: input.nomeComprador,
+            descontoTotal: descontoTotal.toFixed(2),
             comprador: input.comprador,
             pagamento: input.pagamento,
             condicaoPagamento: input.condicaoPagamento,
             observacoes: input.observacoes,
             itens: linhas,
-            total: (subtotal + (frete ?? 0)).toFixed(2),
+            total: (totalBruto - descontoTotal).toFixed(2),
           })
           .where(eq(ordens.id, input.id))
           .returning();

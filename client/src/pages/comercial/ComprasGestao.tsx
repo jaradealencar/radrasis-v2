@@ -60,6 +60,7 @@ import {
   unidadeConsumo,
   compradorSchema,
   cotacaoCompraSchema,
+  COMPRADORES_RESPONSAVEIS,
 } from "@shared/compras-cotacoes";
 import type { inferRouterOutputs } from "@trpc/server";
 import type { AppRouter } from "../../../../server/routers";
@@ -99,6 +100,13 @@ function numeroOpcional(s: string): number | null {
   if (!s.trim()) return null;
   const numero = Number(s.replace(",", "."));
   return Number.isFinite(numero) ? numero : null;
+}
+function chaveComprador(valor: string): string {
+  return valor
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .trim()
+    .toLocaleLowerCase("pt-BR");
 }
 
 // O editor existente mantém os vínculos/calculadora; este bloco salva o documento completo.
@@ -458,6 +466,7 @@ function EditorOrdem({
   const [dados, setDados] = useState(cadastro);
   const [tipo, setTipo] = useState<"empresa" | "pessoa">("empresa");
   const [nomeComprador, setNomeComprador] = useState("");
+  const [descontoObtido, setDescontoObtido] = useState("0");
   const [quantidades, setQuantidades] = useState<Record<number, string>>(
     Object.fromEntries(
       cotacao.itens.map(i => [i.id, String(i.quantidade).replace(".", ",")])
@@ -530,13 +539,29 @@ function EditorOrdem({
       ? [{ itemId: i.id, quantidade, precoUnitario }]
       : [];
   });
-  const total = itensValidos
+  const subtotalMercadorias = itensValidos
     ? linhasAtivas.reduce((s, i) => {
         const quantidade = numeroEditado(quantidades[i.id] ?? "")!;
         const preco = numeroEditado(precos[i.id] ?? "")!;
         return s + Math.round(quantidade * preco * 100) / 100;
-      }, 0) + (freteCalculado.total ?? 0)
+      }, 0)
     : null;
+  const totalBruto =
+    subtotalMercadorias == null || freteCalculado.total == null
+      ? null
+      : subtotalMercadorias + freteCalculado.total;
+  const descontoObtidoNumero = descontoObtido.trim()
+    ? numeroEditado(descontoObtido)
+    : 0;
+  const descontoValido =
+    totalBruto != null &&
+    descontoObtidoNumero != null &&
+    descontoObtidoNumero >= 0 &&
+    descontoObtidoNumero <= totalBruto;
+  const total =
+    totalBruto == null || descontoObtidoNumero == null
+      ? null
+      : totalBruto - descontoObtidoNumero;
   const definir = (
     campo: "nome" | "documento" | "inscricaoEstadual",
     valor: string
@@ -581,6 +606,12 @@ function EditorOrdem({
       );
       return;
     }
+    if (!descontoValido) {
+      toast.error(
+        "Informe um desconto igual ou inferior ao total bruto da ordem."
+      );
+      return;
+    }
     if (!expedicaoValida) {
       toast.error(
         "Informe peso e volume maiores que zero, ou deixe o campo vazio."
@@ -596,6 +627,7 @@ function EditorOrdem({
         condicaoPagamento: condicao,
         transportadora,
         numeroColeta: coleta,
+        descontoTotal: descontoObtidoNumero ?? 0,
         frete: freteCalculado.total ?? 0,
         freteModo,
         freteValorInformado:
@@ -626,7 +658,13 @@ function EditorOrdem({
         Cotação #{cotacao.id} · <strong>{cotacao.fornecedor}</strong>
       </p>
       <Campo titulo="Nome do comprador (preenchimento manual)">
+        <datalist id="compradores-responsaveis-ordem">
+          {COMPRADORES_RESPONSAVEIS.map(nome => (
+            <option key={nome} value={nome} />
+          ))}
+        </datalist>
         <Input
+          list="compradores-responsaveis-ordem"
           value={nomeComprador}
           onChange={e => setNomeComprador(e.target.value)}
           placeholder="Nome de quem está fazendo a compra"
@@ -831,7 +869,19 @@ function EditorOrdem({
         <Campo titulo="Observações para o fornecedor">
           <Input value={obs} onChange={e => setObs(e.target.value)} />
         </Campo>
+        <Campo titulo="Desconto obtido no pedido (R$)">
+          <Input
+            inputMode="decimal"
+            value={descontoObtido}
+            onChange={e => setDescontoObtido(e.target.value)}
+            placeholder="0,00"
+          />
+        </Campo>
       </div>
+      <p className="text-xs text-slate-500">
+        O desconto é registrado como bônus total do pedido. Ele não altera os
+        preços unitários nem os totais dos itens.
+      </p>
       <div className="grid gap-2 sm:grid-cols-2">
         <Campo titulo="Peso total da carga (kg)">
           <Input
@@ -860,20 +910,29 @@ function EditorOrdem({
         mostrarPeso={false}
       />
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <strong>
-          {freteCalculado.pendente
-            ? "Subtotal (frete aguardando peso): "
-            : freteModo === "por_kg"
-              ? "Total estimado: "
-              : "Total: "}
-          {total == null ? "Revise quantidades e preços" : fmtBrl(total)}
-        </strong>
+        <div className="space-y-1 text-sm">
+          <div>
+            {totalBruto == null
+              ? subtotalMercadorias == null
+                ? "Subtotal dos itens: revise os itens"
+                : `Subtotal dos itens: ${fmtBrl(subtotalMercadorias)} · frete pendente`
+              : `Subtotal + frete: ${fmtBrl(totalBruto)}`}
+            {totalBruto != null && freteModo === "por_kg"
+              ? " (estimado)"
+              : ""}
+          </div>
+          <div>Desconto obtido: -{fmtBrl(descontoObtidoNumero ?? 0)}</div>
+          <strong>
+            Total líquido: {total == null ? "Não calculado até definir o frete" : fmtBrl(total)}
+          </strong>
+        </div>
         <Button
           disabled={
             emitir.isPending ||
             !itensValidos ||
             !expedicaoValida ||
             !pesoFreteKgValido ||
+            !descontoValido ||
             nomeComprador.trim().length < 3
           }
           onClick={() => void gerar()}
@@ -922,6 +981,40 @@ export function ComprasHistorico({
     fim: fimOrdem || undefined,
     pagina: paginaOrdem,
   });
+  const descontosObtidos = trpc.compras.descontosObtidos.useQuery(
+    { inicio: inicioOrdem || undefined, fim: fimOrdem || undefined },
+    { enabled: aba === "ordens" }
+  );
+  const descontosPorComprador = useMemo(() => {
+    const agregados = new Map<
+      string,
+      { comprador: string; descontoTotal: number; quantidadeOrdens: number }
+    >();
+    for (const linha of descontosObtidos.data?.porComprador ?? []) {
+      const chave = chaveComprador(linha.comprador);
+      const atual = agregados.get(chave);
+      if (atual) {
+        atual.descontoTotal += linha.descontoTotal;
+        atual.quantidadeOrdens += linha.quantidadeOrdens;
+      } else {
+        agregados.set(chave, { ...linha });
+      }
+    }
+    const nomesConhecidos = new Map(
+      COMPRADORES_RESPONSAVEIS.map(nome => [chaveComprador(nome), nome])
+    );
+    for (const [chave, nome] of nomesConhecidos) {
+      if (!agregados.has(chave))
+        agregados.set(chave, {
+          comprador: nome,
+          descontoTotal: 0,
+          quantidadeOrdens: 0,
+        });
+    }
+    return [...agregados.values()].sort(
+      (a, b) => b.descontoTotal - a.descontoTotal || a.comprador.localeCompare(b.comprador, "pt-BR")
+    );
+  }, [descontosObtidos.data]);
   const materias = trpc.nfCompra.buscarMateriasPrimas.useQuery(
     { busca, limite: 20 },
     { enabled: busca.length >= 2 }
@@ -1301,6 +1394,53 @@ export function ComprasHistorico({
               />
             </Campo>
           </div>
+          {descontosObtidos.isLoading ? (
+            <Spinner />
+          ) : descontosObtidos.error ? (
+            <p className="text-sm text-red-600">
+              {descontosObtidos.error.message}
+            </p>
+          ) : (
+            <div className="grid gap-3 lg:grid-cols-[minmax(220px,1fr)_2fr]">
+              <KpiCard
+                label="Descontos obtidos"
+                value={fmtBrl(descontosObtidos.data?.descontoTotal ?? 0)}
+                sub={`${descontosObtidos.data?.quantidadeOrdens ?? 0} ordens no período selecionado`}
+                tooltip="Soma dos descontos totais registrados nas ordens ativas. Os preços unitários dos itens permanecem sem alteração."
+              />
+              <div className="rounded-xl border bg-white p-3">
+                <h3 className="mb-2 text-sm font-semibold">
+                  Descontos por comprador
+                </h3>
+                <Table className={compacta}>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Comprador responsável</TableHead>
+                      <TableHead>Ordens</TableHead>
+                      <TableHead className="text-right">
+                        Desconto obtido
+                      </TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {descontosPorComprador.map(linha => (
+                      <TableRow key={linha.comprador}>
+                        <TableCell>{linha.comprador}</TableCell>
+                        <TableCell>{linha.quantidadeOrdens}</TableCell>
+                        <TableCell className="text-right font-semibold">
+                          {fmtBrl(linha.descontoTotal)}
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+                <p className="mt-2 text-[11px] text-slate-500">
+                  Inclui todas as ordens ativas no período, independentemente
+                  da página atual da lista.
+                </p>
+              </div>
+            </div>
+          )}
           {ordens.isLoading ? (
             <Spinner />
           ) : ordens.error ? (
@@ -1369,12 +1509,18 @@ export function ComprasHistorico({
                         {o.transportadora || "Transportadora pendente"} · coleta{" "}
                         {o.numeroColeta || "pendente"}
                       </span>
+                      {Number(o.descontoTotal ?? 0) > 0 && (
+                        <span className="block text-emerald-700">
+                          Desconto obtido: -
+                          {fmtBrl(Number(o.descontoTotal))}
+                        </span>
+                      )}
                       <strong>
                         {o.freteModo === "por_kg"
                           ? o.pesoPrevistoKg == null
-                            ? "Subtotal sem frete: "
-                            : "Total estimado: "
-                          : "Total: "}
+                            ? "Total líquido sem frete: "
+                            : "Total líquido estimado: "
+                          : "Total líquido: "}
                         {fmtBrl(Number(o.total))}
                       </strong>
                     </TableCell>

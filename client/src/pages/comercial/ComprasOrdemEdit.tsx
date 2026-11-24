@@ -21,6 +21,7 @@ import {
 } from "@/components/ui/table";
 import { Spinner } from "@/components/ui/spinner";
 import {
+  COMPRADORES_RESPONSAVEIS,
   compradorSchema,
   editarOrdemCompraSchema,
   type CompradorCompra,
@@ -117,6 +118,9 @@ function EditorSalva({
   const utils = trpc.useUtils();
   const salvar = trpc.compras.editarOrdem.useMutation();
   const [nomeComprador, setNomeComprador] = useState(ordem.nomeComprador ?? "");
+  const [descontoObtido, setDescontoObtido] = useState(
+    Number(ordem.descontoTotal ?? 0).toFixed(2).replace(".", ",")
+  );
   const [comprador, setComprador] = useState<CompradorCompra>(ordem.comprador);
   const [tipo, setTipo] = useState<TipoComprador>(ordem.comprador.tipo);
   const [pagamento, setPagamento] = useState<"a_vista" | "faturado">(
@@ -178,8 +182,22 @@ function EditorSalva({
         return total + Math.round(quantidade * preco * 100) / 100;
       }, 0)
     : null;
-  const totalAtualizado =
+  const totalBruto =
     subtotal == null ? null : subtotal + Number(ordem.frete ?? 0);
+  const fretePendente =
+    ordem.freteModo === "por_kg" && ordem.pesoPrevistoKg == null;
+  const descontoObtidoNumero = descontoObtido.trim()
+    ? numero(descontoObtido)
+    : 0;
+  const descontoValido =
+    totalBruto != null &&
+    descontoObtidoNumero != null &&
+    descontoObtidoNumero >= 0 &&
+    descontoObtidoNumero <= totalBruto;
+  const totalAtualizado =
+    totalBruto == null || descontoObtidoNumero == null
+      ? null
+      : totalBruto - descontoObtidoNumero;
 
   const salvarAlteracoes = async () => {
     if (temNf) return;
@@ -190,6 +208,12 @@ function EditorSalva({
     if (!validos) {
       toast.error(
         "Revise os itens ou exclua as linhas que não serão compradas."
+      );
+      return;
+    }
+    if (!descontoValido) {
+      toast.error(
+        "Informe um desconto igual ou inferior ao total bruto da ordem."
       );
       return;
     }
@@ -208,6 +232,7 @@ function EditorSalva({
     const entrada = editarOrdemCompraSchema.safeParse({
       id: ordem.id,
       nomeComprador,
+      descontoTotal: descontoObtidoNumero ?? 0,
       comprador: compradorValidado.data,
       pagamento,
       condicaoPagamento: condicao,
@@ -238,6 +263,11 @@ function EditorSalva({
 
   return (
     <div className="space-y-4">
+      <datalist id="compradores-responsaveis-ordem-edicao">
+        {COMPRADORES_RESPONSAVEIS.map(nome => (
+          <option key={nome} value={nome} />
+        ))}
+      </datalist>
       <p className="text-sm">
         <strong>{registro.fornecedor}</strong> · Cotação #{ordem.cotacaoId}
       </p>
@@ -250,6 +280,7 @@ function EditorSalva({
       <div className="grid gap-2 sm:grid-cols-2">
         <Campo titulo="Nome do comprador (obrigatório)">
           <Input
+            list="compradores-responsaveis-ordem-edicao"
             value={nomeComprador}
             disabled={temNf}
             maxLength={256}
@@ -333,7 +364,18 @@ function EditorSalva({
             onChange={e => setObservacoes(e.target.value)}
           />
         </Campo>
+        <Campo titulo="Desconto obtido no pedido (R$)">
+          <Input
+            inputMode="decimal"
+            value={descontoObtido}
+            disabled={temNf}
+            onChange={e => setDescontoObtido(e.target.value)}
+          />
+        </Campo>
       </div>
+      <p className="text-xs text-slate-500">
+        O desconto fica separado do preço unitário e dos totais de cada item.
+      </p>
       <Table className="table-fixed text-xs [&_th]:whitespace-normal [&_td]:whitespace-normal [&_td]:break-words [&_td]:align-top">
         <TableHeader>
           <TableRow>
@@ -430,19 +472,23 @@ function EditorSalva({
         cotado quando o preço da ordem foi ajustado.
       </p>
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <strong>
-          {ordem.freteModo === "por_kg" && ordem.pesoPrevistoKg == null
-            ? "Subtotal sem frete: "
-            : "Total da ordem: "}
-          {totalAtualizado == null
-            ? "Revise os itens"
-            : fmtBrl(totalAtualizado)}
-        </strong>
+        <div className="space-y-1 text-sm">
+          <div>
+            {fretePendente ? "Subtotal sem frete: " : "Subtotal + frete: "}
+            {totalBruto == null ? "Revise os itens" : fmtBrl(totalBruto)}
+          </div>
+          <div>Desconto obtido: -{fmtBrl(descontoObtidoNumero ?? 0)}</div>
+          <strong>
+            {fretePendente ? "Subtotal líquido sem frete: " : "Total líquido: "}
+            {totalAtualizado == null ? "Revise itens e desconto" : fmtBrl(totalAtualizado)}
+          </strong>
+        </div>
         <Button
           disabled={
             temNf ||
             salvar.isPending ||
             !validos ||
+            !descontoValido ||
             nomeComprador.trim().length < 3
           }
           onClick={() => void salvarAlteracoes()}

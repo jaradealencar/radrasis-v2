@@ -4721,6 +4721,7 @@ export const comprasOrdens = pgTable("compras_ordens", {
   pagamento: varchar("pagamento", { length: 16 }).notNull(), condicaoPagamento: text("condicao_pagamento").notNull(),
   transportadora: text("transportadora").notNull(), numeroColeta: text("numero_coleta").notNull(),
   frete: decimal("frete", { precision: 18, scale: 2 }).notNull(), total: decimal("total", { precision: 18, scale: 2 }).notNull(),
+  descontoTotal: decimal("desconto_total", { precision: 18, scale: 2 }).default("0").notNull(),
   observacoes: text("observacoes").notNull(), itens: jsonb("itens").$type<import("../shared/compras-cotacoes").LinhaOrdemCompra[]>().notNull(),
   criadoPor: text("criado_por"), createdAt: timestamp("created_at").defaultNow().notNull(),
   freteConfirmado: boolean("frete_confirmado").default(false).notNull(),

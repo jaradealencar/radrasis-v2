@@ -1,5 +1,13 @@
 import { z } from "zod";
 
+export const COMPRADORES_RESPONSAVEIS = [
+  "Daniel",
+  "Débora",
+  "Suellen",
+  "Érick",
+  "Henrique",
+] as const;
+
 export const dataCompraSchema = z
   .string()
   .regex(/^\d{4}-\d{2}-\d{2}$/)
@@ -104,6 +112,7 @@ export const ordemCompraSchema = z
     transportadora: z.string().max(256),
     numeroColeta: z.string().max(128),
     frete: z.number().finite().nonnegative().max(1e9),
+    descontoTotal: z.number().finite().nonnegative().max(1e9).default(0),
     freteModo: z
       .enum(["valor_total", "por_kg", "gratis"])
       .default("valor_total"),
@@ -156,6 +165,7 @@ export const editarOrdemCompraSchema = z
   .object({
     id: z.number().int().positive(),
     nomeComprador: z.string().trim().min(3).max(256),
+    descontoTotal: z.number().finite().nonnegative().max(1e9).optional(),
     comprador: compradorSchema,
     pagamento: z.enum(["a_vista", "faturado"]),
     condicaoPagamento: z.string().max(256),

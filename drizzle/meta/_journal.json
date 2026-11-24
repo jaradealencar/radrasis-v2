@@ -1044,6 +1044,13 @@
       "when": 1795468311436,
       "tag": "0150_ordens_itens_volume_exclusao",
       "breakpoints": true
+    },
+    {
+      "idx": 149,
+      "version": "7",
+      "when": 1795490167785,
+      "tag": "0151_desconto_obtido_ordem",
+      "breakpoints": true
     }
   ]
 }

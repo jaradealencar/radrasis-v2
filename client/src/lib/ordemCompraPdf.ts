@@ -17,6 +17,7 @@ export function criarOrdemCompraPdf(
     transportadora: string;
     numeroColeta: string;
     frete: string | number;
+    descontoTotal?: string | number | null;
     freteModo?: string;
     freteValorInformado?: string | number | null;
     pesoPrevistoKg?: string | number | null;
@@ -89,10 +90,24 @@ export function criarOrdemCompraPdf(
   y =
     (doc as jsPDF & { lastAutoTable: { finalY: number } }).lastAutoTable
       .finalY + 9;
-  const bloco = [
+  const subtotalMercadorias = ordem.itens.reduce(
+    (soma, item) => soma + Number(item.total || 0),
+    0
+  );
+  const descontoTotal = Number(ordem.descontoTotal ?? 0);
+  const freteResumo =
     ordem.freteModo === "por_kg"
-      ? `Frete: ${fmtBrl(Number(ordem.freteValorInformado))}/kg. Peso previsto: ${ordem.pesoPrevistoKg == null ? "a definir na NF" : `${fmtNum(Number(ordem.pesoPrevistoKg), 3)} kg`}. ${ordem.pesoPrevistoKg == null ? "Subtotal sem frete" : "Total estimado"}: ${fmtBrl(Number(ordem.total))}`
-      : `Frete: ${ordem.freteModo === "gratis" ? "Grátis" : fmtBrl(Number(ordem.frete))} | TOTAL: ${fmtBrl(Number(ordem.total))}`,
+      ? `Frete: ${fmtBrl(Number(ordem.freteValorInformado))}/kg · peso previsto: ${ordem.pesoPrevistoKg == null ? "a definir na NF" : `${fmtNum(Number(ordem.pesoPrevistoKg), 3)} kg`} · ${ordem.pesoPrevistoKg == null ? "frete a confirmar na NF" : `frete estimado: ${fmtBrl(Number(ordem.frete))}`}`
+      : `Frete: ${ordem.freteModo === "gratis" ? "Grátis" : fmtBrl(Number(ordem.frete))}`;
+  const bloco = [
+    `Subtotal dos itens: ${fmtBrl(subtotalMercadorias)}`,
+    freteResumo,
+    ...(descontoTotal > 0
+      ? [`Desconto obtido (bônus total, sem alterar preços unitários): -${fmtBrl(descontoTotal)}`]
+      : []),
+    ordem.freteModo === "por_kg" && ordem.pesoPrevistoKg == null
+      ? `SUBTOTAL LÍQUIDO (FRETE A DEFINIR NA NF): ${fmtBrl(Number(ordem.total))}`
+      : `TOTAL LÍQUIDO: ${fmtBrl(Number(ordem.total))}`,
     ...(ordem.observacoes ? [`Observações: ${ordem.observacoes}`] : []),
   ];
   for (const s of bloco) {

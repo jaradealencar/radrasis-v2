@@ -1,0 +1,1 @@
+ALTER TABLE "compras_ordens" ADD COLUMN "desconto_total" numeric(18, 2) DEFAULT '0' NOT NULL;
