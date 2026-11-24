@@ -36,6 +36,9 @@ export function FreteCompraCampos({
     valor.trim() ? Number(valor.replace(",", ".")) : null,
     peso.trim() ? Number(peso.replace(",", ".")) : null
   );
+  const pesoValido =
+    Number.isFinite(Number(peso.replace(",", "."))) &&
+    Number(peso.replace(",", ".")) > 0;
   return (
     <div className="grid gap-2 sm:grid-cols-3">
       <Campo nome="Tipo de frete">
@@ -65,12 +68,12 @@ export function FreteCompraCampos({
         />
       </Campo>
       {modo === "por_kg" && mostrarPeso ? (
-        <Campo nome="Peso previsto da carga (kg)">
+        <Campo nome="Peso total previsto da carga (kg)">
           <Input
             inputMode="decimal"
             value={peso}
             onChange={e => mudarPeso(e.target.value)}
-            placeholder="Definitivo quando chegar a NF"
+            placeholder="Extraído do PDF ou informe manualmente"
           />
         </Campo>
       ) : modo !== "por_kg" ? (
@@ -84,7 +87,9 @@ export function FreteCompraCampos({
       {modo === "por_kg" && (
         <p className="sm:col-span-3 text-xs text-slate-500">
           {calculo.total == null
-            ? "Informe o peso para estimar o total. A tarifa por kg fica salva e o peso real da NF definirá o frete definitivo."
+            ? pesoValido
+              ? "Informe a tarifa R$/kg para calcular o frete estimado. O peso real da NF definirá o frete definitivo."
+              : "Sem peso total em kg não há base para multiplicar a tarifa. Extraia o peso do PDF ou informe-o manualmente para estimar o frete."
             : `${valor} R$/kg × ${peso} kg = ${fmtBrl(calculo.total)} de frete estimado.`}
         </p>
       )}

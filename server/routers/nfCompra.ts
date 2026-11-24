@@ -926,6 +926,24 @@ export const nfCompraRouter = router({
 
       const buffer = Buffer.from(input.pdfBase64, "base64");
       const cotacao = await extrairCotacaoDePdf(buffer, input.nomeArquivo);
+      const freteModo = ["valor_total", "por_kg", "gratis"].includes(
+        cotacao.freteModo ?? ""
+      )
+        ? cotacao.freteModo
+        : null;
+      const valorFrete =
+        freteModo != null &&
+        typeof cotacao.valorFrete === "number" &&
+        Number.isFinite(cotacao.valorFrete) &&
+        cotacao.valorFrete >= 0
+          ? cotacao.valorFrete
+          : null;
+      const pesoFreteKg =
+        typeof cotacao.pesoFreteKg === "number" &&
+        Number.isFinite(cotacao.pesoFreteKg) &&
+        cotacao.pesoFreteKg > 0
+          ? cotacao.pesoFreteKg
+          : null;
       const fornecedorCadastro = await integrarFornecedorDocumento({ cnpj: cotacao.cnpjFornecedor, nome: cotacao.fornecedor });
 
       // Carregar todas as MPs para busca de correspondência por similaridade de nome
@@ -1134,7 +1152,9 @@ export const nfCompraRouter = router({
         cnpjFornecedor: cotacao.cnpjFornecedor,
         dataCotacao: cotacao.dataCotacao,
         valorTotalCotado: cotacao.valorTotal,
-        valorFrete: cotacao.valorFrete,
+        freteModo,
+        valorFrete,
+        pesoFreteKg,
         validadeDias: cotacao.validadeDias,
         condicaoPagamento: cotacao.condicaoPagamento,
         prazoEntrega: cotacao.prazoEntrega,

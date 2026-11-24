@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { trpc } from "@/lib/trpc";
 import { fmtBrl, fmtDate, fmtNum } from "@/lib/format";
 import { toast } from "sonner";
@@ -51,6 +51,10 @@ import {
   type ModoFreteCompra,
 } from "./ComprasLogistica";
 import { calcularFreteCompra } from "@shared/compras-frete";
+import {
+  simularCustoFinalCotacao,
+  type SimulacaoCotacao,
+} from "@shared/compras-cotacao-simulacao";
 import { EditarOrdemModal, type CompraOrdemRegistro } from "./ComprasOrdemEdit";
 import {
   unidadeConsumo,
@@ -63,6 +67,7 @@ import type { AppRouter } from "../../../../server/routers";
 type Outputs = inferRouterOutputs<AppRouter>["compras"];
 type Cotacao = Outputs["obterCotacao"];
 type Cadastro = Outputs["compradores"];
+export type SimulacaoFinalCotacao = SimulacaoCotacao;
 const selectClass =
   "w-full min-w-0 rounded-md border bg-white px-2 py-2 text-xs";
 const compacta =
@@ -90,16 +95,23 @@ function dataIso(s: string | undefined) {
   const m = s.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
   return m ? `${m[3]}-${m[2]}-${m[1]}` : "";
 }
+function numeroOpcional(s: string): number | null {
+  if (!s.trim()) return null;
+  const numero = Number(s.replace(",", "."));
+  return Number.isFinite(numero) ? numero : null;
+}
 
 // O editor existente mantém os vínculos/calculadora; este bloco salva o documento completo.
 export function SalvarCotacaoCompra({
   resultado,
   nomeArquivo,
   onAbrirOrdem,
+  onSimulacaoChange,
 }: {
   resultado: any;
   nomeArquivo: string;
   onAbrirOrdem: (id: number) => void;
+  onSimulacaoChange: (simulacao: SimulacaoFinalCotacao) => void;
 }) {
   const utils = trpc.useUtils();
   const [data, setData] = useState(dataIso(resultado.dataCotacao));
@@ -119,7 +131,23 @@ export function SalvarCotacaoCompra({
     resultado.freteModo ?? "valor_total"
   );
   const [pesoFrete, setPesoFrete] = useState(
-    resultado.pesoFreteKg == null ? "" : String(resultado.pesoFreteKg)
+    () => {
+      const pesoExtraido = Number(resultado.pesoFreteKg);
+      if (Number.isFinite(pesoExtraido) && pesoExtraido > 0)
+        return String(pesoExtraido);
+      const itens = Array.isArray(resultado.itens) ? resultado.itens : [];
+      if (
+        itens.length > 0 &&
+        itens.every((item: any) => unidadeConsumo(item.unidade) === "KG")
+      ) {
+        const soma = itens.reduce(
+          (total: number, item: any) => total + Number(item.quantidade || 0),
+          0
+        );
+        return Number.isFinite(soma) && soma > 0 ? String(soma) : "";
+      }
+      return "";
+    }
   );
   const [observacoes, setObservacoes] = useState(resultado.observacoes ?? "");
   const [salvo, setSalvo] = useState<{ id: number; assinatura: string } | null>(
@@ -127,6 +155,25 @@ export function SalvarCotacaoCompra({
   );
   const controle = useRef({ assinatura: "", chave: crypto.randomUUID() });
   const salvar = trpc.compras.salvarCotacao.useMutation();
+  const pesoFreteNumero = numeroOpcional(pesoFrete);
+  const simulacao = useMemo(
+    () =>
+      simularCustoFinalCotacao({
+        itens: resultado.itens.map((item: any) => ({
+          quantidade: Number(item.quantidade),
+          unidade: String(item.unidade ?? ""),
+          precoUnitario: Number(item.precoUnitario),
+        })),
+        freteModo,
+        valorFreteInformado:
+          freteModo === "gratis" ? 0 : numeroOpcional(frete),
+        pesoTotalKg: pesoFreteNumero,
+      }),
+    [resultado.itens, freteModo, frete, pesoFreteNumero]
+  );
+  useEffect(() => {
+    onSimulacaoChange(simulacao);
+  }, [simulacao, onSimulacaoChange]);
   const payload = {
     fornecedor: resultado.fornecedor ?? "",
     cnpjFornecedor: resultado.cnpjFornecedor ?? null,
@@ -175,6 +222,14 @@ export function SalvarCotacaoCompra({
   const atualSalvo = idSalvo != null;
   const gravar = async (ordem: boolean) => {
     try {
+      if (ordem && simulacao.totalFinal == null) {
+        toast.error(
+          simulacao.pendencia === "peso"
+            ? "Informe o peso total em kg para calcular o frete por quilo e o preço final."
+            : "Informe o frete ou selecione Grátis para calcular o preço final."
+        );
+        return;
+      }
       if (atualSalvo) {
         if (ordem) onAbrirOrdem(idSalvo);
         return;
@@ -245,6 +300,80 @@ export function SalvarCotacaoCompra({
         mudarValor={setFrete}
         mudarPeso={setPesoFrete}
       />
+      <div className="rounded-lg border border-blue-200 bg-blue-50 p-3 space-y-2">
+        <strong className="block text-sm text-slate-800">
+          Simulação do preço final — ICMS 10%
+        </strong>
+        <div className="grid gap-2 text-xs sm:grid-cols-2 lg:grid-cols-4">
+          <div>
+            <span className="block text-slate-500">Mercadoria</span>
+            <strong>{fmtBrl(simulacao.subtotalMercadoria)}</strong>
+          </div>
+          <div>
+            <span className="block text-slate-500">Frete calculado</span>
+            <strong>
+              {simulacao.valorFrete == null
+                ? "Pendente"
+                : fmtBrl(simulacao.valorFrete)}
+            </strong>
+          </div>
+          <div>
+            <span className="block text-slate-500">ICMS (10%)</span>
+            <strong>
+              {simulacao.valorIcms == null
+                ? "Pendente"
+                : fmtBrl(simulacao.valorIcms)}
+            </strong>
+          </div>
+          <div>
+            <span className="block text-slate-500">Preço final</span>
+            <strong>
+              {simulacao.totalFinal == null
+                ? "Não calculado"
+                : fmtBrl(simulacao.totalFinal)}
+            </strong>
+          </div>
+        </div>
+        {simulacao.pendencia ? (
+          <p role="status" className="text-xs font-medium text-amber-800">
+            {simulacao.pendencia === "peso"
+              ? "A cotação não informa o peso total. Sem essa base não é possível multiplicar a tarifa R$/kg; informe o peso previsto no campo acima para simular o custo final."
+              : "Informe o valor do frete ou selecione Grátis. O preço final e o ICMS ficam pendentes enquanto o frete não estiver definido."}
+          </p>
+        ) : (
+          <p className="text-[11px] text-slate-600">
+            Base de cálculo igual à auditoria de NF: mercadoria + frete, com
+            ICMS de 10% sobre essa soma. O frete é distribuído entre os itens
+            proporcionalmente ao valor cotado.
+          </p>
+        )}
+        {simulacao.totalFinal != null && (
+          <details className="text-xs">
+            <summary className="cursor-pointer text-blue-700">
+              Conferir preço final por item
+            </summary>
+            <div className="mt-2 space-y-1">
+              {resultado.itens.map((item: any, indice: number) => {
+                const linha = simulacao.itens[indice];
+                return linha ? (
+                  <div
+                    key={`${item.codigo ?? item.descricao}-${indice}`}
+                    className="flex flex-wrap justify-between gap-x-3 border-t border-blue-100 pt-1"
+                  >
+                    <span>
+                      {item.descricao} · {fmtNum(Number(item.quantidade), 3)}{" "}
+                      {item.unidade}
+                    </span>
+                    <strong>
+                      {fmtBrl(linha.custoFinalUnitario)}/{item.unidade}
+                    </strong>
+                  </div>
+                ) : null;
+              })}
+            </div>
+          </details>
+        )}
+      </div>
       <div className="flex flex-wrap items-center gap-2">
         <Button
           size="sm"
@@ -388,6 +517,9 @@ function EditorOrdem({
     });
   const pesoInformado = numeroEditado(pesoFrete);
   const volumeInformado = numeroEditado(volumeTotal);
+  const pesoFreteKgValido =
+    freteModo !== "por_kg" ||
+    (pesoInformado != null && pesoInformado > 0);
   const expedicaoValida =
     (!pesoFrete.trim() || (pesoInformado != null && pesoInformado > 0)) &&
     (!volumeTotal.trim() || (volumeInformado != null && volumeInformado > 0));
@@ -412,6 +544,12 @@ function EditorOrdem({
   const gerar = async () => {
     if (nomeComprador.trim().length < 3) {
       toast.error("Informe o nome de quem está fazendo a compra.");
+      return;
+    }
+    if (!pesoFreteKgValido) {
+      toast.error(
+        "Informe o peso previsto da carga em kg para calcular o frete por quilo."
+      );
       return;
     }
     if (
@@ -735,6 +873,7 @@ function EditorOrdem({
             emitir.isPending ||
             !itensValidos ||
             !expedicaoValida ||
+            !pesoFreteKgValido ||
             nomeComprador.trim().length < 3
           }
           onClick={() => void gerar()}

@@ -1,7 +1,12 @@
 import { useState, useMemo } from "react";
 import PageHeader from "@/components/PageHeader";
 import ModalCalculadoraFator from "@/components/ModalCalculadoraFator";
-import { ComprasHistorico, OrdemCompraModal, SalvarCotacaoCompra } from "./ComprasGestao";
+import {
+  ComprasHistorico,
+  OrdemCompraModal,
+  SalvarCotacaoCompra,
+  type SimulacaoFinalCotacao,
+} from "./ComprasGestao";
 import { SelecionarOrdemNf, type OrdemFrete } from "./ComprasLogistica";
 import { CotacaoComparativoConsumo } from "./CotacaoComparativoConsumo";
 import { medidasChapaMm } from "@shared/compras-chapas";
@@ -158,6 +163,8 @@ export default function NfCompraAuditoria() {
   const [fornecedorCadastro, setFornecedorCadastro] = useState<{ id: number; nome: string; totalCompras: number; cadastroConcluido: boolean } | null>(null);
   const [arquivoPdfNome, setArquivoPdfNome] = useState<string>("");
   const [cotacaoPdfResultado, setCotacaoPdfResultado] = useState<any | null>(null);
+  const [cotacaoSimulacao, setCotacaoSimulacao] =
+    useState<SimulacaoFinalCotacao | null>(null);
   const [itemCotacaoEmEdicao, setItemCotacaoEmEdicao] = useState<number | null>(null);
   const [itemCotacaoCalculadora, setItemCotacaoCalculadora] = useState<number | null>(null);
   const [buscaMateriaPrimaCotacao, setBuscaMateriaPrimaCotacao] = useState("");
@@ -286,6 +293,8 @@ export default function NfCompraAuditoria() {
     const file = e.target.files?.[0];
     if (!file) return;
     setArquivoPdfNome(file.name);
+    setCotacaoPdfResultado(null);
+    setCotacaoSimulacao(null);
     const reader = new FileReader();
     reader.onload = (event) => {
       const base64 = (event.target?.result as string).split(",")[1];
@@ -293,7 +302,7 @@ export default function NfCompraAuditoria() {
         analisarCotacaoPdfMutation.mutate(
           { pdfBase64: base64, nomeArquivo: file.name },
           {
-            onSuccess: (data) => { setCotacaoPdfResultado(data); setVersaoEditorCotacao(v => v + 1); void utils.suppliers.list.invalidate(); },
+            onSuccess: (data) => { setCotacaoSimulacao(null); setCotacaoPdfResultado(data); setVersaoEditorCotacao(v => v + 1); void utils.suppliers.list.invalidate(); },
             onError: (error) => toast.error(error.message),
           }
         );
@@ -1496,7 +1505,7 @@ export default function NfCompraAuditoria() {
               </div>
 
               {cotacaoPdfResultado.fornecedorCadastro && <p className="text-xs text-blue-700"><a href="/fornecedores" className="underline">Cadastro do fornecedor</a>: {cotacaoPdfResultado.fornecedorCadastro.totalCompras} compra(s) registrada(s){!cotacaoPdfResultado.fornecedorCadastro.cadastroConcluido && " - Não concluído: complete os dados em Fornecedores"}</p>}
-              <SalvarCotacaoCompra key={versaoEditorCotacao} resultado={cotacaoPdfResultado} nomeArquivo={arquivoPdfNome} onAbrirOrdem={setCotacaoOrdemId} />
+              <SalvarCotacaoCompra key={versaoEditorCotacao} resultado={cotacaoPdfResultado} nomeArquivo={arquivoPdfNome} onAbrirOrdem={setCotacaoOrdemId} onSimulacaoChange={setCotacaoSimulacao} />
               <Table className="table-fixed text-[11px] [&_th]:whitespace-normal [&_th]:px-1.5 [&_td]:whitespace-normal [&_td]:break-words [&_td]:p-1.5 [&_td]:align-top">
                 <TableHeader>
                   <TableRow>
@@ -1574,6 +1583,18 @@ export default function NfCompraAuditoria() {
                         <TableCell className="text-right font-mono text-xs font-bold text-slate-800">
                           {fmtBrl(item.precoUnitario)}/{item.unidade}
                           <span className="block font-normal text-[10px]">Qtd.: {fmtNum(item.quantidade, 3)} {item.unidade}</span>
+                          {cotacaoSimulacao?.totalFinal != null &&
+                            cotacaoSimulacao.itens[i] && (
+                              <span className="mt-1 block rounded bg-emerald-50 px-1 py-0.5 text-[10px] font-semibold text-emerald-800">
+                                Final c/ frete + ICMS 10%: {fmtBrl(cotacaoSimulacao.itens[i].custoFinalUnitario)}/{item.unidade}
+                              </span>
+                            )}
+                          {cotacaoSimulacao?.totalFinal == null &&
+                            cotacaoSimulacao?.pendencia === "peso" && (
+                              <span className="mt-1 block text-[10px] font-normal text-amber-700">
+                                Custo final pendente: informe o peso total.
+                              </span>
+                            )}
                         </TableCell>
                         <TableCell>
                           <div className="space-y-1">
@@ -1700,6 +1721,7 @@ export default function NfCompraAuditoria() {
             materiaPrimaVinculada: i.materiaPrimaId ? { id: i.materiaPrimaId, nome: i.nomeMateriaPrima, unidadeMubisys: i.unidadeDestino, custoUnitarioMubisys: i.custoMubisys == null ? null : Number(i.custoMubisys) } : null,
             fatorConversaoCotacao: i.fatorConversao == null ? null : Number(i.fatorConversao), unidadeOrigemConversaoCotacao: i.unidadeOrigem, unidadeDestinoConversaoCotacao: i.unidadeDestino, baseCalculoConversaoCotacao: i.formula, origemVinculo: "cotação salva (snapshot)" };
         }));
+        setCotacaoSimulacao(null);
         setCotacaoPdfResultado({ ...c, salvoId: c.id, valorTotalCotado: Number(c.total), valorFrete: c.frete == null ? null : Number(c.frete), itens: linhas });
         setArquivoPdfNome(c.nomeArquivo ?? `Cotação #${c.id}`); setVersaoEditorCotacao(v => v + 1); setAbaAtiva("cotacao_pdf");
       }} />}

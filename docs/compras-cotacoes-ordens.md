@@ -2,6 +2,8 @@
 
 Na Auditoria NF de Compra (`/comercial/nf-compra`), a análise de PDF usa cinco colunas com quebra de texto. Quantidade e preço ficam juntos; as compras anteriores ficam agrupadas. A última coluna compara cotação, última compra e MubiSys na mesma unidade, com conversão de chapas em m² visível e editável.
 
+A análise também mostra uma simulação do preço final: valor da mercadoria + frete + ICMS de 10% sobre essa base, como na auditoria de NF. No frete por kg, a tarifa só é multiplicada por um peso total disponível: o PDF pode fornecer esse peso explicitamente, itens todos cotados em KG permitem somar as quantidades, e nos demais casos o comprador pode informar o peso manualmente. Sem peso ou sem frete definido, o preço final fica pendente; salvar a cotação continua permitido, mas gerar a ordem exige completar a base. O frete total é distribuído entre os itens proporcionalmente ao valor cotado para exibir o custo unitário final estimado.
+
 ## Cotação salva
 
 Depois de revisar os vínculos e conversões, use **Salvar cotação**. O documento guarda fornecedor, data, validade, condições, frete informado, descrição/código, quantidade, preço, matéria-prima, fator, fórmula e custo do MubiSys naquele momento. O total salvo é recalculado no servidor pelos itens mais o frete informado; não inclui impostos ou encargos não discriminados nos itens.

@@ -16,7 +16,9 @@ export interface CotacaoExtraida {
   validadeDias?: number;
   condicaoPagamento?: string;
   prazoEntrega?: string;
-  valorFrete?: number;
+  freteModo?: "valor_total" | "por_kg" | "gratis" | null;
+  valorFrete?: number | null;
+  pesoFreteKg?: number | null;
   valorTotal?: number;
   itens: ItemCotacaoExtraido[];
 }
@@ -51,7 +53,9 @@ Retorne OBRIGATORIAMENTE um JSON estrito no seguinte formato (sem markdown, apen
   "validadeDias": 10,
   "condicaoPagamento": "Ex: 28 DDL, À vista, etc",
   "prazoEntrega": "Ex: 5 dias úteis, Imediato",
-  "valorFrete": 0,
+  "freteModo": null,
+  "valorFrete": null,
+  "pesoFreteKg": null,
   "valorTotal": 0,
   "itens": [
     {
@@ -66,7 +70,8 @@ Retorne OBRIGATORIAMENTE um JSON estrito no seguinte formato (sem markdown, apen
 }
 Importante:
 - Converta valores numéricos para números (não strings). Use ponto como separador decimal.
-- Se houver frete mencionado, extraia o valor numérico.
+- Se houver frete mencionado, extraia a modalidade: "por_kg" para tarifa explícita em R$/kg, "gratis" quando o documento disser que é grátis, e "valor_total" para frete total/fixo. Se o documento não informar frete, retorne freteModo=null e valorFrete=null; nunca presuma frete zero.
+- Extraia pesoFreteKg somente se o peso total da carga estiver explicitamente escrito no documento e convertido para kg. Se não houver peso total explícito, retorne null; nunca estime o peso pelas descrições ou quantidades dos itens.
 - Extraia cada linha de produto individualmente.`;
 
   const response = await invokeLLM({
