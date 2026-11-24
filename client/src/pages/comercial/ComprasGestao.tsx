@@ -135,11 +135,13 @@ export function SalvarCotacaoCompra({
   const [pagamento, setPagamento] = useState(resultado.condicaoPagamento ?? "");
   const [prazo, setPrazo] = useState(resultado.prazoEntrega ?? "");
   const [frete, setFrete] = useState(
-    resultado.freteValorInformado != null
-      ? String(resultado.freteValorInformado)
-      : resultado.valorFrete == null
-        ? ""
-        : String(resultado.valorFrete)
+    resultado.freteModo === "cif" && resultado.freteValorInformado == null
+      ? ""
+      : resultado.freteValorInformado != null
+        ? String(resultado.freteValorInformado)
+        : resultado.valorFrete == null
+          ? ""
+          : String(resultado.valorFrete)
   );
   const [freteModo, setFreteModo] = useState<ModoFreteCompra>(
     resultado.freteModo ?? "valor_total"
@@ -210,7 +212,10 @@ export function SalvarCotacaoCompra({
         : frete === ""
           ? null
           : Number(frete.replace(",", ".")),
-    pesoFreteKg: pesoFrete === "" ? null : Number(pesoFrete.replace(",", ".")),
+    pesoFreteKg:
+      freteModo === "cif" || pesoFrete === ""
+        ? null
+        : Number(pesoFrete.replace(",", ".")),
     observacoes,
     nomeArquivo,
     ...arquivoFonte,
@@ -245,7 +250,7 @@ export function SalvarCotacaoCompra({
   const gravar = async (ordem: boolean) => {
     if (enviandoCotacao) return;
     try {
-      if (ordem && simulacao.totalFinal == null) {
+      if (ordem && simulacao.totalFinal == null && freteModo !== "cif") {
         toast.error(
           simulacao.pendencia === "peso"
             ? "Informe o peso total em kg para calcular o frete por quilo e o preço final."
@@ -343,7 +348,13 @@ export function SalvarCotacaoCompra({
         modo={freteModo}
         valor={frete}
         peso={pesoFrete}
-        mudarModo={setFreteModo}
+        mudarModo={modo => {
+          setFreteModo(modo);
+          if (modo === "cif") {
+            setFrete("");
+            setPesoFrete("");
+          }
+        }}
         mudarValor={setFrete}
         mudarPeso={setPesoFrete}
       />
@@ -398,7 +409,9 @@ export function SalvarCotacaoCompra({
           <p role="status" className="text-xs font-medium text-amber-800">
             {simulacao.pendencia === "peso"
               ? "A cotação não informa o peso total. Sem essa base não é possível multiplicar a tarifa R$/kg; informe o peso previsto no campo acima para simular o custo final."
-              : "Informe o valor do frete ou selecione Grátis. O preço final e o ICMS ficam pendentes enquanto o frete não estiver definido."}
+              : simulacao.pendencia === "cif"
+                ? "CIF selecionado: a cotação pode ser salva sem valor e peso. O custo final e o ICMS ficam pendentes até apurar o frete na NF."
+                : "Informe o valor do frete ou selecione Grátis. O preço final e o ICMS ficam pendentes enquanto o frete não estiver definido."}
           </p>
         ) : (
           <p className="text-[11px] text-slate-600">
@@ -591,13 +604,17 @@ function EditorOrdem({
   const [transportadora, setTransportadora] = useState("");
   const [coleta, setColeta] = useState("");
   const [frete, setFrete] = useState(
-    String(cotacao.freteValorInformado ?? cotacao.frete ?? "")
+    cotacao.freteModo === "cif" && cotacao.freteValorInformado == null
+      ? ""
+      : String(cotacao.freteValorInformado ?? cotacao.frete ?? "")
   );
   const [freteModo, setFreteModo] = useState<ModoFreteCompra>(
     (cotacao.freteModo ?? "valor_total") as ModoFreteCompra
   );
   const [pesoFrete, setPesoFrete] = useState(
-    cotacao.pesoFreteKg == null ? "" : String(cotacao.pesoFreteKg)
+    cotacao.freteModo === "cif" || cotacao.pesoFreteKg == null
+      ? ""
+      : String(cotacao.pesoFreteKg)
   );
   const [volumeTotal, setVolumeTotal] = useState("");
   const freteCalculado = calcularFreteCompra(
@@ -646,10 +663,15 @@ function EditorOrdem({
         return s + Math.round(quantidade * preco * 100) / 100;
       }, 0)
     : null;
+  const freteCifPendente = freteModo === "cif" && freteCalculado.total == null;
   const totalBruto =
-    subtotalMercadorias == null || freteCalculado.total == null
+    subtotalMercadorias == null
       ? null
-      : subtotalMercadorias + freteCalculado.total;
+      : freteCalculado.total == null
+        ? freteCifPendente
+          ? subtotalMercadorias
+          : null
+        : subtotalMercadorias + freteCalculado.total;
   const descontoObtidoNumero = descontoObtido.trim()
     ? numeroEditado(descontoObtido)
     : 0;
@@ -678,7 +700,7 @@ function EditorOrdem({
       return;
     }
     if (
-      freteModo !== "gratis" &&
+      freteModo !== "gratis" && !(freteModo === "cif" && !frete.trim()) &&
       (!frete.trim() ||
         !Number.isFinite(Number(frete.replace(",", "."))) ||
         Number(frete.replace(",", ".")) < 0)
@@ -733,8 +755,13 @@ function EditorOrdem({
         frete: freteCalculado.total ?? 0,
         freteModo,
         freteValorInformado:
-          freteModo === "gratis" ? 0 : Number(frete.replace(",", ".")),
-        pesoPrevistoKg: pesoFrete.trim() ? pesoInformado : null,
+          freteModo === "gratis"
+            ? 0
+            : freteModo === "cif" && !frete.trim()
+              ? null
+              : Number(frete.replace(",", ".")),
+        pesoPrevistoKg:
+          freteModo === "cif" || !pesoFrete.trim() ? null : pesoInformado,
         volumePrevistoM3: volumeTotal.trim() ? volumeInformado : null,
         observacoes: obs,
         itens,
@@ -996,14 +1023,16 @@ function EditorOrdem({
         preços unitários nem os totais dos itens.
       </p>
       <div className="grid gap-2 sm:grid-cols-2">
-        <Campo titulo="Peso total da carga (kg)">
-          <Input
-            inputMode="decimal"
-            value={pesoFrete}
-            onChange={e => setPesoFrete(e.target.value)}
-            placeholder="Opcional"
-          />
-        </Campo>
+        {freteModo !== "cif" && (
+          <Campo titulo="Peso total da carga (kg)">
+            <Input
+              inputMode="decimal"
+              value={pesoFrete}
+              onChange={e => setPesoFrete(e.target.value)}
+              placeholder="Opcional"
+            />
+          </Campo>
+        )}
         <Campo titulo="Volume total da carga (m³)">
           <Input
             inputMode="decimal"
@@ -1017,7 +1046,13 @@ function EditorOrdem({
         modo={freteModo}
         valor={frete}
         peso={pesoFrete}
-        mudarModo={setFreteModo}
+        mudarModo={modo => {
+          setFreteModo(modo);
+          if (modo === "cif") {
+            setFrete("");
+            setPesoFrete("");
+          }
+        }}
         mudarValor={setFrete}
         mudarPeso={setPesoFrete}
         mostrarPeso={false}
@@ -1029,14 +1064,17 @@ function EditorOrdem({
               ? subtotalMercadorias == null
                 ? "Subtotal dos itens: revise os itens"
                 : `Subtotal dos itens: ${fmtBrl(subtotalMercadorias)} · frete pendente`
-              : `Subtotal + frete: ${fmtBrl(totalBruto)}`}
+                : freteCifPendente
+                  ? `Subtotal dos itens: ${fmtBrl(totalBruto)} · CIF sem frete lançado`
+                  : `Subtotal + frete: ${fmtBrl(totalBruto)}`}
             {totalBruto != null && freteModo === "por_kg"
               ? " (estimado)"
               : ""}
           </div>
           <div>Desconto obtido: -{fmtBrl(descontoObtidoNumero ?? 0)}</div>
           <strong>
-            Total líquido: {total == null ? "Não calculado até definir o frete" : fmtBrl(total)}
+            {freteCifPendente ? "Total líquido sem frete CIF: " : "Total líquido: "}
+            {total == null ? "Não calculado até definir o frete" : fmtBrl(total)}
           </strong>
         </div>
         <Button
@@ -1302,7 +1340,14 @@ export function ComprasHistorico({
                       <span className="block">#{c.id}</span>
                     </TableCell>
                     <TableCell>{c.fornecedor}</TableCell>
-                    <TableCell>{fmtBrl(Number(c.total))}</TableCell>
+                    <TableCell>
+                      {fmtBrl(Number(c.total))}
+                      {c.freteModo === "cif" && c.freteValorInformado == null && (
+                        <span className="block text-[10px] text-amber-700">
+                          Itens; CIF pendente
+                        </span>
+                      )}
+                    </TableCell>
                     <TableCell>
                       {c.validadeDias == null
                         ? "Não informada"
@@ -1720,7 +1765,11 @@ export function ComprasHistorico({
                           ? `${fmtBrl(Number(o.freteValorInformado))}/kg`
                           : o.freteModo === "gratis"
                             ? "Grátis"
-                            : fmtBrl(Number(o.frete))}{" "}
+                            : o.freteModo === "cif"
+                              ? o.freteValorInformado == null
+                                ? "CIF · valor pendente"
+                                : `CIF · ${fmtBrl(Number(o.frete))}`
+                              : fmtBrl(Number(o.frete))}{" "}
                         {o.freteConfirmado ? "(confirmado)" : "(a confirmar)"}
                       </span>
                       <span className="block text-slate-500">
@@ -1738,7 +1787,9 @@ export function ComprasHistorico({
                           ? o.pesoPrevistoKg == null
                             ? "Total líquido sem frete: "
                             : "Total líquido estimado: "
-                          : "Total líquido: "}
+                          : o.freteModo === "cif" && o.freteValorInformado == null
+                            ? "Total dos itens (frete CIF pendente): "
+                            : "Total líquido: "}
                         {fmtBrl(Number(o.total))}
                       </strong>
                     </TableCell>
@@ -2073,7 +2124,9 @@ function AprovarOrdemCustoDialog({
     const modo = (ordem.freteModo ?? "valor_total") as ModoFreteCompra;
     const valorFrete = modo === "gratis"
       ? 0
-      : ordem.freteValorInformado == null
+      : modo === "cif" && ordem.freteValorInformado == null
+        ? null
+        : ordem.freteValorInformado == null
         ? Number(ordem.frete)
         : Number(ordem.freteValorInformado);
     return simularCustoFinalCotacao({
@@ -2097,7 +2150,7 @@ function AprovarOrdemCustoDialog({
         {cotacaoQuery.isLoading || carregandoHistorico ? <Spinner /> : null}
         {cotacaoQuery.error && <p className="rounded border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">Não foi possível carregar a cotação original: {cotacaoQuery.error.message}. A aprovação continua disponível; confira os valores manualmente.</p>}
         {erroHistorico && <p className="rounded border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">O histórico comparativo não carregou: {erroHistorico}. Custo final da ordem: {simulacao?.totalFinal == null ? "pendente" : fmtBrl(simulacao.totalFinal)}.</p>}
-        {simulacao?.pendencia && <p className="rounded border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">Custo final pendente: informe {simulacao.pendencia === "peso" ? "o peso total para calcular o frete por kg" : "o frete"} na ordem.</p>}
+        {simulacao?.pendencia && <p className="rounded border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">{simulacao.pendencia === "cif" ? "Frete CIF ainda sem valor: a ordem pode ser aprovada, mas o custo total e a comparação por MP não incluem o frete pendente." : `Custo final pendente: informe ${simulacao.pendencia === "peso" ? "o peso total para calcular o frete por kg" : "o frete"} na ordem.`}</p>}
         {simulacao?.rateioFreteEstimado && <p className="rounded border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">Faltam pesos por item. O custo por MP estima o frete por rateio de valor; o total do frete está calculado.</p>}
         {simulacao?.diferencaPesoKg != null && Math.abs(simulacao.diferencaPesoKg) > 0.01 && <p className="rounded border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">O peso informado difere em {fmtNum(simulacao.diferencaPesoKg, 3)} kg da soma das linhas cotadas em KG; o cálculo por item usa as quantidades cotadas.</p>}
         {simulacao?.totalFinal != null && <p className="rounded border border-blue-200 bg-blue-50 p-3 text-sm text-blue-950">Custo total estimado da ordem com frete, desconto e ICMS: <strong>{fmtBrl(simulacao.totalFinal)}</strong>.</p>}
@@ -2140,7 +2193,7 @@ function AprovarOrdemCustoDialog({
                       {cell(custoFinal)}
                       {simulacao.itens[indice] && <span className="block text-[10px] text-slate-500">Mercadoria {fmtBrl(linha.total)} + frete {fmtBrl(simulacao.itens[indice].rateioFrete)} - desconto {fmtBrl(simulacao.itens[indice].rateioDesconto)} + ICMS {fmtBrl(simulacao.itens[indice].rateioIcms)}</span>}
                       {custoFinal != null && resumo?.custoMubisysAtual != null && Number(resumo.custoMubisysAtual) > 0 && custoFinal > Number(resumo.custoMubisysAtual) && <span className="mt-1 block rounded bg-red-50 p-1 text-[10px] font-semibold text-red-800">Avaliar reajuste do custo no MubiSys antes de aprovar.</span>}
-                      {custoFinal == null && <span className="block text-[10px] text-amber-700">Vínculo ou conversão para a unidade de consumo pendente.</span>}
+                      {custoFinal == null && <span className="block text-[10px] text-amber-700">{simulacao.pendencia === "cif" ? "Custo completo pendente até informar o frete CIF." : "Vínculo ou conversão para a unidade de consumo pendente."}</span>}
                     </TableCell>
                     <TableCell className="text-right">{cell(resumo?.custoMubisysAtual == null ? null : Number(resumo.custoMubisysAtual))}{resumo && resumo.custoMubisysAtual == null && <span className="block text-[10px] text-amber-700">Sem custo cadastrado no MubiSys</span>}</TableCell>
                     <TableCell className="text-right">{cell(ultimaNf, resumo?.ultimaCompraGeral ? `${resumo.ultimaCompraGeral.fornecedor} · ${resumo.ultimaCompraGeral.data}` : undefined)}</TableCell>
@@ -2383,6 +2436,8 @@ function CompararCotacoesDialog({
     const freteModo = (c.freteModo ?? "valor_total") as ModoFreteCompra;
     const valorFrete = freteModo === "gratis"
       ? 0
+      : freteModo === "cif" && c.freteValorInformado == null
+        ? null
       : c.freteValorInformado != null
         ? Number(c.freteValorInformado)
         : c.frete == null

@@ -4,7 +4,7 @@ export const logisticaCompraSchema = z.object({
   ordemId: z.number().int().positive(),
   revisao: z.number().int().nonnegative(),
   frete: z.number().finite().nonnegative().max(1e9),
-  freteModo: z.enum(["valor_total", "por_kg", "gratis"]).default("valor_total"),
+  freteModo: z.enum(["valor_total", "por_kg", "gratis", "cif"]).default("valor_total"),
   freteValorInformado: z
     .number()
     .finite()
@@ -32,18 +32,18 @@ export type FreteCompraSnapshot = {
   valorPorKg: number | null;
   transportadora: string;
   numeroColeta: string;
-  modo?: "valor_total" | "por_kg" | "gratis";
+  modo?: "valor_total" | "por_kg" | "gratis" | "cif";
   tarifaKg?: number | null;
 };
 export function calcularFreteCompra(
-  modo: "valor_total" | "por_kg" | "gratis",
+  modo: "valor_total" | "por_kg" | "gratis" | "cif",
   valor: number | null,
   peso: number | null
 ) {
   if (modo === "gratis") return { total: 0, pendente: false };
   if (valor == null || !Number.isFinite(valor) || valor < 0)
     return { total: null, pendente: true };
-  if (modo === "valor_total")
+  if (modo === "valor_total" || modo === "cif")
     return { total: Math.round(valor * 100) / 100, pendente: false };
   if (peso == null || !Number.isFinite(peso) || peso <= 0)
     return { total: null, pendente: true };
@@ -81,7 +81,7 @@ export function validarFreteNf(args: {
 }) {
   if (!args.confirmado)
     throw new Error(
-      "Confirme o frete na ordem de compra antes de lançar a NF (inclusive frete grátis)."
+      "Confirme o frete ou a condição CIF na ordem de compra antes de lançar a NF (inclusive frete grátis)."
     );
   if (!Number.isFinite(args.aplicado) || args.aplicado < 0)
     throw new Error("Informe um valor de frete válido para esta NF.");
@@ -90,12 +90,12 @@ export function validarFreteNf(args: {
     args.utilizado,
     args.pesoKg
   );
-  if (args.modo !== "por_kg" && args.aplicado > resumo.saldo + 0.001)
+  if (args.modo !== "por_kg" && args.modo !== "cif" && args.aplicado > resumo.saldo + 0.001)
     throw new Error(
       "O frete desta NF excede o saldo disponível na ordem de compra."
     );
   if (
-    args.aplicado > 0 &&
+    args.modo === "por_kg" &&
     !(args.pesoKg != null && Number.isFinite(args.pesoKg) && args.pesoKg > 0)
   )
     throw new Error("Informe o peso da NF em kg para calcular o frete por kg.");

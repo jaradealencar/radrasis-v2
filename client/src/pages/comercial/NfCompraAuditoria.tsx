@@ -584,9 +584,10 @@ export default function NfCompraAuditoria() {
   const salvarAuditoria = () => {
     if (!cabecalho || !calculoAoVivo) return;
     if (!ordemNf) { toast.error("Selecione a ordem de compra vinculada à cotação antes de concluir a NF."); return; }
-    if (!ordemNf.ordem.freteConfirmado) { toast.error("Confirme o frete na ordem de compra, inclusive se for grátis."); return; }
-    if (ordemNf.ordem.freteModo !== "por_kg" && freteValor > ordemNf.saldo + 0.001) { toast.error("O frete desta NF não pode exceder o saldo da ordem."); return; }
-    if ((freteValor > 0 || ordemNf.ordem.freteModo === "por_kg") && !(cabecalho.pesoLiquidoTotalKg && cabecalho.pesoLiquidoTotalKg > 0)) { toast.error("Informe o peso definitivo da NF para calcular R$/kg."); return; }
+    if (!ordemNf.ordem.freteConfirmado) { toast.error("Confirme o frete ou a condição CIF na ordem de compra antes de concluir a NF."); return; }
+    if (ordemNf.ordem.freteModo === "cif" && !freteValorStr.trim()) { toast.error("A ordem CIF não tem valor de frete. Informe o custo destinado a esta NF ou digite 0,00 se confirmar que não há frete separado."); return; }
+    if (ordemNf.ordem.freteModo !== "por_kg" && ordemNf.ordem.freteModo !== "cif" && freteValor > ordemNf.saldo + 0.001) { toast.error("O frete desta NF não pode exceder o saldo da ordem."); return; }
+    if (ordemNf.ordem.freteModo === "por_kg" && !(cabecalho.pesoLiquidoTotalKg && cabecalho.pesoLiquidoTotalKg > 0)) { toast.error("Informe o peso definitivo da NF para calcular R$/kg."); return; }
     const itensSemConversao = calculoAoVivo.itens.filter((item) => {
       const origem = normalizarUnidadeAuditoria(item.unidadeCompraConversao);
       const destino = normalizarUnidadeAuditoria(item.unidadeErp);
@@ -785,7 +786,7 @@ export default function NfCompraAuditoria() {
 
             {cabecalho && <SelecionarOrdemNf selecionada={ordemNf} selecionar={dados => {
               setOrdemNf(dados);
-              if (dados) { setModoFrete("valor_total"); setFreteValorStr(String(dados.saldo)); }
+              if (dados) { setModoFrete("valor_total"); setFreteValorStr(dados.ordem.freteModo === "cif" ? "" : String(dados.saldo)); }
             }} pesoKg={cabecalho.pesoLiquidoTotalKg} alterarPeso={peso => setCabecalho(v => v ? { ...v, pesoLiquidoTotalKg: peso } : v)} freteAplicado={freteValor} />}
 
             <div className="grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
@@ -819,14 +820,14 @@ export default function NfCompraAuditoria() {
 
               <div>
                 <label className="block text-xs font-medium text-slate-600 mb-1">
-                  {modoFrete === "gratis" ? "Frete informado" : modoFrete === "por_kg" ? "Frete por KG (R$/kg)" : "Frete Total (R$)"}
+                  {modoFrete === "gratis" ? "Frete informado" : ordemNf?.ordem.freteModo === "cif" ? "Frete apurado para esta NF (R$)" : modoFrete === "por_kg" ? "Frete por KG (R$/kg)" : "Frete Total (R$)"}
                 </label>
                 <input
                   type="text"
-                  value={ordemNf && ordemNf.ordem.freteModo !== "valor_total" ? String(freteValor) : modoFrete === "gratis" ? "0,00" : freteValorStr}
+                  value={ordemNf && ordemNf.ordem.freteModo !== "valor_total" && ordemNf.ordem.freteModo !== "cif" ? String(freteValor) : modoFrete === "gratis" ? "0,00" : freteValorStr}
                   onChange={(e) => setFreteValorStr(e.target.value)}
                   placeholder="0,00"
-                  disabled={modoFrete === "gratis" || (ordemNf != null && ordemNf.ordem.freteModo !== "valor_total")}
+                  disabled={modoFrete === "gratis" || (ordemNf != null && ordemNf.ordem.freteModo !== "valor_total" && ordemNf.ordem.freteModo !== "cif")}
                   className="w-full text-sm border border-slate-300 rounded-md px-3 py-2 font-mono font-bold text-slate-800 disabled:bg-slate-100 disabled:text-slate-500"
                 />
               </div>

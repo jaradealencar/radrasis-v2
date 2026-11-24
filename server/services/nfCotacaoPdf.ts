@@ -16,7 +16,7 @@ export interface CotacaoExtraida {
   validadeDias?: number;
   condicaoPagamento?: string;
   prazoEntrega?: string;
-  freteModo?: "valor_total" | "por_kg" | "gratis" | null;
+  freteModo?: "valor_total" | "por_kg" | "gratis" | "cif" | null;
   valorFrete?: number | null;
   pesoFreteKg?: number | null;
   valorTotal?: number;
@@ -70,7 +70,7 @@ Retorne OBRIGATORIAMENTE um JSON estrito no seguinte formato (sem markdown, apen
 }
 Importante:
 - Converta valores numéricos para números (não strings). Use ponto como separador decimal.
-- Se houver frete mencionado, extraia a modalidade: "por_kg" para tarifa explícita em R$/kg, "gratis" quando o documento disser que é grátis, e "valor_total" para frete total/fixo. Se o documento não informar frete, retorne freteModo=null e valorFrete=null; nunca presuma frete zero.
+- Se houver frete mencionado, extraia a modalidade: "por_kg" para tarifa explícita em R$/kg, "gratis" quando o documento disser que é grátis, "cif" quando indicar entrega CIF sem um valor de frete destacado, e "valor_total" para frete total/fixo. Para CIF sem valor separado, retorne valorFrete=null; nunca presuma frete zero. Se o documento não informar frete nem condição, retorne freteModo=null e valorFrete=null.
 - Extraia pesoFreteKg somente se o peso total da carga estiver explicitamente escrito no documento e convertido para kg. Se não houver peso total explícito, retorne null; nunca estime o peso pelas descrições ou quantidades dos itens.
 - Extraia cada linha de produto individualmente.`;
 

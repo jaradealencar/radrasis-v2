@@ -68,7 +68,7 @@ export const cotacaoCompraSchema = z.object({
   condicaoPagamento: z.string().max(256).nullable(),
   prazoEntrega: z.string().max(256).nullable(),
   frete: z.number().finite().nonnegative().max(1e9).nullable(),
-  freteModo: z.enum(["valor_total", "por_kg", "gratis"]).default("valor_total"),
+  freteModo: z.enum(["valor_total", "por_kg", "gratis", "cif"]).default("valor_total"),
   freteValorInformado: z
     .number()
     .finite()
@@ -231,7 +231,7 @@ export const ordemCompraSchema = z
     frete: z.number().finite().nonnegative().max(1e9),
     descontoTotal: z.number().finite().nonnegative().max(1e9).default(0),
     freteModo: z
-      .enum(["valor_total", "por_kg", "gratis"])
+      .enum(["valor_total", "por_kg", "gratis", "cif"])
       .default("valor_total"),
     freteValorInformado: z
       .number()

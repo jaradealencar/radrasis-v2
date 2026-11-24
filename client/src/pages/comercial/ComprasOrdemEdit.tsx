@@ -187,7 +187,10 @@ function EditorSalva({
   const totalBruto =
     subtotal == null ? null : subtotal + Number(ordem.frete ?? 0);
   const fretePendente =
-    ordem.freteModo === "por_kg" && ordem.pesoPrevistoKg == null;
+    (ordem.freteModo === "por_kg" && ordem.pesoPrevistoKg == null) ||
+    (ordem.freteModo === "cif" && ordem.freteValorInformado == null);
+  const freteCifPendente =
+    ordem.freteModo === "cif" && ordem.freteValorInformado == null;
   const descontoObtidoNumero = descontoObtido.trim()
     ? numero(descontoObtido)
     : 0;
@@ -482,12 +485,20 @@ function EditorSalva({
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="space-y-1 text-sm">
           <div>
-            {fretePendente ? "Subtotal sem frete: " : "Subtotal + frete: "}
+            {freteCifPendente
+              ? "Subtotal dos itens · CIF pendente: "
+              : fretePendente
+                ? "Subtotal sem frete: "
+                : "Subtotal + frete: "}
             {totalBruto == null ? "Revise os itens" : fmtBrl(totalBruto)}
           </div>
           <div>Desconto obtido: -{fmtBrl(descontoObtidoNumero ?? 0)}</div>
           <strong>
-            {fretePendente ? "Subtotal líquido sem frete: " : "Total líquido: "}
+            {freteCifPendente
+              ? "Total líquido sem frete CIF: "
+              : fretePendente
+                ? "Subtotal líquido sem frete: "
+                : "Total líquido: "}
             {totalAtualizado == null ? "Revise itens e desconto" : fmtBrl(totalAtualizado)}
           </strong>
         </div>

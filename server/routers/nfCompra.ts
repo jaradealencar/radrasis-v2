@@ -296,12 +296,14 @@ async function buscarPropostasAnterioresMateriaPrima(
   }
   const analisadas = candidatas.flatMap(proposta => {
     const linhasCotacao = linhasPorCotacao.get(proposta.cotacaoId) ?? [];
-    const modo = (proposta.freteModo ?? "valor_total") as "valor_total" | "por_kg" | "gratis";
+    const modo = (proposta.freteModo ?? "valor_total") as "valor_total" | "por_kg" | "gratis" | "cif";
     const peso = proposta.pesoFreteKg == null ? null : Number(proposta.pesoFreteKg);
     const freteSalvo = proposta.frete == null ? null : Number(proposta.frete);
     const freteInformadoSalvo = proposta.freteValorInformado == null ? null : Number(proposta.freteValorInformado);
     const freteInformado = modo === "gratis"
       ? 0
+      : modo === "cif" && freteInformadoSalvo == null
+        ? null
       : freteInformadoSalvo ?? (modo === "por_kg" && peso && peso > 0 && freteSalvo != null ? freteSalvo / peso : freteSalvo);
     const simulacao = simularCustoFinalCotacao({
       itens: linhasCotacao.map(linha => ({
@@ -1078,7 +1080,7 @@ export const nfCompraRouter = router({
 
       const buffer = Buffer.from(input.pdfBase64, "base64");
       const cotacao = await extrairCotacaoDePdf(buffer, input.nomeArquivo);
-      const freteModo = ["valor_total", "por_kg", "gratis"].includes(
+      const freteModo = ["valor_total", "por_kg", "gratis", "cif"].includes(
         cotacao.freteModo ?? ""
       )
         ? cotacao.freteModo

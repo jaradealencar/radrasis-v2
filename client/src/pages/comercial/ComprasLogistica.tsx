@@ -13,7 +13,7 @@ import {
 import { Spinner } from "@/components/ui/spinner";
 import { calcularFreteCompra, resumoFreteCompra } from "@shared/compras-frete";
 
-export type ModoFreteCompra = "valor_total" | "por_kg" | "gratis";
+export type ModoFreteCompra = "valor_total" | "por_kg" | "gratis" | "cif";
 export function FreteCompraCampos({
   modo,
   valor,
@@ -50,6 +50,7 @@ export function FreteCompraCampos({
         >
           <option value="valor_total">Valor total / fixo (R$)</option>
           <option value="por_kg">Por kg (R$/kg)</option>
+          <option value="cif">CIF (valor e peso pendentes)</option>
           <option value="gratis">Grátis</option>
         </select>
       </Campo>
@@ -57,7 +58,9 @@ export function FreteCompraCampos({
         nome={
           modo === "por_kg"
             ? "Tarifa de frete (R$/kg)"
-            : "Valor total do frete (R$)"
+            : modo === "cif"
+              ? "Frete CIF (R$, se conhecido)"
+              : "Valor total do frete (R$)"
         }
       >
         <Input
@@ -76,7 +79,7 @@ export function FreteCompraCampos({
             placeholder="Extraído do PDF ou informe manualmente"
           />
         </Campo>
-      ) : modo !== "por_kg" ? (
+      ) : modo !== "por_kg" && modo !== "cif" ? (
         <p className="self-end text-xs pb-2">
           Total de frete:{" "}
           <strong>
@@ -84,7 +87,13 @@ export function FreteCompraCampos({
           </strong>
         </p>
       ) : null}
-      {modo === "por_kg" && (
+      {modo === "cif" ? (
+        <p className="sm:col-span-3 text-xs text-amber-800">
+          {calculo.total == null
+            ? "CIF selecionado: a ordem pode ser emitida sem tarifa nem peso. O frete fica pendente e não entra no total até ser informado."
+            : `Frete CIF registrado: ${fmtBrl(calculo.total)}. O peso não é necessário para emitir a ordem.`}
+        </p>
+      ) : modo === "por_kg" && (
         <p className="sm:col-span-3 text-xs text-slate-500">
           {calculo.total == null
             ? pesoValido
@@ -164,9 +173,15 @@ function EditorLogistica({
 }) {
   const utils = trpc.useUtils();
   const o = dados.ordem;
-  const [frete, setFrete] = useState(String(o.freteValorInformado ?? o.frete));
+  const [frete, setFrete] = useState(
+    o.freteModo === "cif" && o.freteValorInformado == null
+      ? ""
+      : String(o.freteValorInformado ?? o.frete)
+  );
   const [peso, setPeso] = useState(
-    o.pesoPrevistoKg == null ? "" : String(o.pesoPrevistoKg)
+    o.freteModo === "cif" || o.pesoPrevistoKg == null
+      ? ""
+      : String(o.pesoPrevistoKg)
   );
   const [volume, setVolume] = useState(
     o.volumePrevistoM3 == null ? "" : String(o.volumePrevistoM3)
@@ -206,6 +221,10 @@ function EditorLogistica({
         mudarModo={v => {
           setModo(v);
           setConfirmado(false);
+          if (v === "cif") {
+            setFrete("");
+            setPeso("");
+          }
         }}
         mudarValor={v => {
           setFrete(v);
@@ -215,14 +234,16 @@ function EditorLogistica({
         mostrarPeso={false}
       />
       <div className="grid gap-3 sm:grid-cols-2">
-        <Campo nome="Peso total da carga (kg)">
-          <Input
-            inputMode="decimal"
-            value={peso}
-            onChange={e => setPeso(e.target.value)}
-            placeholder="Opcional"
-          />
-        </Campo>
+        {modo !== "cif" && (
+          <Campo nome="Peso total da carga (kg)">
+            <Input
+              inputMode="decimal"
+              value={peso}
+              onChange={e => setPeso(e.target.value)}
+              placeholder="Opcional"
+            />
+          </Campo>
+        )}
         <Campo nome="Volume total da carga (m³)">
           <Input
             inputMode="decimal"
@@ -247,11 +268,17 @@ function EditorLogistica({
           checked={confirmado}
           onChange={e => setConfirmado(e.target.checked)}
         />
-        Frete confirmado (marque também quando for grátis)
+        {modo === "cif"
+          ? "Condição CIF confirmada (o valor pode ficar pendente)"
+          : "Frete confirmado (marque também quando for grátis)"}
       </label>
       <p className="rounded bg-slate-50 p-3 text-xs">
         Já aplicado às NFs: <strong>{fmtBrl(dados.utilizado)}</strong> ·{" "}
-        {modo === "por_kg" ? (
+        {modo === "cif" ? (
+          calculo.total == null
+            ? "CIF sem valor lançado; informe o custo quando estiver disponível."
+            : `Valor CIF registrado: ${fmtBrl(calculo.total)}.`
+        ) : modo === "por_kg" ? (
           "O total definitivo depende do peso de cada NF."
         ) : (
           <>
@@ -259,18 +286,16 @@ function EditorLogistica({
           </>
         )}
         <br />
-        Custo estimado:{" "}
-        {resumo?.valorPorKg == null
-          ? "informe o peso para calcular R$/kg"
-          : `${fmtBrl(resumo.valorPorKg)}/kg`}
-        . O custo definitivo usa o frete destinado à NF e o peso da nota.
+        {modo === "cif"
+          ? "O valor CIF em branco permanece pendente, não é tratado como frete grátis."
+          : `Custo estimado: ${resumo?.valorPorKg == null ? "informe o peso para calcular R$/kg" : `${fmtBrl(resumo.valorPorKg)}/kg`}. O custo definitivo usa o frete destinado à NF e o peso da nota.`}
       </p>
       <Button
         disabled={salvar.isPending}
         onClick={async () => {
           try {
             if (
-              (modo !== "gratis" && (!Number.isFinite(valor) || valor < 0)) ||
+              (modo !== "gratis" && !(modo === "cif" && frete.trim() === "") && (!Number.isFinite(valor) || valor < 0)) ||
               (peso.trim() && !(pesoKg > 0)) ||
               (volume.trim() && !(volumeM3 > 0))
             ) {
@@ -282,9 +307,9 @@ function EditorLogistica({
               revisao: o.logisticaRevisao,
               frete: calculo.total ?? 0,
               freteModo: modo,
-              freteValorInformado: modo === "gratis" ? 0 : valor,
+              freteValorInformado: modo === "gratis" ? 0 : frete.trim() === "" ? null : valor,
               freteConfirmado: confirmado,
-              pesoPrevistoKg: peso.trim() ? pesoKg : null,
+              pesoPrevistoKg: modo === "cif" ? null : peso.trim() ? pesoKg : null,
               volumePrevistoM3: volume.trim() ? volumeM3 : null,
               transportadora,
               numeroColeta: coleta,
@@ -447,11 +472,15 @@ export function SelecionarOrdemNf({
                   ? `${fmtBrl(Number(selecionada.ordem.freteValorInformado))}/kg`
                   : selecionada.ordem.freteModo === "gratis"
                     ? "Grátis"
-                    : fmtBrl(Number(selecionada.ordem.frete))}
+                    : selecionada.ordem.freteModo === "cif"
+                      ? selecionada.ordem.freteValorInformado == null
+                        ? "CIF · valor pendente"
+                        : `CIF · ${fmtBrl(Number(selecionada.ordem.frete))}`
+                      : fmtBrl(Number(selecionada.ordem.frete))}
               </strong>
               <br />
               Utilizado: {fmtBrl(selecionada.utilizado)}{" "}
-              {selecionada.ordem.freteModo !== "por_kg" && (
+              {selecionada.ordem.freteModo !== "por_kg" && selecionada.ordem.freteModo !== "cif" && (
                 <> · Saldo: {fmtBrl(selecionada.saldo)}</>
               )}
             </p>
@@ -464,30 +493,39 @@ export function SelecionarOrdemNf({
           </div>
           {!selecionada.ordem.freteConfirmado && (
             <p className="text-xs text-amber-700">
-              Confirme o frete na ordem antes de concluir a auditoria.
+              Confirme o frete ou a condição CIF na ordem antes de concluir a auditoria.
             </p>
           )}
           <div className="flex flex-wrap items-end gap-3">
-            <Campo nome="Peso definitivo da NF (kg)">
+            <Campo
+              nome={selecionada.ordem.freteModo === "por_kg"
+                ? "Peso definitivo da NF (kg, obrigatório)"
+                : "Peso da NF (kg, opcional)"}
+            >
               <Input
                 type="number"
                 min="0.001"
                 step="0.001"
                 value={pesoKg ?? ""}
+                placeholder="Não informado"
                 onChange={e =>
                   alterarPeso(e.target.value ? Number(e.target.value) : null)
                 }
               />
             </Campo>
-            <p className="text-sm">
-              {fmtBrl(freteAplicado)} ÷{" "}
-              {pesoKg ? `${fmtNum(pesoKg, 3)} kg` : "peso pendente"} ={" "}
-              <strong>
-                {pesoKg && pesoKg > 0
-                  ? `R$ ${fmtNum(freteAplicado / pesoKg, 4)}/kg`
-                  : "R$/kg pendente"}
-              </strong>
-            </p>
+            {selecionada.ordem.freteModo === "cif" ? (
+              <p className="text-sm">Informe o valor efetivo da NF no campo de frete. CIF não exige peso para calcular esse valor.</p>
+            ) : (
+              <p className="text-sm">
+                {fmtBrl(freteAplicado)} ÷{" "}
+                {pesoKg ? `${fmtNum(pesoKg, 3)} kg` : "peso pendente"} ={" "}
+                <strong>
+                  {pesoKg && pesoKg > 0
+                    ? `R$ ${fmtNum(freteAplicado / pesoKg, 4)}/kg`
+                    : "R$/kg pendente"}
+                </strong>
+              </p>
+            )}
             <Button
               size="sm"
               variant="outline"
@@ -517,7 +555,9 @@ export function SelecionarOrdemNf({
           <p className="text-[11px] text-slate-500">
             {selecionada.ordem.freteModo === "por_kg"
               ? "O frete desta NF é a tarifa da ordem multiplicada pelo peso definitivo acima."
-              : "O campo Frete Total abaixo é a parcela destinada a esta NF. Em entrega parcial, ajuste sem exceder o saldo da ordem."}{" "}
+              : selecionada.ordem.freteModo === "cif"
+                ? "A ordem CIF não definiu valor de frete; informe o custo real desta NF, ou zero se não houver parcela separada."
+                : "O campo Frete Total abaixo é a parcela destinada a esta NF. Em entrega parcial, ajuste sem exceder o saldo da ordem."}{" "}
             O frete do XML é informativo e não é somado novamente.
           </p>
         </>

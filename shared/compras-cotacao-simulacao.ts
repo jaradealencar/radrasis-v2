@@ -1,7 +1,7 @@
 import { calcularFreteCompra } from "./compras-frete";
 import { calcularRateioFrete } from "./nf-frete";
 
-export type ModoFreteCotacao = "valor_total" | "por_kg" | "gratis";
+export type ModoFreteCotacao = "valor_total" | "por_kg" | "gratis" | "cif";
 
 export type ItemSimulacaoCotacaoEntrada = {
   quantidade: number;
@@ -15,7 +15,7 @@ export type SimulacaoCotacao = {
   percentualIcms: 10;
   valorIcms: number | null;
   totalFinal: number | null;
-  pendencia: "peso" | "frete" | null;
+  pendencia: "peso" | "frete" | "cif" | null;
   rateioFreteEstimado: boolean;
   diferencaPesoKg: number | null;
   itens: Array<{
@@ -66,7 +66,9 @@ export function simularCustoFinalCotacao(args: {
   );
   const pendencia = calculoFrete.total != null
     ? null
-    : args.freteModo === "por_kg" &&
+    : args.freteModo === "cif"
+      ? "cif"
+      : args.freteModo === "por_kg" &&
         !(args.pesoTotalKg != null && Number.isFinite(args.pesoTotalKg) && args.pesoTotalKg > 0)
       ? "peso"
       : "frete";

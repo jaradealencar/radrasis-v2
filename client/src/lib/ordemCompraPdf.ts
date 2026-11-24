@@ -113,16 +113,22 @@ export function criarOrdemCompraPdf(
   const freteResumo =
     ordem.freteModo === "por_kg"
       ? `Frete: ${fmtBrl(Number(ordem.freteValorInformado))}/kg · peso previsto: ${ordem.pesoPrevistoKg == null ? "a definir na NF" : `${fmtNum(Number(ordem.pesoPrevistoKg), 3)} kg`} · ${ordem.pesoPrevistoKg == null ? "frete a confirmar na NF" : `frete estimado: ${fmtBrl(Number(ordem.frete))}`}`
-      : `Frete: ${ordem.freteModo === "gratis" ? "Grátis" : fmtBrl(Number(ordem.frete))}`;
+      : ordem.freteModo === "cif"
+        ? ordem.freteValorInformado == null
+          ? "Frete: CIF · valor pendente, confirmar na auditoria da NF"
+          : `Frete: CIF · ${fmtBrl(Number(ordem.frete))}`
+        : `Frete: ${ordem.freteModo === "gratis" ? "Grátis" : fmtBrl(Number(ordem.frete))}`;
   const bloco = [
     `Subtotal dos itens: ${fmtBrl(subtotalMercadorias)}`,
     freteResumo,
     ...(descontoTotal > 0
       ? [`Desconto obtido (bônus total, sem alterar preços unitários): -${fmtBrl(descontoTotal)}`]
       : []),
-    ordem.freteModo === "por_kg" && ordem.pesoPrevistoKg == null
-      ? `SUBTOTAL LÍQUIDO (FRETE A DEFINIR NA NF): ${fmtBrl(Number(ordem.total))}`
-      : `TOTAL LÍQUIDO: ${fmtBrl(Number(ordem.total))}`,
+    ordem.freteModo === "cif" && ordem.freteValorInformado == null
+      ? `TOTAL LÍQUIDO DOS ITENS (FRETE CIF PENDENTE): ${fmtBrl(Number(ordem.total))}`
+      : ordem.freteModo === "por_kg" && ordem.pesoPrevistoKg == null
+        ? `SUBTOTAL LÍQUIDO (FRETE A DEFINIR NA NF): ${fmtBrl(Number(ordem.total))}`
+        : `TOTAL LÍQUIDO: ${fmtBrl(Number(ordem.total))}`,
     ...(ordem.observacoes ? [`Observações: ${ordem.observacoes}`] : []),
   ];
   for (const s of bloco) {

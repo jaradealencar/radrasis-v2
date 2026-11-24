@@ -87,13 +87,13 @@ export function snapshotFreteNf(
   peso: number | null
 ): FreteCompraSnapshot {
   try {
-    const modo = dados.ordem.freteModo as "valor_total" | "por_kg" | "gratis";
+    const modo = dados.ordem.freteModo as "valor_total" | "por_kg" | "gratis" | "cif";
     const tarifa =
       dados.ordem.freteValorInformado == null
         ? Number(dados.ordem.frete)
         : Number(dados.ordem.freteValorInformado);
     const total =
-      modo === "valor_total"
+      modo === "valor_total" || modo === "cif"
         ? aplicado
         : calcularFreteCompra(modo, tarifa, peso).total;
     if (total == null)

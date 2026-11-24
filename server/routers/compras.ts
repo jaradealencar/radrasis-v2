@@ -242,9 +242,12 @@ export const comprasRouter = router({
             custoMubisys: mp?.custoUnitario,
           };
         });
+        const valorFreteInformado = input.freteModo === "cif" && input.freteValorInformado == null
+          ? null
+          : input.freteValorInformado ?? input.frete;
         const freteCalculado = calcularFreteCompra(
           input.freteModo,
-          input.freteValorInformado ?? input.frete,
+          valorFreteInformado,
           input.pesoFreteKg
         ).total;
         const total =
@@ -259,14 +262,9 @@ export const comprasRouter = router({
             ...input,
             total: total.toFixed(2),
             frete: freteCalculado == null ? null : freteCalculado.toFixed(2),
-            freteValorInformado:
-              input.freteValorInformado == null
-                ? input.frete == null
-                  ? null
-                  : String(input.frete)
-                : String(input.freteValorInformado),
+            freteValorInformado: valorFreteInformado == null ? null : String(valorFreteInformado),
             pesoFreteKg:
-              input.pesoFreteKg == null ? null : String(input.pesoFreteKg),
+              input.freteModo === "cif" || input.pesoFreteKg == null ? null : String(input.pesoFreteKg),
             criadoPor: ctx.user.id,
           })
           .onConflictDoNothing({ target: cotacoes.chave })
@@ -359,8 +357,8 @@ export const comprasRouter = router({
           const calculos = propostas.map(proposta => {
             const linhasCotacao = porCotacao.get(proposta.id) ?? [];
             const subtotalCotado = linhasCotacao.reduce((soma, linha) => soma + Math.round(Number(linha.quantidade) * Number(linha.precoUnitario) * 100) / 100, 0);
-            const modo = (proposta.freteModo ?? "valor_total") as "valor_total" | "por_kg" | "gratis";
-            const informado = modo === "gratis" ? 0 : proposta.freteValorInformado == null ? proposta.frete == null ? null : Number(proposta.frete) : Number(proposta.freteValorInformado);
+            const modo = (proposta.freteModo ?? "valor_total") as "valor_total" | "por_kg" | "gratis" | "cif";
+            const informado = modo === "gratis" ? 0 : modo === "cif" && proposta.freteValorInformado == null ? null : proposta.freteValorInformado == null ? proposta.frete == null ? null : Number(proposta.frete) : Number(proposta.freteValorInformado);
             const freteEstimado = informado == null ? null : calcularFreteCompra(modo, informado, proposta.pesoFreteKg == null ? null : Number(proposta.pesoFreteKg)).total;
             const totalFinalEstimado = freteEstimado == null ? null : Number(((subtotalCotado + freteEstimado) * 1.1).toFixed(2));
             return { proposta, linhasCotacao, subtotalCotado, freteEstimado, totalFinalEstimado };
@@ -446,7 +444,9 @@ export const comprasRouter = router({
             formula: origem.formula,
           };
         });
-        const valorInformado = input.freteValorInformado ?? input.frete;
+        const valorInformado = input.freteModo === "cif" && input.freteValorInformado == null
+          ? null
+          : input.freteValorInformado ?? input.frete;
         const frete = calcularFreteCompra(
           input.freteModo,
           valorInformado,
@@ -483,9 +483,10 @@ export const comprasRouter = router({
             nomeComprador: input.nomeComprador ?? input.comprador.nome,
             itens: linhas,
             frete: (frete ?? 0).toFixed(2),
-            freteValorInformado: String(valorInformado),
+            freteValorInformado: valorInformado == null ? null : String(valorInformado),
+            freteConfirmado: input.freteModo === "cif",
             pesoPrevistoKg:
-              input.pesoPrevistoKg == null
+              input.freteModo === "cif" || input.pesoPrevistoKg == null
                 ? null
                 : String(input.pesoPrevistoKg),
             volumePrevistoM3:
@@ -758,8 +759,10 @@ export const comprasRouter = router({
         }
         const subtotal = linhas.reduce((s, linha) => s + linha.total, 0);
         const frete = calcularFreteCompra(
-          atual.freteModo as "valor_total" | "por_kg" | "gratis",
-          atual.freteValorInformado == null
+          atual.freteModo as "valor_total" | "por_kg" | "gratis" | "cif",
+          atual.freteModo === "cif" && atual.freteValorInformado == null
+            ? null
+            : atual.freteValorInformado == null
             ? Number(atual.frete)
             : Number(atual.freteValorInformado),
           atual.pesoPrevistoKg == null ? null : Number(atual.pesoPrevistoKg)
@@ -891,15 +894,15 @@ export const comprasRouter = router({
             message:
               "A logística foi alterada. Reabra a ordem para atualizar os dados.",
           });
+        const valorFreteInformado = input.freteModo === "cif" && input.freteValorInformado == null
+          ? null
+          : input.freteValorInformado ?? input.frete;
         const frete = calcularFreteCompra(
           input.freteModo,
-          input.freteValorInformado ?? input.frete,
+          valorFreteInformado,
           input.pesoPrevistoKg
         ).total;
-        if (
-          input.freteModo !== "por_kg" &&
-          (frete ?? 0) + 0.001 < atual.utilizado
-        )
+        if (frete != null && input.freteModo !== "por_kg" && frete + 0.001 < atual.utilizado)
           throw new TRPCError({
             code: "BAD_REQUEST",
             message:
@@ -919,9 +922,7 @@ export const comprasRouter = router({
           .set({
             ...dados,
             frete: (frete ?? 0).toFixed(2),
-            freteValorInformado: String(
-              input.freteValorInformado ?? input.frete
-            ),
+            freteValorInformado: valorFreteInformado == null ? null : String(valorFreteInformado),
             pesoPrevistoKg:
               input.pesoPrevistoKg == null
                 ? null
@@ -1340,10 +1341,12 @@ export const comprasRouter = router({
     let cotacoesSemPesoParaFreteKg = 0;
     for (const cotacao of cotacoesSalvas) {
       const linhas = itensPorCotacao.get(cotacao.id) ?? [];
-      const modo = (cotacao.freteModo ?? "valor_total") as "valor_total" | "por_kg" | "gratis";
+      const modo = (cotacao.freteModo ?? "valor_total") as "valor_total" | "por_kg" | "gratis" | "cif";
       const peso = cotacao.pesoFreteKg == null ? null : Number(cotacao.pesoFreteKg);
       let informado: number | null = modo === "gratis"
         ? 0
+        : modo === "cif" && cotacao.freteValorInformado == null
+          ? null
         : cotacao.freteValorInformado == null
           ? modo === "por_kg"
             ? peso != null && peso > 0 && cotacao.frete != null ? Number(cotacao.frete) / peso : null
