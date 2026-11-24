@@ -99,9 +99,9 @@ export default function PropostasAltoValor({ mes, ano }: { mes: number; ano: num
   const utils = trpc.useUtils();
   const { user } = useAuth();
   const queryInput = { mes, ano, valorMinimo: VALOR_MINIMO_PADRAO };
-  const { data, isLoading, refetch } = trpc.performanceComercial.getPropostasAltoValor.useQuery(
+  const { data, isLoading, isError, isFetching, refetch } = trpc.performanceComercial.getPropostasAltoValor.useQuery(
     queryInput,
-    { enabled: listaAberta || true, staleTime: 5 * 60 * 1000 }
+    { staleTime: 5 * 60 * 1000, refetchOnWindowFocus: false, retry: 1 }
   );
 
   // Caixinha "Contatado": atualização otimista (a consulta de propostas é pesada demais para
@@ -227,6 +227,7 @@ export default function PropostasAltoValor({ mes, ano }: { mes: number; ano: num
   }
 
   const propostas = data?.propostas ?? [];
+  const propostasDisponiveis = !!data && data.disponivel !== false;
   const totalContatadas = propostas.filter(p => p.contatado).length;
   const totalNovos = propostas.filter(p => p.clienteStatus === "novo").length;
   const totalReativados = propostas.filter(p => p.clienteStatus === "reativado").length;
@@ -304,11 +305,12 @@ export default function PropostasAltoValor({ mes, ano }: { mes: number; ano: num
               Propostas acima de {fmtBrl(VALOR_MINIMO_PADRAO)}
             </h2>
             <p className="text-xs text-slate-400">Propostas em aberto do mês que merecem follow-up prioritário</p>
+            {!isLoading && !propostasDisponiveis && <p className="mt-1 text-xs text-red-600">Lista de propostas indisponível; isso não significa que esteja vazia.</p>}
           </div>
         </div>
         <Button size="sm" variant="outline" onClick={abrirRelatorio}>
           Ver relatório
-          {!isLoading && propostas.length > 0 && (
+          {!isLoading && propostasDisponiveis && propostas.length > 0 && (
             <Badge variant="secondary" className="ml-2">{propostas.length}</Badge>
           )}
         </Button>
@@ -321,6 +323,12 @@ export default function PropostasAltoValor({ mes, ano }: { mes: number; ano: num
           <DialogHeader>
             <DialogTitle>Propostas acima de {fmtBrl(VALOR_MINIMO_PADRAO)} — em aberto</DialogTitle>
           </DialogHeader>
+          {isError && propostasDisponiveis && (
+            <div className="flex items-center justify-between gap-3 rounded-md bg-amber-50 px-3 py-2 text-xs text-amber-700">
+              <p>A atualização falhou. Mostrando os últimos dados carregados nesta sessão.</p>
+              <Button size="sm" variant="outline" onClick={() => refetch()} disabled={isFetching}>Tentar novamente</Button>
+            </div>
+          )}
 
           {/* Imagem que vai junto da mensagem do WhatsApp: ver, pré-visualizar e trocar */}
           <div className="flex items-center gap-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
@@ -425,6 +433,14 @@ export default function PropostasAltoValor({ mes, ano }: { mes: number; ano: num
 
           {isLoading ? (
             <div className="py-8 text-center text-sm text-slate-400">Carregando propostas...</div>
+          ) : !propostasDisponiveis ? (
+            <div className="py-8 flex flex-col items-center gap-3 text-center">
+              <p className="text-sm text-red-600">A lista de propostas está indisponível. Tente novamente.</p>
+              <Button size="sm" variant="outline" onClick={() => refetch()} disabled={isFetching}>
+                <RotateCcw className={`mr-1 h-3.5 w-3.5 ${isFetching ? "animate-spin" : ""}`} />
+                Tentar novamente
+              </Button>
+            </div>
           ) : propostas.length === 0 ? (
             <div className="py-8 text-center text-sm text-slate-400">Nenhuma proposta em aberto acima do valor de corte neste mês.</div>
           ) : propostasFiltradas.length === 0 ? (

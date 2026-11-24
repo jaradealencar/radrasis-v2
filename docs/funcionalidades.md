@@ -251,6 +251,19 @@ página 5 são exibidas como página 6, sem alterar os registros do banco. O PDF
 também inclui a página 5 com custos atuais do catálogo.
 
 ### Performance Comercial
+- Na Visão Geral, os KPIs do mês selecionado seguem a consulta ao MubiSys; os
+  gráficos anual e dos últimos seis meses leem o histórico local sincronizado
+  (`historico_os` / `historico_orcamentos`) para não depender de até 12 chamadas
+  lentas à API. A comparação de ticket médio usa o mês atual até o dia de hoje
+  contra os mesmos dias do mês anterior; meses fechados comparam períodos
+  completos (`getComparativoTicket`).
+- **Cliente novo** nesse comparativo significa empresa sem O.S. válida anterior
+  no histórico local. Reativados após seis meses continuam em uma métrica
+  separada. Datas de aprovação inválidas são excluídas do comparativo parcial e
+  informadas ao lado dos valores.
+- A tabela **Orçamentos por Estado** e a lista de propostas de alto valor
+  diferenciam erro de carregamento de um período realmente vazio; quando a
+  consulta falha, a interface oferece nova tentativa em vez de mostrar zero.
 - Visão mensal, multi-mês e anual (`getMes`, `getMultiMes`, `getAno`); o
   comparativo anual mostra cada métrica do ano selecionado junto ao mesmo mês
   do ano anterior.

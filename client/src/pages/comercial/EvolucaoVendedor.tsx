@@ -102,7 +102,7 @@ export default function EvolucaoVendedor({ anoSelecionado, mesSelecionado, metaG
   }, [anoSelecionado]);
 
   const { data: multiMesDados, isLoading } = trpc.performanceComercial.getMultiMes.useQuery(
-    { meses: mesesEvolucao },
+    { meses: mesesEvolucao, historicoLocal: true },
     { refetchOnWindowFocus: false }
   );
 

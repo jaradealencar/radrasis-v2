@@ -2441,14 +2441,18 @@ export const performanceComercialRouter = router({
     .input(z.object({
       meses: z.array(z.object({ mes: z.number().min(1).max(12), ano: z.number().min(2020) })),
       forceRefresh: z.boolean().optional().default(false),
+      historicoLocal: z.boolean().optional().default(false),
     }))
     .query(async ({ input }) => {
       const now = new Date();
 
+      // Dashboard trend charts request historicoLocal to avoid live ERP calls;
+      // the default mode keeps the existing API-first behavior for other callers.
+
       // Se forceRefresh, limpar cache do servidor de cada mês pedido (mesma lógica de getMes)
       // antes de buscar — senão a tabela comparativa fica presa ao cache de até 60min do
       // mês vigente mesmo depois do usuário clicar em "Atualizar".
-      if (input.forceRefresh) {
+      if (input.forceRefresh && !input.historicoLocal) {
         for (const { mes, ano } of input.meses) {
           deleteCache(`os_raw_${mes}_${ano}`);
           deleteCache(`orc_raw_${mes}_${ano}`);
@@ -2459,6 +2463,7 @@ export const performanceComercialRouter = router({
       const publicKey = ENV.MUBISYS_PUBLIC_KEY;
       const accessToken = ENV.MUBISYS_ACCESS_TOKEN;
       const db = await getDb();
+      if (input.historicoLocal && !db) throw new Error("Histórico comercial indisponível");
 
       // Pré-buscar snapshots congelados de todos os meses solicitados em uma única query
       const mesesSolicitados = input.meses;
@@ -2487,8 +2492,8 @@ export const performanceComercialRouter = router({
       for (const { mes, ano } of input.meses) {
         const k = `${mes}_${ano}`;
         if (snapMap.has(k)) continue;
-        if (publicKey && accessToken) apiMesPromises.set(k, comTimeout(getMesFromApi(mes, ano)));
-        if (ano === now.getFullYear() && mes === now.getMonth() + 1) {
+        if (!input.historicoLocal && publicKey && accessToken) apiMesPromises.set(k, comTimeout(getMesFromApi(mes, ano)));
+        if (!input.historicoLocal && ano === now.getFullYear() && mes === now.getMonth() + 1) {
           aoVivoPromises.set(k, comTimeout(getClientesNovosMes(mes, ano, input.forceRefresh)));
         }
       }
@@ -2889,13 +2894,107 @@ export const performanceComercialRouter = router({
     }),
 
   // Todos os meses de um ano para comparativo anual
+  getComparativoTicket: publicProcedure
+    .input(z.object({
+      mes: z.number().int().min(1).max(12),
+      ano: z.number().int().min(2020),
+      diaAte: z.number().int().min(1).max(31).optional(),
+    }))
+    .query(async ({ input }) => {
+      const db = await getDb();
+      if (!db) return null;
+
+      const mesAnteriorDate = new Date(input.ano, input.mes - 2, 1);
+      const mesAnterior = mesAnteriorDate.getMonth() + 1;
+      const anoAnterior = mesAnteriorDate.getFullYear();
+      const ultimoDiaAtual = new Date(input.ano, input.mes, 0).getDate();
+      const ultimoDiaAnterior = new Date(anoAnterior, mesAnterior, 0).getDate();
+      const corteAtual = Math.min(input.diaAte ?? ultimoDiaAtual, ultimoDiaAtual);
+      const corteAnterior = input.diaAte == null ? ultimoDiaAnterior : Math.min(corteAtual, ultimoDiaAnterior);
+
+      const [compras, linhas] = await Promise.all([
+        buscarTodasComprasValidas(db),
+        db.select({
+          empresa: historicoOs.empresa,
+          tipoOs: historicoOs.tipoOs,
+          status: historicoOs.status,
+          mes: historicoOs.mes,
+          ano: historicoOs.ano,
+          dataAprovacao: historicoOs.dataAprovacao,
+          valorOs: historicoOs.valorOs,
+          valorTotal: historicoOs.valorTotal,
+        }).from(historicoOs).where(sql`(
+          (${historicoOs.ano} = ${input.ano} AND ${historicoOs.mes} = ${input.mes})
+          OR (${historicoOs.ano} = ${anoAnterior} AND ${historicoOs.mes} = ${mesAnterior})
+        )`),
+      ]);
+
+      const nomesMeses = ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez"];
+      const resumir = (mes: number, ano: number, diaLimite: number) => {
+        const ultimaCompra = reindexarPorChaveNormalizada(ultimaCompraAntesDe(compras, mes, ano));
+        let faturamento = 0;
+        let os = 0;
+        let faturamentoNovos = 0;
+        let osNovos = 0;
+        let osSemData = 0;
+
+        for (const linha of linhas) {
+          if (linha.mes !== mes || linha.ano !== ano || !isOsNormalDb(linha)) continue;
+          if (input.diaAte != null) {
+            const data = parseDataFlexivel(linha.dataAprovacao ?? null);
+            if (!data) {
+              osSemData++;
+              continue;
+            }
+            if (data.getFullYear() !== ano || data.getMonth() + 1 !== mes || data.getDate() > diaLimite) continue;
+          }
+
+          const valor = parseFloat(String(linha.valorOs ?? linha.valorTotal ?? "0")) || 0;
+          faturamento += valor;
+          os++;
+          const empresaKey = normalizeEmpresaKey(linha.empresa ?? "");
+          if (empresaKey && !ultimaCompra.has(empresaKey)) {
+            faturamentoNovos += valor;
+            osNovos++;
+          }
+        }
+
+        return {
+          faturamento: Number(faturamento.toFixed(2)),
+          os,
+          ticketMedio: os > 0 ? Number((faturamento / os).toFixed(2)) : null,
+          faturamentoNovos: Number(faturamentoNovos.toFixed(2)),
+          osNovos,
+          ticketMedioNovos: osNovos > 0 ? Number((faturamentoNovos / osNovos).toFixed(2)) : null,
+          osSemData,
+        };
+      };
+
+      const periodoParcial = input.diaAte != null;
+      return {
+        disponivel: true as const,
+        periodoLabel: periodoParcial
+          ? `dias 1-${corteAtual} vs dias 1-${corteAnterior}`
+          : "meses completos",
+        cortes: { parcial: periodoParcial, atual: corteAtual, anterior: corteAnterior },
+        atual: resumir(input.mes, input.ano, corteAtual),
+        anterior: resumir(mesAnterior, anoAnterior, corteAnterior),
+        rotulos: {
+          atual: `${nomesMeses[input.mes - 1]}/${String(input.ano).slice(-2)}`,
+          anterior: `${nomesMeses[mesAnterior - 1]}/${String(anoAnterior).slice(-2)}`,
+        },
+      };
+    }),
+
+  // Annual charts can request historicoLocal; the default remains API-first for compatibility.
   getAno: publicProcedure
-    .input(z.object({ ano: z.number().min(2020) }))
+    .input(z.object({ ano: z.number().min(2020), historicoLocal: z.boolean().optional().default(false) }))
     .query(async ({ input }) => {
       const { ano } = input;
       const publicKey = ENV.MUBISYS_PUBLIC_KEY;
       const accessToken = ENV.MUBISYS_ACCESS_TOKEN;
       const db = await getDb();
+      if (input.historicoLocal && !db) throw new Error("Histórico comercial indisponível");
 
       // Buscar TODOS os dados do ano em uma única query (muito mais rápido)
       const todasOsAno = db ? await db.select().from(historicoOs).where(eq(historicoOs.ano, ano)) : [];
@@ -2953,7 +3052,7 @@ export const performanceComercialRouter = router({
           }
           // ───────────────────────────────────────────────────────────────────────
           let raw: any = null;
-          if (publicKey && accessToken) {
+          if (!input.historicoLocal && publicKey && accessToken) {
             try {
               // 45s — mesmo teto usado em listarOSMubiSys/TIMEOUT_LISTA_MS.
               // Cada mês corre em paralelo com os outros 11, então esse
@@ -3024,6 +3123,7 @@ export const performanceComercialRouter = router({
   getClientesNovos: protectedProcedure
     .input(z.object({ mes: z.number().min(1).max(12), ano: z.number().min(2020), forceRefresh: z.boolean().optional().default(false) }))
     .query(async ({ input }) => {
+      if (!await getDb()) throw new Error("Histórico comercial indisponível");
       return getClientesNovosMes(input.mes, input.ano, input.forceRefresh);
     }),
 
@@ -3038,10 +3138,7 @@ export const performanceComercialRouter = router({
 
       const db = await getDb();
       if (!db) {
-        return meses.map(mes => ({
-          mes, ticketMedioNovos: 0, osNovos: 0, faturamentoNovos: 0, faturamentoReativados: 0, faturamentoNovosPuros: 0,
-          clientesNovosUnicos: 0, clientesReativados: 0, clientesNovosPuros: 0, origem: "indisponivel" as const,
-        }));
+        throw new Error("Histórico comercial indisponível");
       }
 
       // Meses auditados/congelados: manter o caminho existente — getClientesNovosMes já
@@ -3073,7 +3170,7 @@ export const performanceComercialRouter = router({
           const dados = await getClientesNovosMes(mes, ano);
           return {
             mes,
-            ticketMedioNovos: dados.ticketMedioNovos,
+            ticketMedioNovosPuros: dados.ticketMedioNovosPuros,
             osNovos: dados.osNovos,
             faturamentoNovos: dados.faturamentoNovos,
             faturamentoReativados: dados.faturamentoReativados,
@@ -3084,7 +3181,8 @@ export const performanceComercialRouter = router({
             origem: "congelado" as const,
           };
         }
-        return { ...calcularNovosDoMesLocal(mes, ano, osDoAno, todasComprasValidas, overrideMap), origem: "local" as const };
+        const dados = calcularNovosDoMesLocal(mes, ano, osDoAno, todasComprasValidas, overrideMap);
+        return { ...dados, origem: "local" as const };
       }));
 
       results.sort((a, b) => a.mes - b.mes);
@@ -3962,7 +4060,7 @@ export const performanceComercialRouter = router({
     }))
     .query(async ({ input }) => {
       const db = await getDb();
-      if (!db) return { totalAltoValor: 0, semContato: 0, taxaSilencio: 0 };
+      if (!db) return { disponivel: false as const, totalAltoValor: 0, semContato: 0, taxaSilencio: 0 };
       const { mes, ano, valorMinimo } = input;
 
       const orcRows = await db.select().from(historicoOrcamentos)
@@ -3975,7 +4073,7 @@ export const performanceComercialRouter = router({
         const status = (orc.status ?? "").toLowerCase();
         return !STATUS_FINALIZADOS.includes(status);
       });
-      if (candidatas.length === 0) return { totalAltoValor: 0, semContato: 0, taxaSilencio: 0 };
+      if (candidatas.length === 0) return { disponivel: true as const, totalAltoValor: 0, semContato: 0, taxaSilencio: 0 };
 
       const [contatadosDb, followupsDb] = await Promise.all([
         db.select({ orcNumero: performancePropostasContatado.orcNumero, contatado: performancePropostasContatado.contatado })
@@ -3994,6 +4092,7 @@ export const performanceComercialRouter = router({
       }).length;
 
       return {
+        disponivel: true as const,
         totalAltoValor: candidatas.length,
         semContato,
         taxaSilencio: parseFloat(((semContato / candidatas.length) * 100).toFixed(1)),
@@ -4015,7 +4114,7 @@ export const performanceComercialRouter = router({
     }))
     .query(async ({ input }) => {
       const db = await getDb();
-      if (!db) return { propostas: [] as any[] };
+      if (!db) return { disponivel: false as const, propostas: [] as any[] };
       const { mes, ano, valorMinimo } = input;
 
       const orcRows = await db.select().from(historicoOrcamentos)
@@ -4029,7 +4128,7 @@ export const performanceComercialRouter = router({
         return !STATUS_FINALIZADOS.includes(status);
       });
 
-      if (candidatas.length === 0) return { propostas: [] as any[] };
+      if (candidatas.length === 0) return { disponivel: true as const, propostas: [] as any[] };
 
       // Telefone/contato: best-effort a partir do cache de dados brutos da API MubiSys
       // já buscado para este mês (getMesFromApi popula orc_raw_{mes}_{ano} / raw_{mes}_{ano}).
@@ -4185,7 +4284,7 @@ export const performanceComercialRouter = router({
 
       // orcamentosDesde: a conversão e a contagem de cotações só enxergam orçamentos a partir
       // deste mês (historico_orcamentos é mais curto que historico_os); a tela avisa isso.
-      return { propostas, orcamentosDesde: mapaConversao?.orcamentosDesde ?? null };
+      return { disponivel: true as const, propostas, orcamentosDesde: mapaConversao?.orcamentosDesde ?? null };
     }),
 
   /** Marca ou desmarca uma proposta de alto valor como "contatada" (caixinha rápida, sem motivo). */
@@ -4251,17 +4350,26 @@ export const performanceComercialRouter = router({
 
       try {
         // Orçamentos do mês/ano solicitado
-        const orcamentos = await db.select()
-          .from(historicoOrcamentos)
-          .where(and(eq(historicoOrcamentos.mes, mes), eq(historicoOrcamentos.ano, ano)));
-
-        // OS normais do mesmo mês/ano para apurar conversão por cliente
-        const oss = await db.select({
-          empresa: historicoOs.empresa,
-          tipoOs: historicoOs.tipoOs,
-          status: historicoOs.status,
-        }).from(historicoOs)
-          .where(and(eq(historicoOs.mes, mes), eq(historicoOs.ano, ano)));
+        const [orcamentos, oss] = await Promise.all([
+          db.select({
+            orcNumero: historicoOrcamentos.orcNumero,
+            empresa: historicoOrcamentos.empresa,
+            estado: historicoOrcamentos.estado,
+            cidade: historicoOrcamentos.cidade,
+            total: historicoOrcamentos.total,
+            vendedor: historicoOrcamentos.vendedor,
+            dataCadastro: historicoOrcamentos.dataCadastro,
+            status: historicoOrcamentos.status,
+          }).from(historicoOrcamentos)
+            .where(and(eq(historicoOrcamentos.mes, mes), eq(historicoOrcamentos.ano, ano))),
+          // OS normais do mesmo mês/ano para apurar conversão por cliente
+          db.select({
+            empresa: historicoOs.empresa,
+            tipoOs: historicoOs.tipoOs,
+            status: historicoOs.status,
+          }).from(historicoOs)
+            .where(and(eq(historicoOs.mes, mes), eq(historicoOs.ano, ano))),
+        ]);
 
         const clientesComOs = new Set<string>();
         for (const os of oss) {

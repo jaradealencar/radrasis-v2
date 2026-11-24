@@ -39,15 +39,15 @@ export default function OrcamentosDetalhadosPorEstado({
   mes: number;
   ano: number;
 }) {
-  const utils = trpc.useUtils();
   const {
     data: orcamentos,
     isLoading,
     isError,
+    isFetching,
     refetch,
   } = trpc.performanceComercial.getOrcamentosDetalhadosPorEstado.useQuery(
     { mes, ano },
-    { refetchOnWindowFocus: false, retry: 1 },
+    { refetchOnWindowFocus: false, retry: 1, staleTime: 5 * 60 * 1000 },
   );
 
   const total = useMemo(() => {
@@ -62,8 +62,7 @@ export default function OrcamentosDetalhadosPorEstado({
   }, [orcamentos]);
 
   const handleRetry = () => {
-    utils.performanceComercial.getOrcamentosDetalhadosPorEstado.invalidate();
-    refetch();
+    void refetch();
   };
 
   if (isLoading) {
@@ -77,13 +76,16 @@ export default function OrcamentosDetalhadosPorEstado({
     );
   }
 
-  if (isError) {
+  if (isError && (!orcamentos || orcamentos.length === 0)) {
     return (
-      <Card className="flex flex-col items-center justify-center py-10">
-        <CardContent className="flex flex-col items-center gap-3">
-          <p className="text-sm text-red-600">Não foi possível carregar os orçamentos.</p>
-          <Button onClick={handleRetry} variant="outline" size="sm">
-            <RefreshCw className="w-3 h-3 mr-1" />
+      <Card>
+        <CardHeader>
+          <CardTitle>Orçamentos por Estado</CardTitle>
+        </CardHeader>
+        <CardContent className="flex flex-col items-center gap-3 py-10">
+          <p className="text-sm text-red-600">Não foi possível ler o histórico sincronizado. O erro não significa que o período esteja sem orçamentos.</p>
+          <Button onClick={handleRetry} variant="outline" size="sm" disabled={isFetching}>
+            <RefreshCw className={`w-3 h-3 mr-1 ${isFetching ? "animate-spin" : ""}`} />
             Tentar novamente
           </Button>
         </CardContent>
@@ -117,6 +119,11 @@ export default function OrcamentosDetalhadosPorEstado({
         </CardTitle>
       </CardHeader>
       <CardContent>
+        {isError && (
+          <p className="mb-3 rounded-md bg-amber-50 px-3 py-2 text-xs text-amber-700">
+            A atualização falhou. Mostrando os últimos dados carregados nesta sessão.
+          </p>
+        )}
         <div className="overflow-x-auto">
           <Table className="text-xs">
             <TableHeader>

@@ -106,8 +106,9 @@ function MetaBadge({
   );
 }
 
-function KpiCardComMeta({ label, value, sub, icon: Icon, color, meta, metaReal, metaTarget, isCurrency, isPct }: {
+function KpiCardComMeta({ label, value, sub, comparison, icon: Icon, color, meta, metaReal, metaTarget, isCurrency, isPct }: {
   label: string; value: string; sub?: string; icon: React.ElementType; color: string;
+  comparison?: string;
   meta?: string; metaReal?: number; metaTarget?: number; isCurrency?: boolean; isPct?: boolean;
 }) {
   const hasMeta = metaReal != null && metaTarget != null && metaTarget > 0;
@@ -120,6 +121,7 @@ function KpiCardComMeta({ label, value, sub, icon: Icon, color, meta, metaReal, 
           <p className="text-xs font-semibold uppercase tracking-widest mb-1 text-slate-500">{label}</p>
           <p className="text-2xl font-bold" style={{ color }}>{value}</p>
           {sub && <p className="text-xs mt-1 text-slate-400">{sub}</p>}
+          {comparison && <p className="text-[10px] mt-1 leading-snug text-slate-500">{comparison}</p>}
           {meta && <p className="text-xs mt-1 font-medium text-slate-500">Meta: {meta}</p>}
         </div>
         <div className="p-2.5 rounded-lg" style={{ background: `${color}15` }}>
@@ -462,8 +464,32 @@ export default function PerformanceComercial() {
   // API MubiSys. Sem isso, o botão "Atualizar" só reconsulta o mesmo cache —
   // O.S. aprovadas na última hora não aparecem até o TTL expirar sozinho.
   const [forceRefreshMes, setForceRefreshMes] = useState(false);
-  const { data: mesDados, isLoading: loadingMes, refetch: refetchMes } =
+  const { data: mesDados, isLoading: loadingMes, isError: errorMes, refetch: refetchMes } =
     trpc.performanceComercial.getMes.useQuery({ mes: mesSelecionado, ano: anoSelecionado, forceRefresh: forceRefreshMes }, RETRY_1);
+
+  const diaAteComparacao = anoSelecionado === ANO_ATUAL && mesSelecionado === MES_ATUAL
+    ? new Date().getDate()
+    : undefined;
+  const comparativoTicketQuery = trpc.performanceComercial.getComparativoTicket.useQuery(
+    { mes: mesSelecionado, ano: anoSelecionado, ...(diaAteComparacao ? { diaAte: diaAteComparacao } : {}) },
+    { ...RETRY_1, staleTime: 5 * 60 * 1000 },
+  );
+  const textoComparativoTicket = (campo: "ticketMedio" | "ticketMedioNovos") => {
+    if (comparativoTicketQuery.isLoading) return "Carregando comparação com o período anterior...";
+    const comparativo = comparativoTicketQuery.data;
+    if (comparativoTicketQuery.isError || !comparativo) return "Comparação histórica indisponível.";
+    const valorAtual = comparativo.atual[campo];
+    const valorAnterior = comparativo.anterior[campo];
+    if (valorAtual == null || valorAnterior == null) return `Sem base para comparar · ${comparativo.periodoLabel}`;
+    const variacao = valorAnterior > 0 ? ((valorAtual / valorAnterior) - 1) * 100 : null;
+    const variacaoTexto = variacao == null ? "sem base anterior" : `${variacao >= 0 ? "+" : ""}${fmtPct(variacao)}`;
+    const periodo = comparativo.cortes.parcial
+      ? `dias 1-${comparativo.cortes.atual} / 1-${comparativo.cortes.anterior}`
+      : "meses completos";
+    const osSemData = comparativo.atual.osSemData + comparativo.anterior.osSemData;
+    const avisoData = osSemData > 0 ? ` · ${osSemData} O.S. sem data excluídas` : "";
+    return `Histórico sincronizado (${comparativo.rotulos.anterior}, ${periodo}): ${fmtBrl(valorAtual)} vs ${fmtBrl(valorAnterior)} · ${variacaoTexto}${avisoData}`;
+  };
 
   // Monitoramento por proposta: compara previsao registrada no CRM com o desfecho
   // explicito no historico do MubiSys, sem tentar vincular faturamento de OS.
@@ -477,8 +503,9 @@ export default function PerformanceComercial() {
   );
 
   // Resumo de propostas de alto valor sem NENHUM contato registrado no mês
-  const { data: resumoSilencio, isLoading: loadingSilencio } =
+  const { data: resumoSilencio, isLoading: loadingSilencio, isError: erroSilencio } =
     trpc.performanceComercial.getResumoSilencioPropostas.useQuery({ mes: mesSelecionado, ano: anoSelecionado }, RETRY_1);
+  const resumoSilencioDisponivel = !erroSilencio && resumoSilencio?.disponivel !== false && !!resumoSilencio;
 
   // Query de auditoria para o mês selecionado
   const { data: auditoriaData, refetch: refetchAuditoria } =
@@ -516,24 +543,25 @@ export default function PerformanceComercial() {
   // mês ainda não foi importado. Não mostrar isso como "tempo real" normal.
   const dadosDeFallbackLocal = fonteStatus === 'tempo-real' && (mesDados as any)?._origemDados === 'local';
 
-  const { data: evolucao, isLoading: loadingEvolucao, refetch: refetchEvolucao } =
-    trpc.performanceComercial.getMultiMes.useQuery({ meses: mesesEvolucao, forceRefresh: forceRefreshMes }, RETRY_1);
+  const { data: evolucao, isLoading: loadingEvolucao, isError: erroEvolucao, refetch: refetchEvolucao } =
+    trpc.performanceComercial.getMultiMes.useQuery({ meses: mesesEvolucao, forceRefresh: forceRefreshMes, historicoLocal: true }, RETRY_1);
 
   const { data: metas, refetch: refetchMetas } =
     trpc.performanceComercial.getMetas.useQuery({ mes: mesSelecionado, ano: anoSelecionado }, RETRY_1);
-  const { data: dadosAno, isLoading: loadingAno, isError: errorAno } =
-    trpc.performanceComercial.getAno.useQuery({ ano: anoSelecionado }, RETRY_1);
+  const { data: dadosAno, isLoading: loadingAno, isError: errorAno, refetch: refetchAno } =
+    trpc.performanceComercial.getAno.useQuery({ ano: anoSelecionado, historicoLocal: true }, RETRY_1);
   const { data: dadosAnoAnterior, isLoading: loadingAnoAnterior, isError: errorAnoAnterior } =
     trpc.performanceComercial.getAno.useQuery(
-      { ano: anoSelecionado - 1 },
+      { ano: anoSelecionado - 1, historicoLocal: true },
       { ...RETRY_1, enabled: showComparativo && anoSelecionado > 2020 },
     );
   // Mesmo forceRefreshMes do getMes acima: os dois compartilham o cache de OS/orçamentos
   // brutos no servidor (chaves mes_/os_raw_/orc_raw_/raw_${mes}_${ano}), então precisam
   // ser recalibrados juntos — senão "Vendas Realizadas" e "Clientes Novos/Reativados"
   // podem refletir instantes diferentes do dia mesmo no mesmo clique de "Atualizar".
-  const { data: clientesNovos, isLoading: loadingClientesNovos, refetch: refetchClientesNovos } =
+  const { data: clientesNovos, isLoading: loadingClientesNovos, isError: erroClientesNovos, refetch: refetchClientesNovos } =
     trpc.performanceComercial.getClientesNovos.useQuery({ mes: mesSelecionado, ano: anoSelecionado, forceRefresh: forceRefreshMes }, RETRY_1);
+  const clientesNovosIndisponiveis = erroClientesNovos && !clientesNovos;
 
   // Controle de contato com clientes novos
   const { data: contatadosMap, refetch: refetchContatados } =
@@ -542,13 +570,13 @@ export default function PerformanceComercial() {
     onSuccess: () => { refetchContatados(); },
   });
 
-  const { data: clientesNovosAno, isLoading: loadingClientesNovosAno } =
+  const { data: clientesNovosAno, isLoading: loadingClientesNovosAno, isError: errorClientesNovosAno, refetch: refetchClientesNovosAno } =
     trpc.performanceComercial.getClientesNovosAno.useQuery({ ano: anoSelecionado }, RETRY_1);
 
   // Query de comparação multi-mês (Power BI)
   const { data: comparaMesesDados, isLoading: loadingComparaMeses, isError: erroComparaMeses, refetch: refetchComparaMeses } =
     trpc.performanceComercial.getMultiMes.useQuery(
-      { meses: comparaMesesSelecionados, forceRefresh: forceRefreshMes },
+      { meses: comparaMesesSelecionados, forceRefresh: forceRefreshMes, historicoLocal: true },
       { enabled: showComparaMeses && comparaMesesSelecionados.length > 0, ...RETRY_1 }
     );
 
@@ -955,9 +983,10 @@ export default function PerformanceComercial() {
               <span>Buscando dados atualizados na API MubiSys... Isso pode levar alguns segundos na primeira consulta do mês.</span>
             </div>
           </div>
-        ) : false ? (
-          <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 text-amber-700 text-sm">
-            {undefined}
+        ) : errorMes && !mesDados ? (
+          <div className="bg-red-50 border border-red-200 rounded-xl p-4 text-sm text-red-700 flex items-center justify-between gap-3">
+            <span>Não foi possível carregar os indicadores do período. Os valores não foram substituídos por zero.</span>
+            <Button variant="outline" size="sm" onClick={() => refetchMes()}>Tentar novamente</Button>
           </div>
         ) : mesDados ? (
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
@@ -1045,73 +1074,73 @@ export default function PerformanceComercial() {
             />
             <KpiCardComMeta
               label="Cotações Alto Valor s/ Contato"
-              value={loadingSilencio ? "..." : String(resumoSilencio?.semContato ?? 0)}
-              sub={`De ${resumoSilencio?.totalAltoValor ?? 0} propostas ≥ R$ 7.800 em aberto`}
+              value={loadingSilencio ? "..." : resumoSilencioDisponivel ? String(resumoSilencio?.semContato ?? 0) : "—"}
+              sub={resumoSilencioDisponivel ? `De ${resumoSilencio?.totalAltoValor ?? 0} propostas ≥ R$ 7.800 em aberto` : "Dados indisponíveis; não significa zero propostas"}
               icon={Phone}
-              color={!resumoSilencio ? "#94a3b8" : Number(resumoSilencio.taxaSilencio) <= 20 ? "#22c55e" : Number(resumoSilencio.taxaSilencio) <= 50 ? "#f59e0b" : "#ef4444"}
+              color={!resumoSilencioDisponivel ? "#94a3b8" : Number(resumoSilencio.taxaSilencio) <= 20 ? "#22c55e" : Number(resumoSilencio.taxaSilencio) <= 50 ? "#f59e0b" : "#ef4444"}
               metaReal={resumoSilencio?.semContato ?? 0}
             />
             <KpiCardComMeta
               label="Taxa de Silêncio"
-              value={loadingSilencio ? "..." : `${resumoSilencio?.taxaSilencio ?? 0}%`}
+              value={loadingSilencio ? "..." : resumoSilencioDisponivel ? `${resumoSilencio?.taxaSilencio ?? 0}%` : "—"}
               sub="Propostas de alto valor sem nenhum follow-up"
               icon={Percent}
-              color={!resumoSilencio ? "#94a3b8" : Number(resumoSilencio.taxaSilencio) <= 20 ? "#22c55e" : Number(resumoSilencio.taxaSilencio) <= 50 ? "#f59e0b" : "#ef4444"}
-              metaReal={Number(resumoSilencio?.taxaSilencio ?? 0)}
+              color={!resumoSilencioDisponivel ? "#94a3b8" : Number(resumoSilencio.taxaSilencio) <= 20 ? "#22c55e" : Number(resumoSilencio.taxaSilencio) <= 50 ? "#f59e0b" : "#ef4444"}
+              metaReal={resumoSilencioDisponivel ? Number(resumoSilencio?.taxaSilencio ?? 0) : undefined}
               isPct
             />
             <KpiCardComMeta
               label="Clientes Novos"
-              value={loadingClientesNovos ? "..." : String(clientesNovos?.totalPuros ?? 0)}
-              sub="Nunca compraram antes (reativados na coluna ao lado)"
+              value={loadingClientesNovos ? "..." : clientesNovosIndisponiveis ? "—" : String(clientesNovos?.totalPuros ?? 0)}
+              sub="Sem O.S. anterior no histórico sincronizado; reativados ficam separados"
               icon={UserPlus}
               color="#0ea5e9"
-              metaReal={clientesNovos?.totalPuros ?? 0}
+              metaReal={clientesNovosIndisponiveis ? undefined : clientesNovos?.totalPuros ?? 0}
               metaTarget={metaGeral?.metaClientesNovos ?? undefined}
             />
             <KpiCardComMeta
               label="Clientes Reativados"
-              value={loadingClientesNovos ? "..." : String(clientesNovos?.totalReativados ?? 0)}
+              value={loadingClientesNovos ? "..." : clientesNovosIndisponiveis ? "—" : String(clientesNovos?.totalReativados ?? 0)}
               sub="Já compraram antes e voltaram após 6+ meses sem pedir"
               icon={Users}
               color="#f97316"
-              metaReal={clientesNovos?.totalReativados ?? 0}
+              metaReal={clientesNovosIndisponiveis ? undefined : clientesNovos?.totalReativados ?? 0}
             />
             <KpiCardComMeta
               label="Cotações (Novos)"
-              value={loadingClientesNovos ? "..." : String((clientesNovos as any)?.cotacoesNovosPuros ?? 0)}
-              sub="Cotações de clientes que nunca compraram antes (reativados não entram)"
+              value={loadingClientesNovos ? "..." : clientesNovosIndisponiveis ? "—" : String((clientesNovos as any)?.cotacoesNovosPuros ?? 0)}
+              sub="Cotações de clientes sem O.S. anterior no histórico (reativados não entram)"
               icon={ShoppingCart}
               color="#a855f7"
-              metaReal={(clientesNovos as any)?.cotacoesNovosPuros ?? 0}
+              metaReal={clientesNovosIndisponiveis ? undefined : (clientesNovos as any)?.cotacoesNovosPuros ?? 0}
               metaTarget={metaGeral?.metaCotacoesNovos ?? undefined}
             />
             <KpiCardComMeta
               label="Vendas (Novos Clientes)"
-              value={loadingClientesNovos ? "..." : String((clientesNovos as any)?.osNovosPuros ?? 0)}
-              sub="Pedidos de clientes que nunca compraram antes (reativados não entram)"
+              value={loadingClientesNovos ? "..." : clientesNovosIndisponiveis ? "—" : String((clientesNovos as any)?.osNovosPuros ?? 0)}
+              sub="O.S. de clientes sem compra anterior no histórico (reativados não entram)"
               icon={CheckCircle2}
               color="#06b6d4"
-              metaReal={(clientesNovos as any)?.osNovosPuros ?? 0}
+              metaReal={clientesNovosIndisponiveis ? undefined : (clientesNovos as any)?.osNovosPuros ?? 0}
               metaTarget={metaGeral?.metaOsNovos ?? undefined}
             />
             <KpiCardComMeta
               label="Faturamento (Novos)"
-              value={loadingClientesNovos ? "..." : `R$ ${(((clientesNovos as any)?.faturamentoNovosPuros ?? 0) as number).toLocaleString("pt-BR", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`}
-              sub={`Só clientes que nunca compraram antes${(mesDados.faturamento ?? 0) > 0 ? ` · ${((((clientesNovos as any)?.faturamentoNovosPuros ?? 0) / mesDados.faturamento) * 100).toLocaleString("pt-BR", { minimumFractionDigits: 1, maximumFractionDigits: 1 })}% do faturamento total` : ""}`}
+              value={loadingClientesNovos ? "..." : clientesNovosIndisponiveis ? "—" : `R$ ${(((clientesNovos as any)?.faturamentoNovosPuros ?? 0) as number).toLocaleString("pt-BR", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`}
+              sub={clientesNovosIndisponiveis ? "Dados de primeira compra indisponíveis" : `Só clientes que nunca compraram antes${(mesDados.faturamento ?? 0) > 0 ? ` · ${((((clientesNovos as any)?.faturamentoNovosPuros ?? 0) / mesDados.faturamento) * 100).toLocaleString("pt-BR", { minimumFractionDigits: 1, maximumFractionDigits: 1 })}% do faturamento total` : ""}`}
               icon={DollarSign}
               color="#f59e0b"
-              metaReal={(clientesNovos as any)?.faturamentoNovosPuros ?? 0}
+              metaReal={clientesNovosIndisponiveis ? undefined : (clientesNovos as any)?.faturamentoNovosPuros ?? 0}
               metaTarget={metaGeral?.metaFaturamentoNovos ? Number(metaGeral.metaFaturamentoNovos) : undefined}
               isCurrency
             />
             <KpiCardComMeta
               label="Faturamento (Reativados)"
-              value={loadingClientesNovos ? "..." : `R$ ${(((clientesNovos as any)?.faturamentoReativados ?? 0) as number).toLocaleString("pt-BR", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`}
-              sub={`Faturamento de clientes reativados${(mesDados.faturamento ?? 0) > 0 ? ` · ${((((clientesNovos as any)?.faturamentoReativados ?? 0) / mesDados.faturamento) * 100).toLocaleString("pt-BR", { minimumFractionDigits: 1, maximumFractionDigits: 1 })}% do faturamento total` : ""}`}
+              value={loadingClientesNovos ? "..." : clientesNovosIndisponiveis ? "—" : `R$ ${(((clientesNovos as any)?.faturamentoReativados ?? 0) as number).toLocaleString("pt-BR", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`}
+              sub={clientesNovosIndisponiveis ? "Dados de reativação indisponíveis" : `Faturamento de clientes reativados${(mesDados.faturamento ?? 0) > 0 ? ` · ${((((clientesNovos as any)?.faturamentoReativados ?? 0) / mesDados.faturamento) * 100).toLocaleString("pt-BR", { minimumFractionDigits: 1, maximumFractionDigits: 1 })}% do faturamento total` : ""}`}
               icon={DollarSign}
               color="#fb923c"
-              metaReal={(clientesNovos as any)?.faturamentoReativados ?? 0}
+              metaReal={clientesNovosIndisponiveis ? undefined : (clientesNovos as any)?.faturamentoReativados ?? 0}
               isCurrency
             />
             <KpiCardComMeta
@@ -1136,21 +1165,21 @@ export default function PerformanceComercial() {
             />
             <KpiCardComMeta
               label="Taxa Conv. Novos"
-              value={loadingClientesNovos ? "..." : `${(clientesNovos as any)?.taxaConversaoNovosPuros ?? 0}%`}
+              value={loadingClientesNovos ? "..." : clientesNovosIndisponiveis ? "—" : `${(clientesNovos as any)?.taxaConversaoNovosPuros ?? 0}%`}
               sub="Vendas / Cotações (só clientes que nunca compraram antes)"
               icon={Percent}
-              color={!clientesNovos ? "#94a3b8" : Number((clientesNovos as any)?.taxaConversaoNovosPuros) >= 30 ? "#22c55e" : Number((clientesNovos as any)?.taxaConversaoNovosPuros) >= 15 ? "#f59e0b" : "#ef4444"}
-              metaReal={Number((clientesNovos as any)?.taxaConversaoNovosPuros ?? 0)}
+              color={clientesNovosIndisponiveis ? "#94a3b8" : Number((clientesNovos as any)?.taxaConversaoNovosPuros) >= 30 ? "#22c55e" : Number((clientesNovos as any)?.taxaConversaoNovosPuros) >= 15 ? "#f59e0b" : "#ef4444"}
+              metaReal={clientesNovosIndisponiveis ? undefined : Number((clientesNovos as any)?.taxaConversaoNovosPuros ?? 0)}
               metaTarget={metaGeral?.metaConversaoNovos ? Number(metaGeral.metaConversaoNovos) : undefined}
               isPct
             />
             <KpiCardComMeta
               label="Taxa Fat. Novos"
-              value={loadingClientesNovos ? "..." : `${(clientesNovos as any)?.taxaFaturamentoNovosPuros ?? 0}%`}
+              value={loadingClientesNovos ? "..." : clientesNovosIndisponiveis ? "—" : `${(clientesNovos as any)?.taxaFaturamentoNovosPuros ?? 0}%`}
               sub="Fat. / Orçado (só clientes que nunca compraram antes)"
               icon={Percent}
-              color={!clientesNovos ? "#94a3b8" : Number((clientesNovos as any)?.taxaFaturamentoNovosPuros) >= 30 ? "#22c55e" : Number((clientesNovos as any)?.taxaFaturamentoNovosPuros) >= 15 ? "#f59e0b" : "#ef4444"}
-              metaReal={Number((clientesNovos as any)?.taxaFaturamentoNovosPuros ?? 0)}
+              color={clientesNovosIndisponiveis ? "#94a3b8" : Number((clientesNovos as any)?.taxaFaturamentoNovosPuros) >= 30 ? "#22c55e" : Number((clientesNovos as any)?.taxaFaturamentoNovosPuros) >= 15 ? "#f59e0b" : "#ef4444"}
+              metaReal={clientesNovosIndisponiveis ? undefined : Number((clientesNovos as any)?.taxaFaturamentoNovosPuros ?? 0)}
               metaTarget={metaGeral?.metaTaxaFaturamentoNovos ? Number(metaGeral.metaTaxaFaturamentoNovos) : undefined}
               isPct
             />
@@ -1158,6 +1187,7 @@ export default function PerformanceComercial() {
               label="Ticket Médio Geral"
               value={`R$ ${Number(mesDados.ticketMedio ?? 0).toLocaleString("pt-BR", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`}
               sub="Faturamento / Vendas realizadas"
+              comparison={textoComparativoTicket("ticketMedio")}
               icon={TrendingUp}
               color="#6366f1"
               metaReal={Number(mesDados.ticketMedio ?? 0)}
@@ -1166,11 +1196,12 @@ export default function PerformanceComercial() {
             />
             <KpiCardComMeta
               label="Ticket Médio Novos"
-              value={loadingClientesNovos ? "..." : `R$ ${Number((clientesNovos as any)?.ticketMedioNovosPuros ?? 0).toLocaleString("pt-BR", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`}
-              sub="Fat. novos / OS novos (só clientes que nunca compraram antes)"
+              value={loadingClientesNovos ? "..." : clientesNovosIndisponiveis ? "—" : `R$ ${Number((clientesNovos as any)?.ticketMedioNovosPuros ?? 0).toLocaleString("pt-BR", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`}
+              sub="Faturamento / O.S. de clientes sem O.S. anterior no histórico"
               icon={TrendingUp}
               color="#f59e0b"
-              metaReal={Number((clientesNovos as any)?.ticketMedioNovosPuros ?? 0)}
+              metaReal={clientesNovosIndisponiveis ? undefined : Number((clientesNovos as any)?.ticketMedioNovosPuros ?? 0)}
+              comparison={textoComparativoTicket("ticketMedioNovos")}
               metaTarget={metaGeral?.metaTicketMedioNovos ? Number(metaGeral.metaTicketMedioNovos) : undefined}
               isCurrency
             />
@@ -1186,13 +1217,19 @@ export default function PerformanceComercial() {
         {/* Gráfico de Evolução do Ticket Médio — ano inteiro */}
         <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5">
           <h2 className="text-sm font-semibold text-slate-700 mb-1">Ticket Médio — Evolução {anoSelecionado}</h2>
-          <p className="text-xs text-slate-400 mb-4">Ticket médio geral vs ticket médio de clientes novos por mês</p>
+          <p className="text-xs text-slate-400 mb-4">Ticket médio geral vs primeira compra por mês · histórico sincronizado</p>
           {(loadingAno || loadingClientesNovosAno) ? (
             <div className="h-48 flex items-center justify-center text-slate-400 text-sm animate-pulse">Carregando dados...</div>
+          ) : errorAno || errorClientesNovosAno ? (
+            <div className="h-48 flex flex-col items-center justify-center gap-3 text-center">
+              <p className="text-sm text-red-600">Não foi possível carregar o histórico sincronizado. Os valores não foram tratados como zero.</p>
+              <Button variant="outline" size="sm" onClick={() => { void refetchAno(); void refetchClientesNovosAno(); }}>Tentar novamente</Button>
+            </div>
           ) : (() => {
-            // Montar dados combinados: ticketMedio geral (de dadosAno) + ticketMedioNovos (de clientesNovosAno)
+            // O ticket de novos usa somente OS de clientes sem compra anterior;
+            // reativados continuam na métrica separada do painel.
             const novosMap = new Map<number, number>();
-            for (const n of (clientesNovosAno ?? [])) novosMap.set(n.mes, n.ticketMedioNovos);
+            for (const n of (clientesNovosAno ?? [])) novosMap.set(n.mes, n.ticketMedioNovosPuros);
             const chartData = (dadosAno ?? [])
               .filter((r: any) => r != null)
               .map((r: any) => ({
@@ -1206,9 +1243,7 @@ export default function PerformanceComercial() {
                 <Empty>
                   <EmptyHeader>
                     <EmptyTitle>
-                      {errorAno
-                        ? "⚠️ API MubiSys indisponível — não foi possível carregar os dados"
-                        : "Sem dados para o período"}
+                      Sem dados para o período
                     </EmptyTitle>
                   </EmptyHeader>
                 </Empty>
@@ -1243,7 +1278,7 @@ export default function PerformanceComercial() {
                   <Line
                     type="monotone"
                     dataKey="ticketNovos"
-                    name="Ticket Médio Novos"
+                    name="Ticket Médio — Primeira O.S."
                     stroke="#f59e0b"
                     strokeWidth={2.5}
                     strokeDasharray="5 3"
@@ -1259,11 +1294,18 @@ export default function PerformanceComercial() {
         {/* Gráfico de Evolução dos últimos 6 meses */}
         <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5">
           <h2 className="text-sm font-semibold text-slate-700 mb-1">Evolução — Últimos 6 Meses</h2>
-          <p className="text-xs text-slate-400 mb-4">Cotações × Vendas × Faturamento × Taxa de Conversão</p>
+          <p className="text-xs text-slate-400 mb-4">Cotações × Vendas × Faturamento × Conversão · histórico sincronizado</p>
           {loadingEvolucao ? (
             <div className="h-64 flex items-center justify-center text-slate-400 text-sm animate-pulse">
-              Carregando dados do ERP...
+              Carregando histórico sincronizado...
             </div>
+          ) : erroEvolucao ? (
+            <div className="h-64 flex flex-col items-center justify-center gap-3 text-center">
+              <p className="text-sm text-red-600">Não foi possível carregar o histórico sincronizado. Os valores não foram tratados como zero.</p>
+              <Button variant="outline" size="sm" onClick={() => refetchEvolucao()}>Tentar novamente</Button>
+            </div>
+          ) : !evolucao?.length ? (
+            <div className="h-64 flex items-center justify-center text-sm text-slate-500">Ainda não há histórico sincronizado para esses meses.</div>
           ) : (
             <ResponsiveContainer width="100%" height={300}>
               <ComposedChart data={evolucao ?? []} margin={{ top: 5, right: 30, left: 0, bottom: 5 }}>
@@ -1734,7 +1776,7 @@ export default function PerformanceComercial() {
               ) : comparativoAnual.length === 0 ? (
                 <div className="h-32 flex items-center justify-center text-slate-400 text-sm">
                   {errorAno
-                    ? "⚠️ API MubiSys indisponível — não foi possível carregar os dados"
+                    ? "⚠️ Histórico comercial indisponível — não foi possível carregar os dados"
                     : "Sem dados para o período"}
                 </div>
               ) : (
