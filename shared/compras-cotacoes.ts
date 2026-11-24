@@ -95,7 +95,9 @@ export const ordemCompraSchema = z
   .object({
     chave: z.string().uuid(),
     cotacaoId: z.number().int().positive(),
-    nomeComprador: z.string().trim().min(3).max(256),
+    // Interfaces antigas não enviam o responsável separado; a emissão usa o
+    // nome do comprador legal como fallback.
+    nomeComprador: z.string().trim().min(3).max(256).optional(),
     comprador: compradorSchema,
     pagamento: z.enum(["a_vista", "faturado"]),
     condicaoPagamento: z.string().max(256),

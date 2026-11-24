@@ -317,6 +317,7 @@ export const comprasRouter = router({
           .insert(ordens)
           .values({
             ...input,
+            nomeComprador: input.nomeComprador ?? input.comprador.nome,
             itens: linhas,
             frete: (frete ?? 0).toFixed(2),
             freteValorInformado: String(valorInformado),
