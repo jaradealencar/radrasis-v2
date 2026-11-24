@@ -127,6 +127,8 @@ function EditorSalva({
     ordem.pagamento as "a_vista" | "faturado"
   );
   const [condicao, setCondicao] = useState(ordem.condicaoPagamento);
+  const [dataPrevistaEntrega, setDataPrevistaEntrega] = useState(ordem.dataPrevistaEntrega ?? "");
+  const [motivoAlteracao, setMotivoAlteracao] = useState("");
   const [observacoes, setObservacoes] = useState(ordem.observacoes);
   const itensOrdem = new Map(ordem.itens.map(item => [item.itemId, item]));
   const [incluidos, setIncluidos] = useState<Set<number>>(
@@ -232,6 +234,8 @@ function EditorSalva({
     const entrada = editarOrdemCompraSchema.safeParse({
       id: ordem.id,
       nomeComprador,
+      dataPrevistaEntrega: dataPrevistaEntrega || null,
+      motivoAlteracao,
       descontoTotal: descontoObtidoNumero ?? 0,
       comprador: compradorValidado.data,
       pagamento,
@@ -357,6 +361,9 @@ function EditorSalva({
             placeholder="Ex.: 28/35/42 dias"
           />
         </Campo>
+        <Campo titulo="Data prevista de entrega (opcional)">
+          <Input type="date" value={dataPrevistaEntrega} disabled={temNf} onChange={e => setDataPrevistaEntrega(e.target.value)} />
+        </Campo>
         <Campo titulo="Observações para o fornecedor">
           <Input
             value={observacoes}
@@ -376,6 +383,7 @@ function EditorSalva({
       <p className="text-xs text-slate-500">
         O desconto fica separado do preço unitário e dos totais de cada item.
       </p>
+      {!temNf && <Campo titulo="Motivo da alteração (opcional)"><Input maxLength={1000} value={motivoAlteracao} onChange={e => setMotivoAlteracao(e.target.value)} placeholder="Ex.: ajuste negociado com o fornecedor" /></Campo>}
       <Table className="table-fixed text-xs [&_th]:whitespace-normal [&_td]:whitespace-normal [&_td]:break-words [&_td]:align-top">
         <TableHeader>
           <TableRow>

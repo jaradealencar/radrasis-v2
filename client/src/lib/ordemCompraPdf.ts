@@ -2,6 +2,7 @@ import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 import { fmtBrl, fmtDate, fmtNum } from "@/lib/format";
 import type {
+  ComparacaoCotacoesSnapshot,
   CompradorCompra,
   LinhaOrdemCompra,
 } from "@shared/compras-cotacoes";
@@ -10,6 +11,10 @@ export function criarOrdemCompraPdf(
   ordem: {
     id: number;
     nomeComprador?: string;
+    dataPrevistaEntrega?: string | null;
+    statusAprovacao?: string;
+    aprovacaoNome?: string | null;
+    comparacaoCotacoes?: ComparacaoCotacoesSnapshot | null;
     comprador: CompradorCompra;
     createdAt: Date | string;
     pagamento: string;
@@ -41,6 +46,11 @@ export function criarOrdemCompraPdf(
     y += linhas.length * 5 + 2;
   };
   texto(`Emissão: ${fmtDate(ordem.createdAt)}`);
+  if (ordem.dataPrevistaEntrega)
+    texto(`Entrega prevista: ${fmtDate(ordem.dataPrevistaEntrega + "T12:00:00")}`);
+  if (ordem.statusAprovacao === "pendente") texto("STATUS: AGUARDANDO APROVAÇÃO — NÃO ENVIAR AO FORNECEDOR");
+  else if (ordem.statusAprovacao === "aprovada" && ordem.aprovacaoNome)
+    texto(`Aprovada por: ${ordem.aprovacaoNome}`);
   if (ordem.nomeComprador)
     texto(`Responsável pela compra: ${ordem.nomeComprador}`);
   texto(`Comprador legal: ${ordem.comprador.nome}`);
@@ -55,6 +65,11 @@ export function criarOrdemCompraPdf(
       `Volume total da carga: ${fmtNum(Number(ordem.volumePrevistoM3), 3)} m³`
     );
   texto(`Fornecedor: ${fornecedor}`);
+  if (ordem.comparacaoCotacoes) {
+    const cotacoes = ordem.comparacaoCotacoes.cotacoesComparadas ?? [];
+    texto(`Cotações comparadas: ${cotacoes.map(c => `${c.fornecedor} (mercadoria + frete ${c.totalOriginalComFrete == null ? "pendente" : fmtBrl(Number(c.totalOriginalComFrete))}; final ${c.totalFinalEstimado == null ? "pendente" : fmtBrl(c.totalFinalEstimado)})`).join("; ")}`);
+    texto(`Motivo da escolha: ${ordem.comparacaoCotacoes.motivoEscolha || "Menor preço final estimado entre propostas equivalentes."}${ordem.comparacaoCotacoes.comparacaoEquivalente ? "" : " (escopos diferentes)"}`);
+  }
   texto(
     `Pagamento: ${ordem.pagamento === "a_vista" ? "À vista" : "Faturado"}${ordem.condicaoPagamento ? ` - ${ordem.condicaoPagamento}` : ""}`
   );

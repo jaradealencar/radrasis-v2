@@ -1051,6 +1051,13 @@
       "when": 1795490167785,
       "tag": "0151_desconto_obtido_ordem",
       "breakpoints": true
+    },
+    {
+      "idx": 150,
+      "version": "7",
+      "when": 1795493218859,
+      "tag": "0152_compras_controle_profissional",
+      "breakpoints": true
     }
   ]
 }

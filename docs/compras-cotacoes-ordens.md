@@ -8,7 +8,7 @@ A análise também mostra lado a lado o preço puro original da cotação e a si
 
 Depois de revisar os vínculos e conversões, use **Salvar cotação**. O documento guarda fornecedor, data, validade, condições, frete informado, descrição/código, quantidade, preço, matéria-prima, fator, fórmula e custo do MubiSys naquele momento. O total salvo é recalculado no servidor pelos itens mais o frete informado; não inclui impostos ou encargos não discriminados nos itens.
 
-Cada salvamento com dados alterados cria um novo documento. A chave de repetição impede duplicações por tentativas repetidas da mesma gravação. Ao reabrir um documento sem alterar dados, gerar uma ordem usa a cotação já salva. As cotações mostram os 200 documentos mais recentes; as ordens têm paginação de 50 registros e filtros por fornecedor/número, transportadora e datas de emissão em Campo Grande. O PDF original não é armazenado neste fluxo; o nome do arquivo é preservado.
+Cada salvamento com dados alterados cria um novo documento. A chave de repetição impede duplicações por tentativas repetidas da mesma gravação. Ao reabrir um documento sem alterar dados, gerar uma ordem usa a cotação já salva. As cotações mostram os 200 documentos mais recentes; as ordens têm paginação de 50 registros e filtros por fornecedor/número, transportadora e datas de emissão em Campo Grande. Quando enviado, o PDF original fica guardado no UploadThing com URL, chave, hash SHA-256 e tamanho para consulta posterior.
 
 Itens sem vínculo ou sem conversão podem ser salvos, mas ficam pendentes na comparação por unidade de consumo. O cadastro da MP no servidor define a unidade de destino válida. Não se usa preço zero como substituto de custo ausente.
 
@@ -83,3 +83,15 @@ Na emissão e edição da ordem, **Desconto obtido no pedido (R$)** registra o b
 A aba **Ordens de compra** mostra o valor acumulado dos descontos obtidos e o total por comprador responsável. O resumo considera todas as ordens ativas no período selecionado, sem depender da paginação da lista. A consulta agrupa o nome salvo na ordem; o campo oferece sugestões para Daniel, Débora, Suellen, Érick e Henrique, além de aceitar outros nomes.
 
 A migration `0151_desconto_obtido_ordem` adiciona `compras_ordens.desconto_total` com valor padrão zero para preservar o total das ordens existentes.
+
+## Comparação, aprovação e recebimento
+
+Na lista de cotações, selecione até 10 propostas e use **Comparar cotações**. O quadro mostra escopo, total puro com frete, total simulado com ICMS de 10%, prazo, pagamento e PDF de origem. O menor total só é destacado quando os itens, unidades convertidas e quantidades coincidem e todos os fretes têm base suficiente. Escolher uma proposta mais cara, incomparável ou com custo final pendente exige registrar um motivo. A decisão e os valores comparados ficam como snapshot na ordem, para que mudanças futuras nas cotações não alterem a justificativa registrada.
+
+O comprador pode informar a data prevista de entrega. A aprovação por valor é opcional e configurada na aba **Ordens de compra**; ao deixar o limite em branco, as ordens seguem direto. Acima do limite, a ordem fica pendente, não permite baixar PDF, receber material ou vincular NF até que uma pessoa com perfil gestor, admin ou master aprove. Alterações comerciais ou logísticas reavaliam a regra e voltam a exigir aprovação quando necessário. A aprovação registra responsável e data.
+
+Em **Registrar recebimento**, informe data, quantidade que chegou e parte recusada por item. O sistema permite entregas parciais e reposições, controla quanto foi aceito em relação ao pedido e preserva os registros anteriores. **Vincular NF / conferir** cruza pedido, recebimento físico e NF em uma conferência de três vias; itens sem conversão ficam pendentes e diferenças de até 1% são sinalizadas como tolerância operacional, sem substituir a revisão humana.
+
+O **Histórico comercial** reúne criação, edições, mudança logística, aprovação, recebimentos, vínculo de NF e exclusão lógica com usuário, data, valores anteriores/atuais e motivo quando informado. A aba **Indicadores de fornecedores** agrega valor líquido comprado, descontos obtidos, prazo médio até o primeiro recebimento, entrega no prazo, recebimentos com recusa e ordens com divergência de NF. O cálculo de prazo compara a data prevista com a data em que todos os itens foram aceitos; ordens incompletas ou sem previsão não entram nesse percentual.
+
+A migration `0152_compras_controle_profissional` guarda o PDF da cotação, os snapshots de comparação, previsão de entrega, aprovação, histórico comercial e recebimentos físicos. Ela preserva os documentos e ordens já existentes.

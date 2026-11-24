@@ -154,6 +154,7 @@ export default function NfCompraAuditoria() {
   const utils = trpc.useUtils();
   const [abaAtiva, setAbaAtiva] = useState<"importar" | "painel" | "cotacao_pdf" | "memoria" | "historico">("importar");
   const [cotacaoOrdemId, setCotacaoOrdemId] = useState<number | null>(null);
+  const [cotacaoOrdemDecisao, setCotacaoOrdemDecisao] = useState<import("@shared/compras-cotacoes").DecisaoCotacaoCompra | null>(null);
   const [versaoEditorCotacao, setVersaoEditorCotacao] = useState(0);
 
   // Estado para modal de Histórico de Compras da Matéria-Prima
@@ -162,6 +163,7 @@ export default function NfCompraAuditoria() {
   // Estado para cotação em PDF
   const [fornecedorCadastro, setFornecedorCadastro] = useState<{ id: number; nome: string; totalCompras: number; cadastroConcluido: boolean } | null>(null);
   const [arquivoPdfNome, setArquivoPdfNome] = useState<string>("");
+  const [arquivoPdf, setArquivoPdf] = useState<File | null>(null);
   const [cotacaoPdfResultado, setCotacaoPdfResultado] = useState<any | null>(null);
   const [cotacaoSimulacao, setCotacaoSimulacao] =
     useState<SimulacaoFinalCotacao | null>(null);
@@ -292,6 +294,7 @@ export default function NfCompraAuditoria() {
   const handlePdfUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+    setArquivoPdf(file);
     setArquivoPdfNome(file.name);
     setCotacaoPdfResultado(null);
     setCotacaoSimulacao(null);
@@ -302,7 +305,7 @@ export default function NfCompraAuditoria() {
         analisarCotacaoPdfMutation.mutate(
           { pdfBase64: base64, nomeArquivo: file.name },
           {
-            onSuccess: (data) => { setCotacaoSimulacao(null); setCotacaoPdfResultado(data); setVersaoEditorCotacao(v => v + 1); void utils.suppliers.list.invalidate(); },
+              onSuccess: (data) => { setCotacaoSimulacao(null); setCotacaoPdfResultado(data); setVersaoEditorCotacao(v => v + 1); void utils.suppliers.list.invalidate(); },
             onError: (error) => toast.error(error.message),
           }
         );
@@ -1505,7 +1508,7 @@ export default function NfCompraAuditoria() {
               </div>
 
               {cotacaoPdfResultado.fornecedorCadastro && <p className="text-xs text-blue-700"><a href="/fornecedores" className="underline">Cadastro do fornecedor</a>: {cotacaoPdfResultado.fornecedorCadastro.totalCompras} compra(s) registrada(s){!cotacaoPdfResultado.fornecedorCadastro.cadastroConcluido && " - Não concluído: complete os dados em Fornecedores"}</p>}
-              <SalvarCotacaoCompra key={versaoEditorCotacao} resultado={cotacaoPdfResultado} nomeArquivo={arquivoPdfNome} onAbrirOrdem={setCotacaoOrdemId} onSimulacaoChange={setCotacaoSimulacao} />
+              <SalvarCotacaoCompra key={versaoEditorCotacao} resultado={cotacaoPdfResultado} nomeArquivo={arquivoPdfNome} arquivoPdf={arquivoPdf} onAbrirOrdem={setCotacaoOrdemId} onSimulacaoChange={setCotacaoSimulacao} />
               <Table className="table-fixed text-[11px] [&_th]:whitespace-normal [&_th]:px-1.5 [&_td]:whitespace-normal [&_td]:break-words [&_td]:p-1.5 [&_td]:align-top">
                 <TableHeader>
                   <TableRow>
@@ -1734,7 +1737,7 @@ export default function NfCompraAuditoria() {
         </div>
       )}
 
-      {abaAtiva === "historico" && <ComprasHistorico onOrdem={setCotacaoOrdemId} onAbrirCotacao={async c => {
+      {abaAtiva === "historico" && <ComprasHistorico onOrdem={(id, decisao) => { setCotacaoOrdemDecisao(decisao ?? null); setCotacaoOrdemId(id); }} onAbrirCotacao={async c => {
         const linhas = await Promise.all(c.itens.map(async i => {
           const historico = i.materiaPrimaId ? await utils.nfCompra.historicoCotacaoPorMateriaPrima.fetch({ materiaPrimaId: i.materiaPrimaId, fornecedor: c.fornecedor, cnpjFornecedor: c.cnpjFornecedor ?? undefined, precoCotado: Number(i.precoUnitario), unidadeCotada: i.unidade }) : {};
           return { ...historico, codigo: i.codigo, descricao: i.descricao, quantidade: Number(i.quantidade), unidade: i.unidade, precoUnitario: Number(i.precoUnitario),
@@ -1743,9 +1746,9 @@ export default function NfCompraAuditoria() {
         }));
         setCotacaoSimulacao(null);
         setCotacaoPdfResultado({ ...c, salvoId: c.id, valorTotalCotado: Number(c.total), valorFrete: c.frete == null ? null : Number(c.frete), itens: linhas });
-        setArquivoPdfNome(c.nomeArquivo ?? `Cotação #${c.id}`); setVersaoEditorCotacao(v => v + 1); setAbaAtiva("cotacao_pdf");
+        setArquivoPdfNome(c.nomeArquivo ?? `Cotação #${c.id}`); setArquivoPdf(null); setVersaoEditorCotacao(v => v + 1); setAbaAtiva("cotacao_pdf");
       }} />}
-      <OrdemCompraModal cotacaoId={cotacaoOrdemId} fechar={() => setCotacaoOrdemId(null)} />
+      <OrdemCompraModal cotacaoId={cotacaoOrdemId} decisaoCotacao={cotacaoOrdemDecisao} fechar={() => { setCotacaoOrdemId(null); setCotacaoOrdemDecisao(null); }} />
 
       {/* Modal Histórico da Matéria-Prima (Função 1 para o Comprador) */}
       {mpHistoricoSelecionada && (

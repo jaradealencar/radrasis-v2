@@ -1,17 +1,20 @@
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 import { and, eq, desc, inArray, ilike, isNull, or, sql } from "drizzle-orm";
-import { comprasLogisticaHistorico } from "../../drizzle/schema";
+import {
+  comprasLogisticaHistorico,
+  comprasOrdemHistorico,
+  comprasOrdemRecebimentos,
+} from "../../drizzle/schema";
 import {
   calcularFreteCompra,
   logisticaCompraSchema,
 } from "../../shared/compras-frete";
 import {
   consultarOrdemFrete,
-  fornecedorDaOrdemConfere,
   snapshotFreteNf,
 } from "../services/comprasFrete";
-import { router, protectedProcedure } from "../_core/trpc";
+import { router, protectedProcedure, requireRole } from "../_core/trpc";
 import { getDb } from "../db/db";
 import {
   comprasCotacoes as cotacoes,
@@ -19,6 +22,7 @@ import {
   comprasOrdens as ordens,
   comprasOrdemNfs as vinculos,
   comprasCompradores as compradores,
+  comprasPoliticas as politicas,
   materiasPrimas,
   nfCompraImportacoes as nfs,
   nfCompraItens as nfItens,
@@ -30,6 +34,11 @@ import {
   precoConsumo,
   unidadeConsumo,
   menorCotacaoDisponivel,
+  recebimentoCompraSchema,
+  decisaoCotacaoCompraSchema,
+  cotacoesMesmoEscopo,
+  quantidadeAceitaNoRecebimento,
+  type ComparacaoCotacoesSnapshot,
   type LinhaOrdemCompra,
 } from "../../shared/compras-cotacoes";
 
@@ -64,6 +73,44 @@ const filtrosSchema = z.object({
     .regex(/^\d{4}-\d{2}-\d{2}$/)
     .optional(),
 });
+
+const uploadThingDomains = ["ufs.sh", "utfs.io", "uploadthing.com"];
+function arquivoUploadThingValido(urlBruta: string, key: string) {
+  try {
+    const url = new URL(urlBruta);
+    const host = url.hostname.toLowerCase();
+    const partes = url.pathname.split("/").filter(Boolean);
+    return url.protocol === "https:" && !url.username && !url.password && !url.port &&
+      uploadThingDomains.some(d => host === d || host.endsWith(`.${d}`)) &&
+      partes.length === 2 && partes[0] === "f" && decodeURIComponent(partes[1]) === key;
+  } catch {
+    return false;
+  }
+}
+
+function snapshotOrdem(ordem: typeof ordens.$inferSelect) {
+  return {
+    cotacaoId: ordem.cotacaoId,
+    nomeComprador: ordem.nomeComprador,
+    comprador: ordem.comprador,
+    pagamento: ordem.pagamento,
+    condicaoPagamento: ordem.condicaoPagamento,
+    dataPrevistaEntrega: ordem.dataPrevistaEntrega,
+    comparacaoCotacoes: ordem.comparacaoCotacoes,
+    itens: ordem.itens,
+    frete: ordem.frete,
+    freteModo: ordem.freteModo,
+    freteValorInformado: ordem.freteValorInformado,
+    pesoPrevistoKg: ordem.pesoPrevistoKg,
+    descontoTotal: ordem.descontoTotal,
+    total: ordem.total,
+    statusAprovacao: ordem.statusAprovacao,
+    aprovacaoNome: ordem.aprovacaoNome,
+    aprovacaoEm: ordem.aprovacaoEm,
+    observacoes: ordem.observacoes,
+  };
+}
+
 
 export const comprasRouter = router({
   compradores: protectedProcedure.query(async () => {
@@ -111,6 +158,13 @@ export const comprasRouter = router({
   salvarCotacao: protectedProcedure
     .input(cotacaoCompraSchema)
     .mutation(async ({ input, ctx }) => {
+      const metadadosArquivo = [input.arquivoPdfUrl, input.arquivoPdfKey, input.arquivoPdfSha256, input.arquivoPdfTamanho];
+      if (metadadosArquivo.some(valor => valor != null) && (
+        !input.arquivoPdfUrl || !input.arquivoPdfKey || !input.arquivoPdfSha256 ||
+        !input.arquivoPdfTamanho || !arquivoUploadThingValido(input.arquivoPdfUrl, input.arquivoPdfKey)
+      )) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "O PDF original da cotação precisa ter metadados válidos do UploadThing." });
+      }
       const db = await banco();
       return db.transaction(async tx => {
         const [existente] = await tx
@@ -262,6 +316,76 @@ export const comprasRouter = router({
             code: "NOT_FOUND",
             message: "Cotação não encontrada.",
           });
+        let decisaoPersistida: ComparacaoCotacoesSnapshot | null = null;
+        if (input.comparacaoCotacoes) {
+          const decisao = decisaoCotacaoCompraSchema.safeParse(input.comparacaoCotacoes);
+          if (!decisao.success || decisao.data.cotacaoEscolhidaId !== cotacao.id) {
+            throw new TRPCError({ code: "BAD_REQUEST", message: "A cotação escolhida não corresponde à ordem." });
+          }
+          const ids = decisao.data.cotacoesComparadasIds;
+          const propostas = await tx.select().from(cotacoes).where(inArray(cotacoes.id, ids));
+          if (propostas.length !== ids.length) {
+            throw new TRPCError({ code: "BAD_REQUEST", message: "Uma das cotações comparadas não foi encontrada." });
+          }
+          const linhasComparadas = await tx.select().from(itens).where(inArray(itens.cotacaoId, ids));
+          const porCotacao = new Map<number, typeof linhasComparadas>();
+          for (const linha of linhasComparadas) porCotacao.set(linha.cotacaoId, [...(porCotacao.get(linha.cotacaoId) ?? []), linha]);
+          const escopos = propostas.map(proposta => ({ itens: (porCotacao.get(proposta.id) ?? []).map(linha => ({
+            materiaPrimaId: linha.materiaPrimaId,
+            codigo: linha.codigo,
+            descricao: linha.descricao,
+            quantidade: Number(linha.quantidade),
+            unidade: linha.unidade,
+            unidadeDestino: linha.unidadeDestino,
+            fatorConversao: linha.fatorConversao == null ? null : Number(linha.fatorConversao),
+          })) }));
+          const equivalente = cotacoesMesmoEscopo(escopos);
+          const calculos = propostas.map(proposta => {
+            const linhasCotacao = porCotacao.get(proposta.id) ?? [];
+            const subtotalCotado = linhasCotacao.reduce((soma, linha) => soma + Math.round(Number(linha.quantidade) * Number(linha.precoUnitario) * 100) / 100, 0);
+            const modo = (proposta.freteModo ?? "valor_total") as "valor_total" | "por_kg" | "gratis";
+            const informado = modo === "gratis" ? 0 : proposta.freteValorInformado == null ? proposta.frete == null ? null : Number(proposta.frete) : Number(proposta.freteValorInformado);
+            const freteEstimado = informado == null ? null : calcularFreteCompra(modo, informado, proposta.pesoFreteKg == null ? null : Number(proposta.pesoFreteKg)).total;
+            const totalFinalEstimado = freteEstimado == null ? null : Number(((subtotalCotado + freteEstimado) * 1.1).toFixed(2));
+            return { proposta, linhasCotacao, subtotalCotado, freteEstimado, totalFinalEstimado };
+          });
+          const menorFinal = equivalente && calculos.every(c => c.totalFinalEstimado != null)
+            ? Math.min(...calculos.map(c => c.totalFinalEstimado!))
+            : null;
+          const escolhida = calculos.find(c => c.proposta.id === cotacao.id);
+          const eMenor = menorFinal != null && escolhida?.totalFinalEstimado != null && Math.abs(escolhida.totalFinalEstimado - menorFinal) <= 0.01;
+          const motivoEscolha = decisao.data.motivoEscolha.trim();
+          if ((!equivalente || !eMenor) && motivoEscolha.length < 3) {
+            throw new TRPCError({ code: "BAD_REQUEST", message: "Informe o motivo quando a cotação escolhida não tiver o menor custo final comparável." });
+          }
+          decisaoPersistida = {
+            cotacaoEscolhidaId: cotacao.id,
+            comparacaoEquivalente: equivalente,
+            motivoEscolha: motivoEscolha || "Menor preço final estimado entre propostas equivalentes.",
+            menorFinalEstimado: menorFinal,
+            cotacoesComparadas: calculos.map(c => ({
+              id: c.proposta.id,
+              fornecedor: c.proposta.fornecedor,
+              cnpjFornecedor: c.proposta.cnpjFornecedor,
+              dataCotacao: c.proposta.dataCotacao,
+              validadeDias: c.proposta.validadeDias,
+              condicaoPagamento: c.proposta.condicaoPagamento,
+              prazoEntrega: c.proposta.prazoEntrega,
+              totalOriginalComFrete: c.freteEstimado == null ? null : Number((c.subtotalCotado + c.freteEstimado).toFixed(2)),
+              subtotalCotado: c.subtotalCotado,
+              freteEstimado: c.freteEstimado,
+              totalFinalEstimado: c.totalFinalEstimado,
+              itens: c.linhasCotacao.map(linha => ({
+                materiaPrimaId: linha.materiaPrimaId,
+                descricao: linha.descricao,
+                quantidade: linha.quantidade,
+                unidade: linha.unidade,
+                unidadeDestino: linha.unidadeDestino,
+                precoUnitario: linha.precoUnitario,
+              })),
+            })),
+          };
+        }
         if (
           input.comprador.tipo === "empresa" &&
           !input.comprador.inscricaoEstadual.trim()
@@ -322,10 +446,23 @@ export const comprasRouter = router({
           });
         }
         const total = totalBruto - descontoTotal;
+        const [politicaAprovacao] = await tx
+          .select()
+          .from(politicas)
+          .where(eq(politicas.id, 1));
+        const limiteAprovacao = politicaAprovacao?.limiteAprovacao == null
+          ? null
+          : Number(politicaAprovacao.limiteAprovacao);
+        const statusAprovacao = limiteAprovacao != null && total >= limiteAprovacao
+          ? "pendente"
+          : "dispensada";
         const [ordem] = await tx
           .insert(ordens)
           .values({
             ...input,
+            comparacaoCotacoes: decisaoPersistida,
+            dataPrevistaEntrega: input.dataPrevistaEntrega ?? null,
+            statusAprovacao,
             descontoTotal: descontoTotal.toFixed(2),
             nomeComprador: input.nomeComprador ?? input.comprador.nome,
             itens: linhas,
@@ -344,7 +481,18 @@ export const comprasRouter = router({
           })
           .onConflictDoNothing({ target: ordens.chave })
           .returning();
-        if (ordem) return ordem;
+        if (ordem) {
+          await tx.insert(comprasOrdemHistorico).values({
+            ordemId: ordem.id,
+            evento: "criada",
+            antes: null,
+            depois: snapshotOrdem(ordem),
+            motivo: decisaoPersistida ? String(decisaoPersistida.motivoEscolha ?? "") : null,
+            criadoPor: ctx.user.id,
+            nomeUsuario: ctx.user.name,
+          });
+          return ordem;
+        }
         const [outra] = await tx
           .select()
           .from(ordens)
@@ -449,6 +597,63 @@ export const comprasRouter = router({
         porComprador,
       };
     }),
+  politicaAprovacao: protectedProcedure.query(async ({ ctx }) => {
+    const db = await banco();
+    const [politica] = await db.select().from(politicas).where(eq(politicas.id, 1));
+    return {
+      limiteAprovacao: politica?.limiteAprovacao == null ? null : Number(politica.limiteAprovacao),
+      atualizadoEm: politica?.updatedAt ?? null,
+      podeConfigurar: ["admin", "master", "gestor"].includes(String(ctx.user.role)),
+      podeAprovar: ["admin", "master", "gestor"].includes(String(ctx.user.role)),
+    };
+  }),
+  salvarPoliticaAprovacao: protectedProcedure
+    .use(requireRole("gestor", "admin", "master"))
+    .input(z.object({ limiteAprovacao: z.number().finite().positive().max(1e9).nullable() }))
+    .mutation(async ({ input, ctx }) => {
+      const db = await banco();
+      await db.insert(politicas).values({
+        id: 1,
+        limiteAprovacao: input.limiteAprovacao == null ? null : input.limiteAprovacao.toFixed(2),
+        atualizadoPor: ctx.user.id,
+        updatedAt: new Date(),
+      }).onConflictDoUpdate({
+        target: politicas.id,
+        set: {
+          limiteAprovacao: input.limiteAprovacao == null ? null : input.limiteAprovacao.toFixed(2),
+          atualizadoPor: ctx.user.id,
+          updatedAt: new Date(),
+        },
+      });
+      return { ok: true };
+    }),
+  aprovarOrdem: protectedProcedure
+    .use(requireRole("gestor", "admin", "master"))
+    .input(z.object({ id: z.number().int().positive(), motivo: z.string().trim().max(1000).default("") }))
+    .mutation(async ({ input, ctx }) => {
+      const db = await banco();
+      return db.transaction(async tx => {
+        const [atual] = await tx.select().from(ordens).where(eq(ordens.id, input.id)).for("update");
+        if (!atual || atual.excluidaEm) throw new TRPCError({ code: "NOT_FOUND", message: "Ordem não encontrada." });
+        if (atual.statusAprovacao !== "pendente") throw new TRPCError({ code: "CONFLICT", message: "Esta ordem não está aguardando aprovação." });
+        const [salva] = await tx.update(ordens).set({
+          statusAprovacao: "aprovada",
+          aprovacaoPor: ctx.user.id,
+          aprovacaoNome: ctx.user.name,
+          aprovacaoEm: new Date(),
+        }).where(eq(ordens.id, input.id)).returning();
+        await tx.insert(comprasOrdemHistorico).values({
+          ordemId: input.id,
+          evento: "aprovada",
+          antes: snapshotOrdem(atual),
+          depois: snapshotOrdem(salva),
+          motivo: input.motivo || "Aprovação por limite de valor configurado.",
+          criadoPor: ctx.user.id,
+          nomeUsuario: ctx.user.name,
+        });
+        return salva;
+      });
+    }),
   editarOrdem: protectedProcedure
     .input(editarOrdemCompraSchema)
     .mutation(async ({ input, ctx }) => {
@@ -483,6 +688,10 @@ export const comprasRouter = router({
             code: "BAD_REQUEST",
             message: "Informe a inscrição estadual da empresa.",
           });
+        const recebimentosExistentes = await tx
+          .select()
+          .from(comprasOrdemRecebimentos)
+          .where(eq(comprasOrdemRecebimentos.ordemId, input.id));
         const origens = await tx
           .select()
           .from(itens)
@@ -512,6 +721,25 @@ export const comprasRouter = router({
             formula: origem.formula,
           };
         });
+        const recebidoPorItem = new Map<number, number>();
+        const entregueFisicamentePorItem = new Map<number, number>();
+        for (const recebimento of recebimentosExistentes) {
+          for (const linha of recebimento.itens) {
+            recebidoPorItem.set(linha.itemId, (recebidoPorItem.get(linha.itemId) ?? 0) + quantidadeAceitaNoRecebimento(linha));
+            entregueFisicamentePorItem.set(linha.itemId, (entregueFisicamentePorItem.get(linha.itemId) ?? 0) + linha.quantidadeRecebida);
+          }
+        }
+        for (const [itemId, quantidadeFisica] of entregueFisicamentePorItem) {
+          if (quantidadeFisica > 0 && !linhas.some(linha => linha.itemId === itemId)) {
+            throw new TRPCError({ code: "BAD_REQUEST", message: "Um item com recebimento fÃ­sico nÃ£o pode ser removido da ordem." });
+          }
+        }
+        for (const [itemId, quantidadeRecebida] of recebidoPorItem) {
+          const linhaNova = linhas.find(linha => linha.itemId === itemId);
+          if (!linhaNova || linhaNova.quantidade + 1e-6 < quantidadeRecebida) {
+            throw new TRPCError({ code: "BAD_REQUEST", message: "A quantidade da ordem não pode ficar abaixo do que já foi recebido." });
+          }
+        }
         const subtotal = linhas.reduce((s, linha) => s + linha.total, 0);
         const frete = calcularFreteCompra(
           atual.freteModo as "valor_total" | "por_kg" | "gratis",
@@ -530,20 +758,46 @@ export const comprasRouter = router({
             message: "O desconto obtido não pode superar o total da ordem.",
           });
         }
+        const totalLiquido = totalBruto - descontoTotal;
+        const [politicaAprovacao] = await tx
+          .select()
+          .from(politicas)
+          .where(eq(politicas.id, 1));
+        const limiteAprovacao = politicaAprovacao?.limiteAprovacao == null
+          ? null
+          : Number(politicaAprovacao.limiteAprovacao);
+        const statusAprovacao = limiteAprovacao != null && totalLiquido >= limiteAprovacao
+          ? "pendente"
+          : "dispensada";
+        const antes = snapshotOrdem(atual);
         const [salva] = await tx
           .update(ordens)
           .set({
             nomeComprador: input.nomeComprador,
+            dataPrevistaEntrega: input.dataPrevistaEntrega,
             descontoTotal: descontoTotal.toFixed(2),
             comprador: input.comprador,
             pagamento: input.pagamento,
             condicaoPagamento: input.condicaoPagamento,
             observacoes: input.observacoes,
             itens: linhas,
-            total: (totalBruto - descontoTotal).toFixed(2),
+            total: totalLiquido.toFixed(2),
+            statusAprovacao,
+            aprovacaoPor: null,
+            aprovacaoNome: null,
+            aprovacaoEm: null,
           })
           .where(eq(ordens.id, input.id))
           .returning();
+        await tx.insert(comprasOrdemHistorico).values({
+          ordemId: input.id,
+          evento: "editada",
+          antes,
+          depois: snapshotOrdem(salva),
+          motivo: input.motivoAlteracao || null,
+          criadoPor: ctx.user.id,
+          nomeUsuario: ctx.user.name,
+        });
         return salva;
       });
     }),
@@ -567,16 +821,32 @@ export const comprasRouter = router({
           .from(vinculos)
           .where(eq(vinculos.ordemId, input.id))
           .limit(1);
-        if (nfVinculada)
+        const [recebimento] = await tx
+          .select({ id: comprasOrdemRecebimentos.id })
+          .from(comprasOrdemRecebimentos)
+          .where(eq(comprasOrdemRecebimentos.ordemId, input.id))
+          .limit(1);
+        if (nfVinculada || recebimento)
           throw new TRPCError({
             code: "CONFLICT",
             message:
-              "Esta ordem já tem NF vinculada. Remova o vínculo da NF antes de excluir a ordem.",
+              "Esta ordem já tem NF ou recebimento físico registrado. Ela permanece preservada para auditoria.",
           });
-        await tx
+        const [excluida] = await tx
           .update(ordens)
           .set({ excluidaEm: new Date(), excluidaPor: ctx.user.id })
-          .where(eq(ordens.id, input.id));
+          .where(eq(ordens.id, input.id))
+          .returning();
+        if (!excluida) throw new TRPCError({ code: "NOT_FOUND", message: "Ordem de compra nÃ£o encontrada." });
+        await tx.insert(comprasOrdemHistorico).values({
+          ordemId: input.id,
+          evento: "excluida",
+          antes: snapshotOrdem(atual),
+          depois: { ...snapshotOrdem(excluida), excluida: true },
+          motivo: "ExclusÃ£o lÃ³gica da ordem.",
+          criadoPor: ctx.user.id,
+          nomeUsuario: ctx.user.name,
+        });
         return { ok: true };
       });
     }),
@@ -622,7 +892,13 @@ export const comprasRouter = router({
         const revisao = input.revisao + 1;
         const { ordemId, revisao: _, ...dados } = input;
         const subtotal = atual.ordem.itens.reduce((s, i) => s + i.total, 0);
-        await tx
+        const descontoTotal = Number(atual.ordem.descontoTotal ?? 0);
+        const totalLiquido = Math.max(0, subtotal + (frete ?? 0) - descontoTotal);
+        const [politicaAprovacao] = await tx.select().from(politicas).where(eq(politicas.id, 1));
+        const limiteAprovacao = politicaAprovacao?.limiteAprovacao == null ? null : Number(politicaAprovacao.limiteAprovacao);
+        const statusAprovacao = limiteAprovacao != null && totalLiquido >= limiteAprovacao ? "pendente" : "dispensada";
+        const antes = snapshotOrdem(atual.ordem);
+        const [salva] = await tx
           .update(ordens)
           .set({
             ...dados,
@@ -639,12 +915,26 @@ export const comprasRouter = router({
                 ? null
                 : String(input.volumePrevistoM3),
             logisticaRevisao: revisao,
-            total: (subtotal + (frete ?? 0)).toFixed(2),
+            total: totalLiquido.toFixed(2),
+            statusAprovacao,
+            aprovacaoPor: null,
+            aprovacaoNome: null,
+            aprovacaoEm: null,
           })
-          .where(eq(ordens.id, ordemId));
+          .where(eq(ordens.id, ordemId))
+          .returning();
         await tx
           .insert(comprasLogisticaHistorico)
           .values({ ordemId, revisao, dados, criadoPor: ctx.user.id });
+        await tx.insert(comprasOrdemHistorico).values({
+          ordemId,
+          evento: "logistica_atualizada",
+          antes,
+          depois: snapshotOrdem(salva),
+          motivo: "Revisão de frete/coleta.",
+          criadoPor: ctx.user.id,
+          nomeUsuario: ctx.user.name,
+        });
         return { ok: true };
       });
     }),
@@ -659,6 +949,9 @@ export const comprasRouter = router({
       const db = await banco();
       return db.transaction(async tx => {
         const ordemFrete = await consultarOrdemFrete(tx, input.ordemId, true);
+        if (ordemFrete.ordem.statusAprovacao === "pendente") {
+          throw new TRPCError({ code: "PRECONDITION_FAILED", message: "A ordem precisa ser aprovada antes de vincular a NF." });
+        }
         const [registro] = await tx
           .select({ cnpj: cotacoes.cnpjFornecedor, nome: cotacoes.fornecedor })
           .from(ordens)
@@ -711,16 +1004,85 @@ export const comprasRouter = router({
             message:
               "O frete desta NF já auditada difere da tarifa da ordem. Revise os valores antes de vincular; o custo antigo não será alterado silenciosamente.",
           });
-        await tx
+        const [vinculo] = await tx
           .insert(vinculos)
           .values({
             ...input,
             criadoPor: ctx.user.id,
             logisticaSnapshot: snapshot,
           })
-          .onConflictDoNothing();
+          .onConflictDoNothing()
+          .returning();
+        if (vinculo) {
+          await tx.insert(comprasOrdemHistorico).values({
+            ordemId: input.ordemId,
+            evento: "nf_vinculada",
+            antes: null,
+            depois: { importacaoId: input.importacaoId, numeroNf: nf.numero, snapshotFrete: snapshot },
+            motivo: "NF concluÃ­da vinculada Ã  ordem.",
+            criadoPor: ctx.user.id,
+            nomeUsuario: ctx.user.name,
+          });
+        }
         return { ok: true };
       });
+    }),
+  registrarRecebimento: protectedProcedure
+    .input(recebimentoCompraSchema)
+    .mutation(async ({ input, ctx }) => {
+      const db = await banco();
+      return db.transaction(async tx => {
+        const [ordem] = await tx.select().from(ordens).where(eq(ordens.id, input.ordemId)).for("update");
+        if (!ordem || ordem.excluidaEm) throw new TRPCError({ code: "NOT_FOUND", message: "Ordem não encontrada." });
+        if (ordem.statusAprovacao === "pendente") throw new TRPCError({ code: "PRECONDITION_FAILED", message: "A ordem precisa ser aprovada antes de registrar o recebimento." });
+        const itensOrdem = new Map(ordem.itens.map(item => [item.itemId, item]));
+        const existentes = await tx.select().from(comprasOrdemRecebimentos).where(eq(comprasOrdemRecebimentos.ordemId, input.ordemId));
+        const recebidoPorItem = new Map<number, number>();
+        for (const recebimento of existentes) {
+          for (const linha of recebimento.itens) recebidoPorItem.set(linha.itemId, (recebidoPorItem.get(linha.itemId) ?? 0) + quantidadeAceitaNoRecebimento(linha));
+        }
+        const linhas = input.itens.map(linha => {
+          const item = itensOrdem.get(linha.itemId);
+          if (!item) throw new TRPCError({ code: "BAD_REQUEST", message: "O item não pertence a esta ordem." });
+          const totalAceitoNovo = (recebidoPorItem.get(linha.itemId) ?? 0) + quantidadeAceitaNoRecebimento(linha);
+          if (totalAceitoNovo > item.quantidade + 1e-6) throw new TRPCError({ code: "BAD_REQUEST", message: `A quantidade aceita de ${item.descricao} supera a quantidade pedida.` });
+          return {
+            itemId: item.itemId,
+            descricao: item.descricao,
+            codigo: item.codigo,
+            unidade: item.unidade,
+            quantidadePedida: item.quantidade,
+            quantidadeRecebida: linha.quantidadeRecebida,
+            quantidadeRecusada: linha.quantidadeRecusada,
+          };
+        });
+        const [registro] = await tx.insert(comprasOrdemRecebimentos).values({
+          ordemId: input.ordemId,
+          dataRecebimento: input.dataRecebimento,
+          itens: linhas,
+          observacoes: input.observacoes,
+          recebidoPor: ctx.user.id,
+          nomeRecebedor: ctx.user.name,
+        }).returning();
+        await tx.insert(comprasOrdemHistorico).values({
+          ordemId: input.ordemId,
+          evento: "recebimento_registrado",
+          antes: null,
+          depois: { dataRecebimento: registro.dataRecebimento, itens: registro.itens, observacoes: registro.observacoes },
+          motivo: registro.observacoes || "Recebimento físico registrado.",
+          criadoPor: ctx.user.id,
+          nomeUsuario: ctx.user.name,
+        });
+        return registro;
+      });
+    }),
+  historicoOrdem: protectedProcedure
+    .input(z.object({ id: z.number().int().positive() }))
+    .query(async ({ input }) => {
+      const db = await banco();
+      return db.select().from(comprasOrdemHistorico)
+        .where(eq(comprasOrdemHistorico.ordemId, input.id))
+        .orderBy(desc(comprasOrdemHistorico.createdAt), desc(comprasOrdemHistorico.id));
     }),
   painel: protectedProcedure.input(filtrosSchema).query(async ({ input }) => {
     const db = await banco();
@@ -848,6 +1210,109 @@ export const comprasRouter = router({
       limiteAtingido: cotados.length === 5000 || comprados.length === 5000,
     };
   }),
+  indicadoresFornecedores: protectedProcedure.query(async () => {
+    const db = await banco();
+    const listaOrdens = await db
+      .select({ ordem: ordens, fornecedor: cotacoes.fornecedor, cnpj: cotacoes.cnpjFornecedor })
+      .from(ordens)
+      .innerJoin(cotacoes, eq(cotacoes.id, ordens.cotacaoId))
+      .where(isNull(ordens.excluidaEm));
+    const ids = listaOrdens.map(linha => linha.ordem.id);
+    if (!ids.length) return [];
+    const recebimentos = await db.select().from(comprasOrdemRecebimentos).where(inArray(comprasOrdemRecebimentos.ordemId, ids));
+    const nfVinculadas = await db
+      .select({ ordemId: vinculos.ordemId, item: nfItens })
+      .from(vinculos)
+      .innerJoin(nfs, eq(nfs.id, vinculos.importacaoId))
+      .innerJoin(nfItens, eq(nfItens.importacaoId, nfs.id))
+      .where(and(inArray(vinculos.ordemId, ids), eq(nfs.status, "concluida")));
+    const porOrdemRecebimento = new Map<number, typeof recebimentos>();
+    for (const recebimento of recebimentos) porOrdemRecebimento.set(recebimento.ordemId, [...(porOrdemRecebimento.get(recebimento.ordemId) ?? []), recebimento]);
+    const nfsPorOrdem = new Map<number, typeof nfVinculadas>();
+    for (const linha of nfVinculadas) nfsPorOrdem.set(linha.ordemId, [...(nfsPorOrdem.get(linha.ordemId) ?? []), linha]);
+    const agregados = new Map<string, {
+      fornecedor: string; cnpj: string | null; quantidadeOrdens: number; valorComprado: number; descontos: number;
+      quantidadeRecebida: number; ordensComRecebimento: number; recebimentosComRecusa: number;
+      diasEntrega: number[]; ordensComPrazo: number; entregasNoPrazo: number; ordensComDivergenciaNf: number;
+    }>();
+    for (const { ordem, fornecedor, cnpj } of listaOrdens) {
+      if (ordem.statusAprovacao === "pendente") continue;
+      const chave = (cnpj ?? "").replace(/\D/g, "") || fornecedor.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toUpperCase();
+      const atual = agregados.get(chave) ?? {
+        fornecedor, cnpj, quantidadeOrdens: 0, valorComprado: 0, descontos: 0,
+        quantidadeRecebida: 0, ordensComRecebimento: 0, recebimentosComRecusa: 0, diasEntrega: [], ordensComPrazo: 0,
+        entregasNoPrazo: 0, ordensComDivergenciaNf: 0,
+      };
+      atual.quantidadeOrdens++;
+      atual.valorComprado += Number(ordem.total);
+      atual.descontos += Number(ordem.descontoTotal ?? 0);
+      const recebimentosOrdem = porOrdemRecebimento.get(ordem.id) ?? [];
+      const recebido = new Map<number, number>();
+      for (const recebimento of recebimentosOrdem) for (const linha of recebimento.itens) {
+        atual.quantidadeRecebida += linha.quantidadeRecebida;
+        recebido.set(linha.itemId, (recebido.get(linha.itemId) ?? 0) + quantidadeAceitaNoRecebimento(linha));
+      }
+      atual.recebimentosComRecusa += recebimentosOrdem.filter(recebimento => recebimento.itens.some(linha => linha.quantidadeRecusada > 0)).length;
+      if (recebimentosOrdem.length) {
+        atual.ordensComRecebimento++;
+        const primeiro = recebimentosOrdem.map(r => r.dataRecebimento).sort()[0];
+        const inicio = ordem.createdAt.toLocaleDateString("en-CA", { timeZone: "America/Campo_Grande" });
+        const dias = Math.max(0, Math.floor((new Date(`${primeiro}T12:00:00Z`).getTime() - new Date(`${inicio}T12:00:00Z`).getTime()) / 86400000));
+        atual.diasEntrega.push(dias);
+      }
+      const recebeuTudo = ordem.itens.length > 0 && ordem.itens.every(item => (recebido.get(item.itemId) ?? 0) + Math.max(0.001, item.quantidade * 0.01) >= item.quantidade);
+      if (recebeuTudo && ordem.dataPrevistaEntrega) {
+        const acumuladoPorData = new Map<number, number>();
+        let dataConclusao: string | null = null;
+        for (const recebimento of [...recebimentosOrdem].sort((a, b) => a.dataRecebimento.localeCompare(b.dataRecebimento) || a.id - b.id)) {
+          for (const linha of recebimento.itens) {
+            acumuladoPorData.set(linha.itemId, (acumuladoPorData.get(linha.itemId) ?? 0) + quantidadeAceitaNoRecebimento(linha));
+          }
+          const completoNaData = ordem.itens.every(item => (acumuladoPorData.get(item.itemId) ?? 0) + Math.max(0.001, item.quantidade * 0.01) >= item.quantidade);
+          if (completoNaData) {
+            dataConclusao = recebimento.dataRecebimento;
+            break;
+          }
+        }
+        if (dataConclusao) {
+          atual.ordensComPrazo++;
+          if (dataConclusao <= ordem.dataPrevistaEntrega) atual.entregasNoPrazo++;
+        }
+      }
+      const notasDaOrdem = nfsPorOrdem.get(ordem.id) ?? [];
+      if (recebeuTudo && notasDaOrdem.length) {
+        const pedidoMp = new Map<string, number>();
+        const nfMp = new Map<string, number>();
+        for (const item of ordem.itens) if (item.materiaPrimaId && item.unidadeDestino) {
+          const key = `${item.materiaPrimaId}|${unidadeConsumo(item.unidadeDestino)}`;
+          pedidoMp.set(key, (pedidoMp.get(key) ?? 0) + item.quantidade * (item.fatorConversao ?? 1));
+        }
+        for (const { item } of notasDaOrdem) if (item.materiaPrimaId && item.unidadeErp) {
+          const key = `${item.materiaPrimaId}|${unidadeConsumo(item.unidadeErp)}`;
+          nfMp.set(key, (nfMp.get(key) ?? 0) + Number(item.quantidadeErp ?? 0));
+        }
+        const divergente = [...pedidoMp].some(([key, quantidade]) => {
+          const faturado = nfMp.get(key);
+          return faturado != null && Math.abs(faturado - quantidade) > Math.max(0.001, quantidade * 0.01);
+        });
+        if (divergente) atual.ordensComDivergenciaNf++;
+      }
+      agregados.set(chave, atual);
+    }
+    return [...agregados.values()].map(a => ({
+      fornecedor: a.fornecedor,
+      cnpj: a.cnpj,
+      quantidadeOrdens: a.quantidadeOrdens,
+      valorComprado: Number(a.valorComprado.toFixed(2)),
+      descontos: Number(a.descontos.toFixed(2)),
+      recebimentosComRecusa: a.recebimentosComRecusa,
+      percentualEntregaNoPrazo: a.ordensComPrazo > 0 ? Number((a.entregasNoPrazo / a.ordensComPrazo * 100).toFixed(1)) : null,
+      prazoMedioPrimeiroRecebimentoDias: a.diasEntrega.length ? Number((a.diasEntrega.reduce((s, d) => s + d, 0) / a.diasEntrega.length).toFixed(1)) : null,
+      ordensComRecebimento: a.ordensComRecebimento,
+      ordensComDivergenciaNf: a.ordensComDivergenciaNf,
+      ordensComPrazo: a.ordensComPrazo,
+    })).sort((a, b) => b.valorComprado - a.valorComprado);
+  }),
   auditarOrdem: protectedProcedure
     .input(z.object({ id: z.number().int().positive() }))
     .query(async ({ input }) => {
@@ -870,6 +1335,11 @@ export const comprasRouter = router({
       return {
         ordem,
         recebidos,
+        recebimentosFisicos: await db
+          .select()
+          .from(comprasOrdemRecebimentos)
+          .where(eq(comprasOrdemRecebimentos.ordemId, input.id))
+          .orderBy(desc(comprasOrdemRecebimentos.dataRecebimento), desc(comprasOrdemRecebimentos.id)),
         nfs: [...new Map(recebidos.map(r => [r.nf.id, r.nf])).values()],
       };
     }),

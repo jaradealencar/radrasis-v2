@@ -45,6 +45,7 @@ import {
   Legend,
 } from "recharts";
 import { baixarOrdemCompraPdf } from "@/lib/ordemCompraPdf";
+import { enviarArquivo } from "@/lib/upload";
 import {
   FreteCompraCampos,
   LogisticaOrdemModal,
@@ -60,7 +61,10 @@ import {
   unidadeConsumo,
   compradorSchema,
   cotacaoCompraSchema,
+  cotacoesMesmoEscopo,
+  quantidadeAceitaNoRecebimento,
   COMPRADORES_RESPONSAVEIS,
+  type DecisaoCotacaoCompra,
 } from "@shared/compras-cotacoes";
 import type { inferRouterOutputs } from "@trpc/server";
 import type { AppRouter } from "../../../../server/routers";
@@ -113,11 +117,13 @@ function chaveComprador(valor: string): string {
 export function SalvarCotacaoCompra({
   resultado,
   nomeArquivo,
+  arquivoPdf,
   onAbrirOrdem,
   onSimulacaoChange,
 }: {
   resultado: any;
   nomeArquivo: string;
+  arquivoPdf: File | null;
   onAbrirOrdem: (id: number) => void;
   onSimulacaoChange: (simulacao: SimulacaoFinalCotacao) => void;
 }) {
@@ -158,9 +164,16 @@ export function SalvarCotacaoCompra({
     }
   );
   const [observacoes, setObservacoes] = useState(resultado.observacoes ?? "");
+  const [arquivoFonte, setArquivoFonte] = useState(() => ({
+    arquivoPdfUrl: resultado.arquivoPdfUrl ?? null,
+    arquivoPdfKey: resultado.arquivoPdfKey ?? null,
+    arquivoPdfSha256: resultado.arquivoPdfSha256 ?? null,
+    arquivoPdfTamanho: resultado.arquivoPdfTamanho ?? null,
+  }));
   const [salvo, setSalvo] = useState<{ id: number; assinatura: string } | null>(
     null
   );
+  const [enviandoCotacao, setEnviandoCotacao] = useState(false);
   const controle = useRef({ assinatura: "", chave: crypto.randomUUID() });
   const salvar = trpc.compras.salvarCotacao.useMutation();
   const pesoFreteNumero = numeroOpcional(pesoFrete);
@@ -200,6 +213,7 @@ export function SalvarCotacaoCompra({
     pesoFreteKg: pesoFrete === "" ? null : Number(pesoFrete.replace(",", ".")),
     observacoes,
     nomeArquivo,
+    ...arquivoFonte,
     itens: resultado.itens.map((i: any) => {
       const mp = i.materiaPrimaVinculada;
       const identica =
@@ -229,6 +243,7 @@ export function SalvarCotacaoCompra({
         : null;
   const atualSalvo = idSalvo != null;
   const gravar = async (ordem: boolean) => {
+    if (enviandoCotacao) return;
     try {
       if (ordem && simulacao.totalFinal == null) {
         toast.error(
@@ -242,10 +257,32 @@ export function SalvarCotacaoCompra({
         if (ordem) onAbrirOrdem(idSalvo);
         return;
       }
+      setEnviandoCotacao(true);
       if (controle.current.assinatura !== assinatura)
         controle.current = { assinatura, chave: crypto.randomUUID() };
+      let arquivoAtual = arquivoFonte;
+      if (!arquivoAtual.arquivoPdfUrl && arquivoPdf) {
+        const enviado = await enviarArquivo("documento", arquivoPdf);
+        const digest = await crypto.subtle.digest(
+          "SHA-256",
+          await arquivoPdf.arrayBuffer()
+        );
+        const sha256 = [...new Uint8Array(digest)]
+          .map(byte => byte.toString(16).padStart(2, "0"))
+          .join("");
+        arquivoAtual = {
+          arquivoPdfUrl: enviado.url,
+          arquivoPdfKey: enviado.key,
+          arquivoPdfSha256: sha256,
+          arquivoPdfTamanho: enviado.fileSize,
+        };
+        setArquivoFonte(arquivoAtual);
+      }
+      const payloadComArquivo = { ...payload, ...arquivoAtual };
+      const assinaturaComArquivo = JSON.stringify(payloadComArquivo);
+      controle.current = { assinatura: assinaturaComArquivo, chave: controle.current.chave };
       const entrada = cotacaoCompraSchema.safeParse({
-        ...payload,
+        ...payloadComArquivo,
         chave: controle.current.chave,
       });
       if (!entrada.success) {
@@ -255,13 +292,15 @@ export function SalvarCotacaoCompra({
         return;
       }
       const res = await salvar.mutateAsync(entrada.data);
-      setSalvo({ id: res.id, assinatura });
+      setSalvo({ id: res.id, assinatura: assinaturaComArquivo });
       await utils.compras.listarCotacoes.invalidate();
       await utils.compras.painel.invalidate();
       toast.success(`Cotação #${res.id} salva no histórico.`);
       if (ordem) onAbrirOrdem(res.id);
     } catch (e) {
       erro(e);
+    } finally {
+      setEnviandoCotacao(false);
     }
   };
   return (
@@ -308,6 +347,9 @@ export function SalvarCotacaoCompra({
         mudarValor={setFrete}
         mudarPeso={setPesoFrete}
       />
+      <div className="rounded border bg-white px-3 py-2 text-xs text-slate-600">
+        <strong>Documento da cotação:</strong> {nomeArquivo || "PDF não informado"} · {arquivoFonte.arquivoPdfUrl ? <><a className="text-blue-700 underline" href={arquivoFonte.arquivoPdfUrl} target="_blank" rel="noreferrer">abrir original</a>{arquivoFonte.arquivoPdfSha256 && <span> · SHA-256 {arquivoFonte.arquivoPdfSha256.slice(0, 16)}…</span>}</> : arquivoPdf ? "o PDF será armazenado ao salvar a cotação" : "sem arquivo original"}
+      </div>
       <div className="rounded-lg border border-blue-200 bg-blue-50 p-3 space-y-2">
         <strong className="block text-sm text-slate-800">
           Preço puro cotado x preço final — ICMS 10%
@@ -423,7 +465,7 @@ export function SalvarCotacaoCompra({
       <div className="flex flex-wrap items-center gap-2">
         <Button
           size="sm"
-          disabled={salvar.isPending || atualSalvo}
+          disabled={salvar.isPending || enviandoCotacao || atualSalvo}
           onClick={() => void gravar(false)}
         >
           {salvar.isPending
@@ -435,7 +477,7 @@ export function SalvarCotacaoCompra({
         <Button
           size="sm"
           variant="outline"
-          disabled={salvar.isPending}
+          disabled={salvar.isPending || enviandoCotacao}
           onClick={() => void gravar(true)}
         >
           Gerar ordem de compra
@@ -451,9 +493,11 @@ export function SalvarCotacaoCompra({
 
 export function OrdemCompraModal({
   cotacaoId,
+  decisaoCotacao,
   fechar,
 }: {
   cotacaoId: number | null;
+  decisaoCotacao?: DecisaoCotacaoCompra | null;
   fechar: () => void;
 }) {
   const q = trpc.compras.obterCotacao.useQuery(
@@ -480,9 +524,10 @@ export function OrdemCompraModal({
           <p className="text-red-600">{q.error?.message ?? c.error?.message}</p>
         ) : q.data && c.data ? (
           <EditorOrdem
-            key={q.data.id}
+            key={`${q.data.id}-${JSON.stringify(decisaoCotacao ?? null)}`}
             cotacao={q.data}
             cadastro={c.data}
+            decisaoCotacao={decisaoCotacao ?? null}
             fechar={fechar}
           />
         ) : null}
@@ -494,10 +539,12 @@ export function OrdemCompraModal({
 function EditorOrdem({
   cotacao,
   cadastro,
+  decisaoCotacao,
   fechar,
 }: {
   cotacao: Cotacao;
   cadastro: Cadastro;
+  decisaoCotacao: DecisaoCotacaoCompra | null;
   fechar: () => void;
 }) {
   const utils = trpc.useUtils();
@@ -526,6 +573,7 @@ function EditorOrdem({
       : "a_vista"
   );
   const [condicao, setCondicao] = useState(cotacao.condicaoPagamento ?? "");
+  const [dataPrevistaEntrega, setDataPrevistaEntrega] = useState("");
   const [transportadora, setTransportadora] = useState("");
   const [coleta, setColeta] = useState("");
   const [frete, setFrete] = useState(
@@ -660,6 +708,8 @@ function EditorOrdem({
       const entrada = {
         cotacaoId: cotacao.id,
         nomeComprador: nomeComprador.trim(),
+        dataPrevistaEntrega: dataPrevistaEntrega || null,
+        comparacaoCotacoes: decisaoCotacao,
         comprador: comprador.data,
         pagamento,
         condicaoPagamento: condicao,
@@ -683,8 +733,12 @@ function EditorOrdem({
         chave: chave.current.valor,
       });
       await utils.compras.listarOrdens.invalidate();
-      baixarOrdemCompraPdf(ordem, cotacao.fornecedor);
-      toast.success(`Ordem OC-${ordem.id} emitida e salva.`);
+      if (ordem.statusAprovacao === "pendente") {
+        toast.warning(`Ordem OC-${ordem.id} salva e aguardando aprovação; o PDF para envio ficará disponível depois.`);
+      } else {
+        baixarOrdemCompraPdf(ordem, cotacao.fornecedor);
+        toast.success(`Ordem OC-${ordem.id} emitida e salva.`);
+      }
       fechar();
     } catch (e) {
       erro(e);
@@ -895,6 +949,13 @@ function EditorOrdem({
             placeholder="Ex.: 28/35/42 dias"
           />
         </Campo>
+        <Campo titulo="Data prevista de entrega (opcional)">
+          <Input
+            type="date"
+            value={dataPrevistaEntrega}
+            onChange={e => setDataPrevistaEntrega(e.target.value)}
+          />
+        </Campo>
         <Campo titulo="Transportadora">
           <Input
             value={transportadora}
@@ -987,11 +1048,11 @@ export function ComprasHistorico({
   onOrdem,
 }: {
   onAbrirCotacao: (cotacao: Cotacao) => void | Promise<void>;
-  onOrdem: (id: number) => void;
+  onOrdem: (id: number, decisao?: DecisaoCotacaoCompra) => void;
 }) {
   const utils = trpc.useUtils();
   const removerOrdem = trpc.compras.excluirOrdem.useMutation();
-  const [aba, setAba] = useState<"cotacoes" | "evolucao" | "ordens">(
+  const [aba, setAba] = useState<"cotacoes" | "evolucao" | "ordens" | "fornecedores">(
     "cotacoes"
   );
   const [busca, setBusca] = useState("");
@@ -1002,16 +1063,21 @@ export function ComprasHistorico({
   const [unidade, setUnidade] = useState("");
   const [auditar, setAuditar] = useState<number | null>(null);
   const [logisticaId, setLogisticaId] = useState<number | null>(null);
+  const [receberOrdem, setReceberOrdem] = useState<CompraOrdemRegistro | null>(null);
+  const [historicoComercialId, setHistoricoComercialId] = useState<number | null>(null);
   const [editarOrdem, setEditarOrdem] = useState<CompraOrdemRegistro | null>(
     null
   );
   const [excluirOrdem, setExcluirOrdem] = useState<CompraOrdemRegistro | null>(
     null
   );
+  const [selecionadas, setSelecionadas] = useState<Set<number>>(new Set());
+  const [cotacoesComparacao, setCotacoesComparacao] = useState<Cotacao[] | null>(null);
   const [buscaOrdem, setBuscaOrdem] = useState("");
   const [inicioOrdem, setInicioOrdem] = useState("");
   const [fimOrdem, setFimOrdem] = useState("");
   const [paginaOrdem, setPaginaOrdem] = useState(0);
+  const [limiteAprovacaoInput, setLimiteAprovacaoInput] = useState("");
   const cotacoes = trpc.compras.listarCotacoes.useQuery();
   const ordens = trpc.compras.listarOrdens.useQuery({
     busca: buscaOrdem || undefined,
@@ -1023,6 +1089,13 @@ export function ComprasHistorico({
     { inicio: inicioOrdem || undefined, fim: fimOrdem || undefined },
     { enabled: aba === "ordens" }
   );
+  const politicaAprovacao = trpc.compras.politicaAprovacao.useQuery(undefined, { enabled: aba === "ordens" });
+  const salvarPolitica = trpc.compras.salvarPoliticaAprovacao.useMutation();
+  const aprovarOrdem = trpc.compras.aprovarOrdem.useMutation();
+  const indicadoresFornecedores = trpc.compras.indicadoresFornecedores.useQuery(undefined, { enabled: aba === "fornecedores" });
+  useEffect(() => {
+    if (politicaAprovacao.data) setLimiteAprovacaoInput(politicaAprovacao.data.limiteAprovacao == null ? "" : String(politicaAprovacao.data.limiteAprovacao).replace(".", ","));
+  }, [politicaAprovacao.data?.limiteAprovacao]);
   const descontosPorComprador = useMemo(() => {
     const agregados = new Map<
       string,
@@ -1102,6 +1175,36 @@ export function ComprasHistorico({
       );
     }
   };
+  const salvarLimite = async () => {
+    const valor = limiteAprovacaoInput.trim() ? Number(limiteAprovacaoInput.replace(",", ".")) : null;
+    if (valor != null && (!Number.isFinite(valor) || valor <= 0)) {
+      toast.error("Informe um valor maior que zero ou deixe em branco para não exigir aprovação por valor.");
+      return;
+    }
+    try {
+      await salvarPolitica.mutateAsync({ limiteAprovacao: valor });
+      await Promise.all([politicaAprovacao.refetch(), ordens.refetch()]);
+      toast.success(valor == null ? "Aprovação por valor desativada." : `Ordens a partir de ${fmtBrl(valor)} precisarão de aprovação.`);
+    } catch (e) { erro(e); }
+  };
+  const aprovar = async (id: number) => {
+    try {
+      await aprovarOrdem.mutateAsync({ id });
+      await Promise.all([ordens.refetch(), utils.compras.listarOrdens.invalidate()]);
+      toast.success(`Ordem OC-${id} aprovada.`);
+    } catch (e) { erro(e); }
+  };
+  const carregarComparacao = async () => {
+    try {
+      const ids = [...selecionadas].slice(0, 10);
+      const completas = await Promise.all(
+        ids.map(id => utils.compras.obterCotacao.fetch({ id }))
+      );
+      setCotacoesComparacao(completas);
+    } catch (e) {
+      erro(e);
+    }
+  };
   return (
     <div className="space-y-4 min-w-0">
       <div className="flex flex-wrap gap-2">
@@ -1110,6 +1213,7 @@ export function ComprasHistorico({
             ["cotacoes", "Cotações salvas"],
             ["evolucao", "Evolução e auditoria de preços"],
             ["ordens", "Ordens de compra"],
+            ["fornecedores", "Indicadores de fornecedores"],
           ] as const
         ).map(([id, label]) => (
           <Button
@@ -1124,6 +1228,14 @@ export function ComprasHistorico({
       </div>
       {aba === "cotacoes" && (
         <>
+          <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border bg-white p-3">
+            <p className="text-xs text-slate-600">
+              Marque até 10 cotações para comparar escopo, preço final estimado, frete e condições.
+            </p>
+            <Button size="sm" variant="outline" disabled={selecionadas.size < 2 || selecionadas.size > 10} onClick={() => void carregarComparacao()}>
+              Comparar {selecionadas.size ? `(${selecionadas.size})` : "cotações"}
+            </Button>
+          </div>
           {cotacoes.isLoading ? (
             <Spinner />
           ) : cotacoes.error ? (
@@ -1136,6 +1248,7 @@ export function ComprasHistorico({
             <Table className={compacta}>
               <TableHeader>
                 <TableRow>
+                  <TableHead className="w-12">Comparar</TableHead>
                   <TableHead>Data / número</TableHead>
                   <TableHead className="w-[30%]">Fornecedor</TableHead>
                   <TableHead>Total com frete informado</TableHead>
@@ -1146,6 +1259,20 @@ export function ComprasHistorico({
               <TableBody>
                 {cotacoes.data.map(c => (
                   <TableRow key={c.id}>
+                    <TableCell>
+                      <input
+                        type="checkbox"
+                        aria-label={`Incluir cotação ${c.id} na comparação`}
+                        checked={selecionadas.has(c.id)}
+                        onChange={e => setSelecionadas(atual => {
+                          const proximo = new Set(atual);
+                          if (e.target.checked) {
+                            if (proximo.size < 10) proximo.add(c.id);
+                          } else proximo.delete(c.id);
+                          return proximo;
+                        })}
+                      />
+                    </TableCell>
                     <TableCell>
                       {fmtDate(c.dataCotacao + "T12:00:00")}
                       <span className="block">#{c.id}</span>
@@ -1180,6 +1307,11 @@ export function ComprasHistorico({
                       >
                         Gerar ordem
                       </button>
+                      {c.arquivoPdfUrl && (
+                        <a className="block text-blue-600" href={c.arquivoPdfUrl} target="_blank" rel="noreferrer">
+                          Ver PDF original
+                        </a>
+                      )}
                     </TableCell>
                   </TableRow>
                 ))}
@@ -1401,6 +1533,26 @@ export function ComprasHistorico({
       )}
       {aba === "ordens" && (
         <>
+          <div className="grid gap-2 rounded-lg border bg-slate-50 p-3 sm:grid-cols-[minmax(220px,1fr)_auto] sm:items-end">
+            <div>
+              <strong className="text-sm">Aprovação por exceção</strong>
+              <p className="mt-1 text-xs text-slate-600">
+                {politicaAprovacao.data?.limiteAprovacao == null
+                  ? "Sem limite configurado: as ordens seguem sem etapa adicional."
+                  : `Ordens com total líquido a partir de ${fmtBrl(politicaAprovacao.data.limiteAprovacao)} aguardam aprovação de gestor.`}
+              </p>
+            </div>
+            {politicaAprovacao.data?.podeConfigurar && (
+              <div className="flex items-end gap-2">
+                <Campo titulo="Limite de aprovação (R$); vazio desativa">
+                  <Input inputMode="decimal" value={limiteAprovacaoInput} onChange={e => setLimiteAprovacaoInput(e.target.value)} placeholder="Sem limite" />
+                </Campo>
+                <Button size="sm" disabled={salvarPolitica.isPending} onClick={() => void salvarLimite()}>
+                  {salvarPolitica.isPending ? "Salvando..." : "Salvar limite"}
+                </Button>
+              </div>
+            )}
+          </div>
           <div className="grid gap-2 sm:grid-cols-3">
             <Campo titulo="Fornecedor, transportadora ou número da ordem">
               <Input
@@ -1504,6 +1656,10 @@ export function ComprasHistorico({
                     <TableCell>
                       OC-{o.id}
                       <span className="block">{fmtDate(o.createdAt)}</span>
+                      {o.dataPrevistaEntrega && <span className="block text-slate-500">Prevista: {fmtDate(o.dataPrevistaEntrega + "T12:00:00")}</span>}
+                      <span className={`mt-1 inline-block rounded px-1.5 py-0.5 text-[10px] font-semibold ${o.statusAprovacao === "pendente" ? "bg-amber-100 text-amber-900" : o.statusAprovacao === "aprovada" ? "bg-emerald-100 text-emerald-900" : "bg-slate-100 text-slate-700"}`}>
+                        {o.statusAprovacao === "pendente" ? "Aprovação pendente" : o.statusAprovacao === "aprovada" ? `Aprovada por ${o.aprovacaoNome || "gestor"}` : "Fluxo direto"}
+                      </span>
                       {(o.pesoPrevistoKg != null ||
                         o.volumePrevistoM3 != null) && (
                         <span className="block text-slate-500">
@@ -1578,16 +1734,28 @@ export function ComprasHistorico({
                         Frete e coleta
                       </button>
                       <button
-                        className="block text-blue-600"
+                        className={`block ${o.statusAprovacao === "pendente" ? "text-slate-400" : "text-blue-600"}`}
+                        disabled={o.statusAprovacao === "pendente"}
                         onClick={() => baixarOrdemCompraPdf(o, f)}
                       >
-                        Baixar PDF
+                        {o.statusAprovacao === "pendente" ? "PDF após aprovação" : "Baixar PDF"}
+                      </button>
+                      {o.statusAprovacao === "pendente" && politicaAprovacao.data?.podeAprovar && (
+                        <button className="block text-emerald-700" disabled={aprovarOrdem.isPending} onClick={() => void aprovar(o.id)}>
+                          Aprovar ordem
+                        </button>
+                      )}
+                      <button className="block text-blue-600" disabled={o.statusAprovacao === "pendente"} onClick={() => setReceberOrdem({ ordem: o, fornecedor: f })}>
+                        Registrar recebimento
                       </button>
                       <button
                         className="block text-blue-600"
                         onClick={() => setAuditar(o.id)}
                       >
                         Vincular NF / conferir
+                      </button>
+                      <button className="block text-blue-600" onClick={() => setHistoricoComercialId(o.id)}>
+                        Histórico comercial
                       </button>
                       <button
                         className="block text-red-600"
@@ -1624,6 +1792,40 @@ export function ComprasHistorico({
           </div>
         </>
       )}
+      {aba === "fornecedores" && (
+        <>
+          {indicadoresFornecedores.isLoading ? <Spinner /> : indicadoresFornecedores.error ? (
+            <p className="text-sm text-red-600">{indicadoresFornecedores.error.message}</p>
+          ) : (
+            <>
+              <div className="grid gap-2 sm:grid-cols-2">
+                <KpiCard label="Fornecedores com ordens" value={indicadoresFornecedores.data?.length ?? 0} />
+                <KpiCard label="Valor líquido em ordens" value={fmtBrl((indicadoresFornecedores.data ?? []).reduce((s, f) => s + f.valorComprado, 0))} />
+              </div>
+              <p className="text-xs text-slate-500">
+                Indicadores calculados dos registros disponíveis. Prazo no prazo só considera ordens com data prevista preenchida; divergência de NF só é comparada quando há recebimento físico completo e unidade compatível.
+              </p>
+              {!indicadoresFornecedores.data?.length ? <Empty><p>Registre ordens e recebimentos para formar o histórico de fornecedores.</p></Empty> : (
+                <Table className={compacta}>
+                  <TableHeader><TableRow>
+                    <TableHead>Fornecedor</TableHead><TableHead>Ordens</TableHead><TableHead>Valor líquido</TableHead>
+                    <TableHead>Descontos</TableHead><TableHead>1º recebimento (dias)</TableHead><TableHead>Entregas no prazo</TableHead>
+                    <TableHead>Recebimentos com recusa</TableHead><TableHead>Ordens com diferença NF</TableHead>
+                  </TableRow></TableHeader>
+                  <TableBody>{indicadoresFornecedores.data?.map(f => <TableRow key={f.cnpj || f.fornecedor}>
+                    <TableCell><strong>{f.fornecedor}</strong>{f.cnpj && <span className="block text-slate-500">{f.cnpj}</span>}</TableCell>
+                    <TableCell>{f.quantidadeOrdens}</TableCell><TableCell>{fmtBrl(f.valorComprado)}</TableCell><TableCell>{fmtBrl(f.descontos)}</TableCell>
+                    <TableCell>{f.prazoMedioPrimeiroRecebimentoDias == null ? "Sem registros" : `${fmtNum(f.prazoMedioPrimeiroRecebimentoDias, 1)} dias`}</TableCell>
+                    <TableCell>{f.percentualEntregaNoPrazo == null ? "Sem prazo registrado" : `${fmtNum(f.percentualEntregaNoPrazo, 1)}% (${f.ordensComPrazo} ordens)`}</TableCell>
+                    <TableCell>{f.recebimentosComRecusa}</TableCell>
+                    <TableCell>{f.ordensComDivergenciaNf}</TableCell>
+                  </TableRow>)}</TableBody>
+                </Table>
+              )}
+            </>
+          )}
+        </>
+      )}
       <LogisticaOrdemModal
         id={logisticaId}
         fechar={() => setLogisticaId(null)}
@@ -1632,6 +1834,8 @@ export function ComprasHistorico({
         registro={editarOrdem}
         fechar={() => setEditarOrdem(null)}
       />
+      <RegistrarRecebimentoDialog registro={receberOrdem} fechar={() => setReceberOrdem(null)} />
+      <HistoricoOrdemDialog id={historicoComercialId} fechar={() => setHistoricoComercialId(null)} />
       <AlertDialog
         open={excluirOrdem != null}
         onOpenChange={aberto => {
@@ -1664,6 +1868,16 @@ export function ComprasHistorico({
         </AlertDialogContent>
       </AlertDialog>
       <AuditoriaOrdem id={auditar} fechar={() => setAuditar(null)} />
+      {cotacoesComparacao && (
+        <CompararCotacoesDialog
+          cotacoes={cotacoesComparacao}
+          fechar={() => setCotacoesComparacao(null)}
+          gerarOrdem={(id, decisao) => {
+            setCotacoesComparacao(null);
+            onOrdem(id, decisao);
+          }}
+        />
+      )}
     </div>
   );
 }
@@ -1759,8 +1973,10 @@ function AuditoriaOrdem({
                   <TableRow>
                     <TableHead>Matéria-prima</TableHead>
                     <TableHead>Pedido</TableHead>
-                    <TableHead>Recebido</TableHead>
-                    <TableHead>Conferência</TableHead>
+                    <TableHead>Recebimento (chegou / aceito)</TableHead>
+                    <TableHead>Recusado</TableHead>
+                    <TableHead>NF vinculada</TableHead>
+                    <TableHead>Conferência 3 vias</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -1770,6 +1986,9 @@ function AuditoriaOrdem({
                     );
                     const recebidos = q.data!.recebidos.filter(
                       r => r.item.materiaPrimaId === mpId
+                    );
+                    const fisicos = q.data!.recebimentosFisicos.flatMap(r => r.itens).filter(
+                      linha => pedidos.some(pedido => pedido.itemId === linha.itemId)
                     );
                     const unidades = new Set(
                       [
@@ -1791,7 +2010,19 @@ function AuditoriaOrdem({
                       (s, i) => s + i.quantidade * (i.fatorConversao ?? 0),
                       0
                     );
-                    const qtdRecebido = recebidos.reduce(
+                    const qtdFisico = fisicos.reduce((soma, linha) => {
+                      const pedido = pedidos.find(i => i.itemId === linha.itemId);
+                      return soma + linha.quantidadeRecebida * (pedido?.fatorConversao ?? 0);
+                    }, 0);
+                    const qtdAceito = fisicos.reduce((soma, linha) => {
+                      const pedido = pedidos.find(i => i.itemId === linha.itemId);
+                      return soma + quantidadeAceitaNoRecebimento(linha) * (pedido?.fatorConversao ?? 0);
+                    }, 0);
+                    const qtdRecusada = fisicos.reduce((soma, linha) => {
+                      const pedido = pedidos.find(i => i.itemId === linha.itemId);
+                      return soma + linha.quantidadeRecusada * (pedido?.fatorConversao ?? 0);
+                    }, 0);
+                    const qtdNf = recebidos.reduce(
                       (s, r) => s + Number(r.item.quantidadeErp ?? 0),
                       0
                     );
@@ -1810,18 +2041,20 @@ function AuditoriaOrdem({
                             : `${fmtNum(qtdPedido, 3)} ${[...unidades][0]}`}
                         </TableCell>
                         <TableCell>
-                          {pendente
-                            ? "Pendente"
-                            : `${fmtNum(qtdRecebido, 3)} ${[...unidades][0]}`}
+                          {pendente ? "Pendente conversão" : qtdFisico > 0
+                            ? `${fmtNum(qtdFisico, 3)} ${[...unidades][0]} chegaram · ${fmtNum(qtdAceito, 3)} aceitas`
+                            : "Não registrado"}
                         </TableCell>
                         <TableCell>
-                          {pendente
-                            ? "Revise a conversão"
-                            : Math.abs(qtdPedido - qtdRecebido) < 1e-3
-                              ? "Quantidade conferida"
-                              : qtdRecebido > qtdPedido
-                                ? "Recebido acima do pedido"
-                                : "Recebimento parcial / faltante"}
+                          {pendente ? "Pendente conversão" : qtdRecusada > 0
+                            ? `${fmtNum(qtdRecusada, 3)} ${[...unidades][0]}`
+                            : "Nenhum"}
+                        </TableCell>
+                        <TableCell>
+                          {pendente ? "Pendente conversão" : recebidos.length ? `${fmtNum(qtdNf, 3)} ${[...unidades][0]}` : "Sem NF vinculada"}
+                        </TableCell>
+                        <TableCell>
+                          {pendente ? "Revise a conversão" : qtdFisico <= 0 ? "Aguardando recebimento físico" : qtdAceito + Math.max(1e-3, qtdPedido * 0.01) < qtdPedido ? qtdRecusada > 0 ? "Reposição / saldo aceito pendente" : "Recebimento parcial" : recebidos.length && Math.abs(qtdNf - qtdFisico) <= Math.max(1e-3, qtdFisico * 0.01) ? "NF confere com recebido" : recebidos.length ? "Diferença entre NF e recebimento" : "Aguardando NF"}
                         </TableCell>
                       </TableRow>
                     );
@@ -1836,11 +2069,246 @@ function AuditoriaOrdem({
                 </p>
               )}
               <p className="text-xs text-slate-500">
-                A comparação com fornecedores mais baratos está na aba Evolução
-                e auditoria de preços, identificada pela NF e pela OC.
+                A conferência compara a ordem, o recebimento físico registrado e as quantidades da NF. Diferenças pequenas até 1% aparecem como toleradas; confirme exceções antes de concluir a auditoria.
               </p>
             </>
           )
+        )}
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function CompararCotacoesDialog({
+  cotacoes,
+  fechar,
+  gerarOrdem,
+}: {
+  cotacoes: Cotacao[];
+  fechar: () => void;
+  gerarOrdem: (id: number, decisao: DecisaoCotacaoCompra) => void;
+}) {
+  const [escolhida, setEscolhida] = useState(cotacoes[0]?.id ?? 0);
+  const [motivo, setMotivo] = useState("");
+  const comparacaoEquivalente = cotacoesMesmoEscopo(cotacoes.map(c => ({
+    itens: c.itens.map(i => ({
+      materiaPrimaId: i.materiaPrimaId,
+      codigo: i.codigo,
+      descricao: i.descricao,
+      quantidade: Number(i.quantidade),
+      unidade: i.unidade,
+      unidadeDestino: i.unidadeDestino,
+      fatorConversao: i.fatorConversao == null ? null : Number(i.fatorConversao),
+    })),
+  })));
+  const calculos = cotacoes.map(c => {
+    const freteModo = (c.freteModo ?? "valor_total") as ModoFreteCompra;
+    const valorFrete = freteModo === "gratis"
+      ? 0
+      : c.freteValorInformado != null
+        ? Number(c.freteValorInformado)
+        : c.frete == null
+          ? null
+          : Number(c.frete);
+    const simulacao = simularCustoFinalCotacao({
+      itens: c.itens.map(i => ({ quantidade: Number(i.quantidade), unidade: i.unidade, precoUnitario: Number(i.precoUnitario) })),
+      freteModo,
+      valorFreteInformado: valorFrete,
+      pesoTotalKg: c.pesoFreteKg == null ? null : Number(c.pesoFreteKg),
+    });
+    const totalOriginalComFrete = simulacao.valorFrete == null
+      ? null
+      : Number((simulacao.subtotalMercadoria + simulacao.valorFrete).toFixed(2));
+    return { cotacao: c, totalOriginalComFrete, subtotalMercadoria: simulacao.subtotalMercadoria, totalFinal: simulacao.totalFinal };
+  });
+  const menorFinal = comparacaoEquivalente && calculos.every(c => c.totalFinal != null)
+    ? Math.min(...calculos.map(c => c.totalFinal!))
+    : null;
+  const selecionada = calculos.find(c => c.cotacao.id === escolhida);
+  const menorEscolhida = menorFinal != null && selecionada?.totalFinal != null && Math.abs(selecionada.totalFinal - menorFinal) <= 0.01;
+  const justificativaObrigatoria = !menorEscolhida;
+  const emitir = () => {
+    if (!selecionada) return;
+    const justificativa = motivo.trim() || (menorEscolhida
+      ? "Menor preço final estimado entre propostas equivalentes."
+      : "");
+    if (justificativa.length < 3) return;
+    gerarOrdem(escolhida, {
+      cotacoesComparadasIds: cotacoes.map(c => c.id),
+      cotacaoEscolhidaId: escolhida,
+      motivoEscolha: justificativa,
+    });
+  };
+  return (
+    <Dialog open onOpenChange={aberto => { if (!aberto) fechar(); }}>
+      <DialogContent className="!max-w-5xl max-h-[90vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle>Comparar cotações salvas</DialogTitle>
+        </DialogHeader>
+        <p className="text-xs text-slate-600">
+          O preço final estimado inclui frete e ICMS simulado de 10%. Cotações sem peso ou frete definido ficam sem total final.
+        </p>
+        {!comparacaoEquivalente && (
+          <p className="rounded border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">
+            As cotações têm itens, unidades ou quantidades diferentes. Os totais aparecem para consulta, mas não são uma comparação equivalente; explique a escolha antes de gerar a ordem.
+          </p>
+        )}
+        <Table className={compacta}>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Escolher</TableHead>
+              <TableHead>Fornecedor / cotação</TableHead>
+              <TableHead>Escopo</TableHead>
+              <TableHead>Mercadoria + frete</TableHead>
+              <TableHead>Final simulado</TableHead>
+              <TableHead>Prazo / pagamento</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {calculos.map(({ cotacao, totalOriginalComFrete, subtotalMercadoria, totalFinal }) => (
+              <TableRow key={cotacao.id} className={cotacao.id === escolhida ? "bg-blue-50" : undefined}>
+                <TableCell>
+                  <input type="radio" name="cotacao-escolhida" checked={escolhida === cotacao.id} onChange={() => setEscolhida(cotacao.id)} aria-label={`Escolher ${cotacao.fornecedor}`} />
+                </TableCell>
+                <TableCell>
+                  <strong>{cotacao.fornecedor}</strong>
+                  <span className="block">#{cotacao.id} · {fmtDate(cotacao.dataCotacao + "T12:00:00")}</span>
+                  {cotacao.arquivoPdfUrl && <a className="text-blue-700 underline" href={cotacao.arquivoPdfUrl} target="_blank" rel="noreferrer">PDF original</a>}
+                </TableCell>
+                <TableCell>{cotacao.itens.length} itens{comparacaoEquivalente ? " · equivalente" : " · diferente"}</TableCell>
+                <TableCell>{totalOriginalComFrete == null ? <>Mercadoria {fmtBrl(subtotalMercadoria)}<span className="block text-amber-700">Frete pendente</span></> : fmtBrl(totalOriginalComFrete)}</TableCell>
+                <TableCell className="font-semibold">{totalFinal == null ? "Pendente: frete/peso" : fmtBrl(totalFinal)}{totalFinal != null && totalFinal === menorFinal && comparacaoEquivalente && <span className="block text-emerald-700">Menor estimativa</span>}</TableCell>
+                <TableCell>{cotacao.prazoEntrega || "Prazo não informado"}<span className="block">{cotacao.condicaoPagamento || "Pagamento não informado"}</span></TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+        <Campo titulo={justificativaObrigatoria ? "Motivo da escolha (obrigatório)" : "Motivo da escolha (opcional)"}>
+          <Input maxLength={1000} value={motivo} onChange={e => setMotivo(e.target.value)} placeholder={menorEscolhida ? "Menor preço final estimado entre propostas equivalentes" : "Ex.: prazo, disponibilidade, especificação ou condição comercial"} />
+        </Campo>
+        <div className="flex justify-end gap-2">
+          <Button variant="outline" onClick={fechar}>Fechar</Button>
+          <Button disabled={!selecionada || (justificativaObrigatoria && motivo.trim().length < 3)} onClick={emitir}>Gerar ordem da escolhida</Button>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function dataLocalCampoGrande() {
+  return new Intl.DateTimeFormat("en-CA", { timeZone: "America/Campo_Grande" }).format(new Date());
+}
+
+function RegistrarRecebimentoDialog({
+  registro,
+  fechar,
+}: {
+  registro: CompraOrdemRegistro | null;
+  fechar: () => void;
+}) {
+  const utils = trpc.useUtils();
+  const ordem = registro?.ordem;
+  const [dataRecebimento, setDataRecebimento] = useState(dataLocalCampoGrande());
+  const [observacoes, setObservacoes] = useState("");
+  const [quantidades, setQuantidades] = useState<Record<number, string>>({});
+  const [recusadas, setRecusadas] = useState<Record<number, string>>({});
+  const auditoria = trpc.compras.auditarOrdem.useQuery(
+    { id: ordem?.id ?? 0 },
+    { enabled: ordem != null }
+  );
+  const salvar = trpc.compras.registrarRecebimento.useMutation();
+  useEffect(() => {
+    setDataRecebimento(dataLocalCampoGrande());
+    setObservacoes("");
+    setQuantidades({});
+    setRecusadas({});
+  }, [ordem?.id]);
+  const recebidoAntes = useMemo(() => {
+    const mapa = new Map<number, number>();
+    for (const recebimento of auditoria.data?.recebimentosFisicos ?? []) {
+      for (const linha of recebimento.itens) mapa.set(linha.itemId, (mapa.get(linha.itemId) ?? 0) + quantidadeAceitaNoRecebimento(linha));
+    }
+    return mapa;
+  }, [auditoria.data?.recebimentosFisicos]);
+  const confirmar = async () => {
+    if (!ordem) return;
+    const linhas = ordem.itens.map(item => ({
+      itemId: item.itemId,
+      quantidadeRecebida: Number((quantidades[item.itemId] ?? "0").replace(",", ".")),
+      quantidadeRecusada: Number((recusadas[item.itemId] ?? "0").replace(",", ".")),
+    }));
+    try {
+      await salvar.mutateAsync({ ordemId: ordem.id, dataRecebimento, observacoes, itens: linhas });
+      await Promise.all([
+        utils.compras.auditarOrdem.invalidate({ id: ordem.id }),
+        utils.compras.indicadoresFornecedores.invalidate(),
+        utils.compras.listarOrdens.invalidate(),
+      ]);
+      toast.success(`Recebimento registrado para OC-${ordem.id}.`);
+      fechar();
+    } catch (e) { erro(e); }
+  };
+  return (
+    <Dialog open={registro != null} onOpenChange={aberto => { if (!aberto) fechar(); }}>
+      <DialogContent className="!max-w-4xl max-h-[90vh] overflow-y-auto">
+        <DialogHeader><DialogTitle>Recebimento físico — OC-{ordem?.id}</DialogTitle></DialogHeader>
+        {auditoria.isLoading ? <Spinner /> : auditoria.error ? <p className="text-red-600">{auditoria.error.message}</p> : ordem && (
+          <>
+            {ordem.statusAprovacao === "pendente" && <p className="rounded border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">A ordem precisa ser aprovada antes de registrar o recebimento.</p>}
+            <div className="grid gap-2 sm:grid-cols-2">
+              <Campo titulo="Data do recebimento"><Input type="date" value={dataRecebimento} onChange={e => setDataRecebimento(e.target.value)} /></Campo>
+              <Campo titulo="Observações (opcional)"><Input value={observacoes} maxLength={2000} onChange={e => setObservacoes(e.target.value)} placeholder="Ex.: entrega parcial, embalagem avariada" /></Campo>
+            </div>
+            <Table className={compacta}>
+              <TableHeader><TableRow><TableHead>Item</TableHead><TableHead>Pedido</TableHead><TableHead>Já aceito</TableHead><TableHead>Recebido agora</TableHead><TableHead>Recusado</TableHead></TableRow></TableHeader>
+              <TableBody>{ordem.itens.map(item => {
+                const anterior = recebidoAntes.get(item.itemId) ?? 0;
+                const restante = Math.max(0, item.quantidade - anterior);
+                return <TableRow key={item.itemId}>
+                  <TableCell>{item.descricao}<span className="block text-slate-500">{item.codigo || ""} {item.unidade}</span></TableCell>
+                  <TableCell>{fmtNum(item.quantidade, 3)} {item.unidade}</TableCell>
+                  <TableCell>{fmtNum(anterior, 3)} {item.unidade}</TableCell>
+                  <TableCell><Input type="number" min="0" max={restante} step="any" value={quantidades[item.itemId] ?? ""} onChange={e => setQuantidades(v => ({ ...v, [item.itemId]: e.target.value }))} aria-label={`Quantidade recebida de ${item.descricao}`} /></TableCell>
+                  <TableCell><Input type="number" min="0" step="any" value={recusadas[item.itemId] ?? ""} onChange={e => setRecusadas(v => ({ ...v, [item.itemId]: e.target.value }))} aria-label={`Quantidade recusada de ${item.descricao}`} /></TableCell>
+                </TableRow>;
+              })}</TableBody>
+            </Table>
+            <p className="text-xs text-slate-500">Informe a quantidade física que chegou. A quantidade recusada fica registrada para o histórico do fornecedor e continua visível na conferência com a NF.</p>
+            <div className="flex justify-end gap-2"><Button variant="outline" onClick={fechar}>Cancelar</Button><Button disabled={salvar.isPending || ordem.statusAprovacao === "pendente"} onClick={() => void confirmar()}>{salvar.isPending ? "Salvando..." : "Registrar recebimento"}</Button></div>
+          </>
+        )}
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function HistoricoOrdemDialog({ id, fechar }: { id: number | null; fechar: () => void }) {
+  const historico = trpc.compras.historicoOrdem.useQuery({ id: id ?? 0 }, { enabled: id != null });
+  const resumo = (snapshot: unknown) => {
+    if (!snapshot || typeof snapshot !== "object") return "—";
+    const dado = snapshot as Record<string, unknown>;
+    const itens = Array.isArray(dado.itens) ? dado.itens.length : null;
+    return [
+      dado.total != null ? `Total ${fmtBrl(Number(dado.total))}` : null,
+      dado.descontoTotal != null && Number(dado.descontoTotal) > 0 ? `desconto ${fmtBrl(Number(dado.descontoTotal))}` : null,
+      itens != null ? `${itens} itens` : null,
+      dado.nomeComprador ? `comprador ${String(dado.nomeComprador)}` : null,
+      dado.statusAprovacao ? String(dado.statusAprovacao) : null,
+    ].filter(Boolean).join(" · ");
+  };
+  return (
+    <Dialog open={id != null} onOpenChange={aberto => { if (!aberto) fechar(); }}>
+      <DialogContent className="!max-w-4xl max-h-[90vh] overflow-y-auto">
+        <DialogHeader><DialogTitle>Histórico comercial — OC-{id}</DialogTitle></DialogHeader>
+        {historico.isLoading ? <Spinner /> : historico.error ? <p className="text-red-600">{historico.error.message}</p> : !historico.data?.length ? <Empty><p>Sem alterações registradas.</p></Empty> : (
+          <div className="space-y-3">{historico.data.map(e => (
+            <div key={e.id} className="rounded-lg border bg-white p-3 text-sm">
+              <div className="flex flex-wrap justify-between gap-2"><strong>{e.evento.replaceAll("_", " ")}</strong><span>{fmtDate(e.createdAt)} · {e.nomeUsuario || "Usuário não informado"}</span></div>
+              {e.motivo && <p className="mt-1 text-slate-600">{e.motivo}</p>}
+              <p className="mt-2 text-xs text-slate-500">Antes: {resumo(e.antes)}<br />Depois: {resumo(e.depois)}</p>
+              <details className="mt-2 text-xs"><summary className="cursor-pointer text-blue-700">Ver snapshot completo</summary><pre className="mt-2 max-h-64 overflow-auto rounded bg-slate-50 p-2">{JSON.stringify({ antes: e.antes, depois: e.depois }, null, 2)}</pre></details>
+            </div>
+          ))}</div>
         )}
       </DialogContent>
     </Dialog>

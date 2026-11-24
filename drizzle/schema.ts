@@ -4700,6 +4700,8 @@ export const comprasCotacoes = pgTable("compras_cotacoes", {
   condicaoPagamento: text("condicao_pagamento"), prazoEntrega: text("prazo_entrega"),
   frete: decimal("frete", { precision: 18, scale: 2 }), total: decimal("total", { precision: 18, scale: 2 }).notNull(),
   nomeArquivo: text("nome_arquivo"), observacoes: text("observacoes"),
+  arquivoPdfUrl: text("arquivo_pdf_url"), arquivoPdfKey: varchar("arquivo_pdf_key", { length: 256 }),
+  arquivoPdfSha256: varchar("arquivo_pdf_sha256", { length: 64 }), arquivoPdfTamanho: integer("arquivo_pdf_tamanho"),
   freteModo: varchar("frete_modo", { length: 16 }), freteValorInformado: decimal("frete_valor_informado", { precision: 18, scale: 4 }), pesoFreteKg: decimal("peso_frete_kg", { precision: 18, scale: 3 }),
   criadoPor: text("criado_por"), createdAt: timestamp("created_at").defaultNow().notNull(),
 });
@@ -4722,6 +4724,10 @@ export const comprasOrdens = pgTable("compras_ordens", {
   transportadora: text("transportadora").notNull(), numeroColeta: text("numero_coleta").notNull(),
   frete: decimal("frete", { precision: 18, scale: 2 }).notNull(), total: decimal("total", { precision: 18, scale: 2 }).notNull(),
   descontoTotal: decimal("desconto_total", { precision: 18, scale: 2 }).default("0").notNull(),
+  dataPrevistaEntrega: varchar("data_prevista_entrega", { length: 10 }),
+  comparacaoCotacoes: jsonb("comparacao_cotacoes").$type<import("../shared/compras-cotacoes").ComparacaoCotacoesSnapshot | null>(),
+  statusAprovacao: varchar("status_aprovacao", { length: 16 }).default("dispensada").notNull(),
+  aprovacaoPor: text("aprovacao_por"), aprovacaoNome: varchar("aprovacao_nome", { length: 256 }), aprovacaoEm: timestamp("aprovacao_em"),
   observacoes: text("observacoes").notNull(), itens: jsonb("itens").$type<import("../shared/compras-cotacoes").LinhaOrdemCompra[]>().notNull(),
   criadoPor: text("criado_por"), createdAt: timestamp("created_at").defaultNow().notNull(),
   freteConfirmado: boolean("frete_confirmado").default(false).notNull(),
@@ -4749,3 +4755,20 @@ export const comprasLogisticaHistorico = pgTable("compras_logistica_historico", 
   dados: jsonb("dados").$type<{ frete: number; freteConfirmado: boolean; pesoPrevistoKg: number | null; volumePrevistoM3?: number | null; transportadora: string; numeroColeta: string; freteModo: string; freteValorInformado: number | null }>().notNull(),
   criadoPor: text("criado_por"), createdAt: timestamp("created_at").defaultNow().notNull(),
 }, t => ({ revisaoUq: uniqueIndex("compras_logistica_ordem_revisao_uq").on(t.ordemId, t.revisao) }));
+export const comprasOrdemHistorico = pgTable("compras_ordem_historico", {
+  id: serial("id").primaryKey(), ordemId: integer("ordem_id").notNull().references(() => comprasOrdens.id, { onDelete: "restrict" }),
+  evento: varchar("evento", { length: 32 }).notNull(), antes: jsonb("antes").$type<Record<string, unknown> | null>(),
+  depois: jsonb("depois").$type<Record<string, unknown>>().notNull(), motivo: text("motivo"),
+  criadoPor: text("criado_por"), nomeUsuario: varchar("nome_usuario", { length: 256 }), createdAt: timestamp("created_at").defaultNow().notNull(),
+}, t => ({ ordemIdx: index("compras_ordem_historico_ordem_idx").on(t.ordemId, t.createdAt) }));
+export const comprasOrdemRecebimentos = pgTable("compras_ordem_recebimentos", {
+  id: serial("id").primaryKey(), ordemId: integer("ordem_id").notNull().references(() => comprasOrdens.id, { onDelete: "restrict" }),
+  dataRecebimento: varchar("data_recebimento", { length: 10 }).notNull(),
+  itens: jsonb("itens").$type<Array<{ itemId: number; descricao: string; codigo: string | null; unidade: string; quantidadePedida: number; quantidadeRecebida: number; quantidadeRecusada: number }>>().notNull(),
+  observacoes: text("observacoes").notNull(), recebidoPor: text("recebido_por"), nomeRecebedor: varchar("nome_recebedor", { length: 256 }),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, t => ({ ordemIdx: index("compras_ordem_recebimentos_ordem_idx").on(t.ordemId, t.dataRecebimento) }));
+export const comprasPoliticas = pgTable("compras_politicas", {
+  id: integer("id").primaryKey(), limiteAprovacao: decimal("limite_aprovacao", { precision: 18, scale: 2 }),
+  atualizadoPor: text("atualizado_por"), updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});

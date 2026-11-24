@@ -78,8 +78,123 @@ export const cotacaoCompraSchema = z.object({
     .default(null),
   pesoFreteKg: z.number().finite().positive().nullable().default(null),
   nomeArquivo: z.string().max(256).nullable(),
+  arquivoPdfUrl: z.string().url().max(2048).nullable().default(null),
+  arquivoPdfKey: z.string().max(256).nullable().default(null),
+  arquivoPdfSha256: z.string().regex(/^[a-f0-9]{64}$/i).nullable().default(null),
+  arquivoPdfTamanho: z.number().int().positive().max(32 * 1024 * 1024).nullable().default(null),
   observacoes: z.string().max(4000).default(""),
   itens: z.array(itemCotacaoCompraSchema).min(1).max(300),
+});
+
+export const decisaoCotacaoCompraSchema = z.object({
+  cotacoesComparadasIds: z.array(z.number().int().positive()).min(2).max(10),
+  cotacaoEscolhidaId: z.number().int().positive(),
+  motivoEscolha: z.string().trim().max(1000).default(""),
+}).superRefine((v, ctx) => {
+  if (new Set(v.cotacoesComparadasIds).size !== v.cotacoesComparadasIds.length) {
+    ctx.addIssue({ code: "custom", path: ["cotacoesComparadasIds"], message: "Cotação repetida na comparação." });
+  }
+  if (!v.cotacoesComparadasIds.includes(v.cotacaoEscolhidaId)) {
+    ctx.addIssue({ code: "custom", path: ["cotacaoEscolhidaId"], message: "A cotação escolhida precisa fazer parte da comparação." });
+  }
+});
+export type DecisaoCotacaoCompra = z.infer<typeof decisaoCotacaoCompraSchema>;
+
+export function quantidadeAceitaNoRecebimento(linha: {
+  quantidadeRecebida: number;
+  quantidadeRecusada: number;
+}): number {
+  return Math.max(0, linha.quantidadeRecebida - linha.quantidadeRecusada);
+}
+
+export type CotacaoComparadaSnapshot = {
+  id: number;
+  fornecedor: string;
+  cnpjFornecedor: string | null;
+  dataCotacao: string;
+  validadeDias: number | null;
+  condicaoPagamento: string | null;
+  prazoEntrega: string | null;
+  totalOriginalComFrete: string | number | null;
+  subtotalCotado: number;
+  freteEstimado: number | null;
+  totalFinalEstimado: number | null;
+  itens: Array<{
+    materiaPrimaId: number | null;
+    descricao: string;
+    quantidade: string | number;
+    unidade: string;
+    unidadeDestino: string | null;
+    precoUnitario: string | number;
+  }>;
+};
+export type ComparacaoCotacoesSnapshot = {
+  cotacaoEscolhidaId: number;
+  comparacaoEquivalente: boolean;
+  motivoEscolha: string;
+  menorFinalEstimado: number | null;
+  cotacoesComparadas: CotacaoComparadaSnapshot[];
+};
+
+export type ItemEscopoCotacao = {
+  materiaPrimaId: number | null;
+  codigo: string | null;
+  descricao: string;
+  quantidade: number;
+  unidade: string;
+  unidadeDestino: string | null;
+  fatorConversao: number | null;
+};
+
+export function cotacoesMesmoEscopo(cotacoes: Array<{ itens: ItemEscopoCotacao[] }>): boolean {
+  if (cotacoes.length < 2) return false;
+  const assinatura = (itens: ItemEscopoCotacao[]) => itens
+    .map(item => {
+      const identidade = item.materiaPrimaId != null
+        ? `mp:${item.materiaPrimaId}`
+        : item.codigo?.trim()
+          ? `cod:${item.codigo.trim().toLocaleUpperCase("pt-BR")}`
+          : `desc:${item.descricao.trim().normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLocaleUpperCase("pt-BR")}`;
+      const unidadeOrigem = unidadeConsumo(item.unidade);
+      const unidade = unidadeConsumo(item.unidadeDestino ?? item.unidade);
+      const fator = item.fatorConversao;
+      if (unidadeOrigem !== unidade && !(fator != null && Number.isFinite(fator) && fator > 0)) return null;
+      const quantidade = item.quantidade * (fator ?? 1);
+      return { chave: `${identidade}|${unidade}`, quantidade };
+    })
+    .filter((item): item is { chave: string; quantidade: number } => item != null)
+    .sort((a, b) => a.chave.localeCompare(b.chave));
+  const base = assinatura(cotacoes[0].itens);
+  if (base.length !== cotacoes[0].itens.length) return false;
+  return cotacoes.slice(1).every(cotacao => {
+    const atual = assinatura(cotacao.itens);
+    return atual.length === cotacao.itens.length && base.length === atual.length && base.every((item, indice) =>
+      item.chave === atual[indice].chave && Math.abs(item.quantidade - atual[indice].quantidade) <= 1e-6
+    );
+  });
+}
+
+export const recebimentoCompraSchema = z.object({
+  ordemId: z.number().int().positive(),
+  dataRecebimento: dataCompraSchema,
+  observacoes: z.string().max(2000).default(""),
+  itens: z.array(z.object({
+    itemId: z.number().int().positive(),
+    quantidadeRecebida: z.number().finite().nonnegative().max(1e8),
+    quantidadeRecusada: z.number().finite().nonnegative().max(1e8).default(0),
+  })).min(1).max(300).superRefine((itens, ctx) => {
+    if (!itens.some(item => item.quantidadeRecebida > 0)) {
+      ctx.addIssue({ code: "custom", message: "Informe a quantidade recebida em pelo menos um item." });
+    }
+    if (new Set(itens.map(item => item.itemId)).size !== itens.length) {
+      ctx.addIssue({ code: "custom", message: "Item duplicado no recebimento." });
+    }
+    itens.forEach((item, index) => {
+      if (item.quantidadeRecusada > item.quantidadeRecebida) {
+        ctx.addIssue({ code: "custom", path: [index, "quantidadeRecusada"], message: "A quantidade recusada não pode superar a recebida." });
+      }
+    });
+  }),
 });
 export const compradorSchema = z
   .object({
@@ -106,6 +221,8 @@ export const ordemCompraSchema = z
     // Interfaces antigas não enviam o responsável separado; a emissão usa o
     // nome do comprador legal como fallback.
     nomeComprador: z.string().trim().min(3).max(256).optional(),
+    dataPrevistaEntrega: dataCompraSchema.nullable().default(null),
+    comparacaoCotacoes: decisaoCotacaoCompraSchema.nullable().default(null),
     comprador: compradorSchema,
     pagamento: z.enum(["a_vista", "faturado"]),
     condicaoPagamento: z.string().max(256),
@@ -165,6 +282,8 @@ export const editarOrdemCompraSchema = z
   .object({
     id: z.number().int().positive(),
     nomeComprador: z.string().trim().min(3).max(256),
+    dataPrevistaEntrega: dataCompraSchema.nullable().default(null),
+    motivoAlteracao: z.string().trim().max(1000).default(""),
     descontoTotal: z.number().finite().nonnegative().max(1e9).optional(),
     comprador: compradorSchema,
     pagamento: z.enum(["a_vista", "faturado"]),
