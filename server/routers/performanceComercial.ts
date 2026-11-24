@@ -4,6 +4,7 @@ import { z } from "zod";
 import { ENV } from "../_core/env";
 import { listarOSMubiSys, listarOrcamentosMubiSys, urlOrcamentoMubiSys, buscarOrcamentoPorNumero } from "../integrations/mubisys-client";
 import { getDb } from "../db/db";
+import { safeErrorType } from "../db/db-connection";
 import { sinaisMercado, financeiroMensal, custoMarketing, crmMetas, metasComerciais, historicoOs, historicoOrcamentos, crmProbabilidadePrevisoes, crmContatos, clienteOverrides, faturamento, inteligenciaAcoesClientes, performanceAuditada, mubisysApiCache, clienteNovosContato, performancePropostasFollowup, performancePropostasContatado, inteligenciaClientesContatos, crmAtividadeLog } from "../../drizzle/schema";
 import { eq, and, desc, gte, lte, inArray, sql } from "drizzle-orm";
 import {
@@ -4235,5 +4236,59 @@ export const performanceComercialRouter = router({
         motivo: input.motivo,
       }).returning();
       return row;
+    }),
+
+  /** Lista detalhada de orçamentos por mês/ano, com UF/cidade e indicação de
+   *  conversão (virou O.S. normal no mesmo período para o mesmo cliente).
+   *  publicProcedure — não exige login, seguindo o padrão das outras procedures
+   *  de performanceComercial. */
+  getOrcamentosDetalhadosPorEstado: publicProcedure
+    .input(z.object({ mes: z.number().min(1).max(12), ano: z.number().min(2020) }))
+    .query(async ({ input }) => {
+      const { mes, ano } = input;
+      const db = await getDb();
+      if (!db) throw new Error("DB indisponível");
+
+      try {
+        // Orçamentos do mês/ano solicitado
+        const orcamentos = await db.select()
+          .from(historicoOrcamentos)
+          .where(and(eq(historicoOrcamentos.mes, mes), eq(historicoOrcamentos.ano, ano)));
+
+        // OS normais do mesmo mês/ano para apurar conversão por cliente
+        const oss = await db.select({
+          empresa: historicoOs.empresa,
+          tipoOs: historicoOs.tipoOs,
+          status: historicoOs.status,
+        }).from(historicoOs)
+          .where(and(eq(historicoOs.mes, mes), eq(historicoOs.ano, ano)));
+
+        const clientesComOs = new Set<string>();
+        for (const os of oss) {
+          if (!isOsNormalDb(os)) continue;
+          const chave = normalizeEmpresaKey(os.empresa ?? "");
+          if (chave) clientesComOs.add(chave);
+        }
+
+        return orcamentos.map(o => ({
+          orcNumero: o.orcNumero ?? "",
+          empresa: o.empresa ?? "",
+          estado: o.estado ?? null,
+          cidade: o.cidade ?? "",
+          total: Number(o.total ?? 0),
+          vendedor: o.vendedor ?? "Sem Vendedor",
+          dataCadastro: o.dataCadastro ?? "",
+          status: o.status ?? "",
+          virouOs: clientesComOs.has(normalizeEmpresaKey(o.empresa ?? "")),
+        })).sort((a, b) => {
+          const ea = a.estado ?? "";
+          const eb = b.estado ?? "";
+          if (ea !== eb) return ea.localeCompare(eb);
+          return b.total - a.total;
+        });
+      } catch (error) {
+        console.error("[getOrcamentosDetalhadosPorEstado] Falha:", safeErrorType(error));
+        throw error;
+      }
     }),
 });

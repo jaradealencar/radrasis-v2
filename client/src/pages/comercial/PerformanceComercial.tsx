@@ -4,6 +4,7 @@ import EvolucaoVendedor from "./EvolucaoVendedor";
 import DesempenhoDiario from "./DesempenhoDiario";
 import InteligenteClientes from "./InteligenteClientes";
 import PropostasAltoValor from "./PropostasAltoValor";
+import OrcamentosDetalhadosPorEstado from "./OrcamentosDetalhadosPorEstado";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { useState, useMemo, useEffect, useRef } from "react";
 import {
@@ -1178,6 +1179,9 @@ export default function PerformanceComercial() {
 
         {/* Propostas de alto valor (acima de R$ 7.800) precisando de follow-up */}
         <PropostasAltoValor mes={mesSelecionado} ano={anoSelecionado} />
+
+        {/* Orçamentos detalhados por estado */}
+        <OrcamentosDetalhadosPorEstado mes={mesSelecionado} ano={anoSelecionado} />
 
         {/* Gráfico de Evolução do Ticket Médio — ano inteiro */}
         <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5">

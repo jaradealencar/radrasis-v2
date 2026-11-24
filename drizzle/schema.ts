@@ -2337,10 +2337,13 @@ export const historicoOrcamentos = pgTable("historico_orcamentos", {
   telefone: varchar("telefone", { length: 32 }),
   mes: integer("mes").notNull(),
   ano: integer("ano").notNull(),
+  cidade: varchar("cidade", { length: 128 }),
+  estado: varchar("estado", { length: 2 }),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
 }, (t) => ({
   mesAnoIdx: index("historico_orcamentos_mes_ano_idx").on(t.mes, t.ano),
   orcNumeroIdx: uniqueIndex("historico_orcamentos_orc_numero_idx").on(t.orcNumero),
+  estadoIdx: index("historico_orcamentos_estado_idx").on(t.estado),
 }));
 // Espelho do cadastro de clientes do MubiSys (id, nomes e o melhor telefone de WhatsApp), mantido pela sync
 // server/sync/clientes-mubisys.ts. As campanhas usam para completar o telefone de OS/orçamentos antigos.
