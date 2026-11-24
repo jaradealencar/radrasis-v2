@@ -249,8 +249,16 @@ export function SalvarCotacaoCompra({
   const atualSalvo = idSalvo != null;
   const gravar = async (ordem: boolean) => {
     if (enviandoCotacao) return;
+    const freteSemValor = !frete.trim();
+    const emitirComCifPendente =
+      ordem && freteSemValor && freteModo !== "gratis" && freteModo !== "cif";
     try {
-      if (ordem && simulacao.totalFinal == null && freteModo !== "cif") {
+      if (
+        ordem &&
+        simulacao.totalFinal == null &&
+        freteModo !== "cif" &&
+        !emitirComCifPendente
+      ) {
         toast.error(
           simulacao.pendencia === "peso"
             ? "Informe o peso total em kg para calcular o frete por quilo e o preço final."
@@ -258,11 +266,21 @@ export function SalvarCotacaoCompra({
         );
         return;
       }
+      if (emitirComCifPendente) {
+        toast.info(
+          "Frete sem valor informado: a ordem seguirá como CIF pendente, não como frete grátis."
+        );
+      }
       if (atualSalvo) {
         if (ordem) onAbrirOrdem(idSalvo);
         return;
       }
       setEnviandoCotacao(true);
+      if (emitirComCifPendente) {
+        setFreteModo("cif");
+        setFrete("");
+        setPesoFrete("");
+      }
       if (controle.current.assinatura !== assinatura)
         controle.current = { assinatura, chave: crypto.randomUUID() };
       let arquivoAtual = arquivoFonte;
@@ -283,7 +301,16 @@ export function SalvarCotacaoCompra({
         };
         setArquivoFonte(arquivoAtual);
       }
-      const payloadComArquivo = { ...payload, ...arquivoAtual };
+      const payloadParaSalvar = emitirComCifPendente
+        ? {
+            ...payload,
+            frete: null,
+            freteModo: "cif" as const,
+            freteValorInformado: null,
+            pesoFreteKg: null,
+          }
+        : payload;
+      const payloadComArquivo = { ...payloadParaSalvar, ...arquivoAtual };
       const assinaturaComArquivo = JSON.stringify(payloadComArquivo);
       controle.current = { assinatura: assinaturaComArquivo, chave: controle.current.chave };
       const entrada = cotacaoCompraSchema.safeParse({
@@ -575,6 +602,9 @@ function EditorOrdem({
   fechar: () => void;
 }) {
   const utils = trpc.useUtils();
+  const freteCotado = cotacao.freteValorInformado ?? cotacao.frete;
+  const cotacaoSemFreteInformado =
+    freteCotado == null && cotacao.freteModo !== "gratis";
   const [dados, setDados] = useState(cadastro);
   const [tipo, setTipo] = useState<"empresa" | "pessoa">("empresa");
   const [nomeComprador, setNomeComprador] = useState("");
@@ -606,13 +636,17 @@ function EditorOrdem({
   const [frete, setFrete] = useState(
     cotacao.freteModo === "cif" && cotacao.freteValorInformado == null
       ? ""
-      : String(cotacao.freteValorInformado ?? cotacao.frete ?? "")
+      : String(freteCotado ?? "")
   );
   const [freteModo, setFreteModo] = useState<ModoFreteCompra>(
-    (cotacao.freteModo ?? "valor_total") as ModoFreteCompra
+    cotacaoSemFreteInformado
+      ? "cif"
+      : ((cotacao.freteModo ?? "valor_total") as ModoFreteCompra)
   );
   const [pesoFrete, setPesoFrete] = useState(
-    cotacao.freteModo === "cif" || cotacao.pesoFreteKg == null
+    cotacaoSemFreteInformado ||
+      cotacao.freteModo === "cif" ||
+      cotacao.pesoFreteKg == null
       ? ""
       : String(cotacao.pesoFreteKg)
   );
@@ -1047,13 +1081,39 @@ function EditorOrdem({
         valor={frete}
         peso={pesoFrete}
         mudarModo={modo => {
+          if (
+            !frete.trim() &&
+            modo !== "gratis" &&
+            modo !== "cif"
+          ) {
+            setFreteModo("cif");
+            setFrete("");
+            setPesoFrete("");
+            toast.info(
+              "Sem valor de frete, a ordem ficará com CIF pendente; isso não indica frete grátis."
+            );
+            return;
+          }
           setFreteModo(modo);
           if (modo === "cif") {
             setFrete("");
             setPesoFrete("");
           }
         }}
-        mudarValor={setFrete}
+        mudarValor={valor => {
+          setFrete(valor);
+          if (
+            !valor.trim() &&
+            freteModo !== "gratis" &&
+            freteModo !== "cif"
+          ) {
+            setFreteModo("cif");
+            setPesoFrete("");
+            toast.info(
+              "Sem valor de frete, a ordem ficará com CIF pendente; isso não indica frete grátis."
+            );
+          }
+        }}
         mudarPeso={setPesoFrete}
         mostrarPeso={false}
       />

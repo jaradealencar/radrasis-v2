@@ -15,6 +15,8 @@ Itens sem vínculo ou sem conversão podem ser salvos, mas ficam pendentes na co
 
 ## Ordem de compra
 
+Ao gerar uma ordem com o campo de frete vazio, o sistema assume CIF pendente e mantém o total apenas com os itens. O campo vazio nunca é tratado como frete grátis; se o usuário apagar um valor no editor da ordem, o modo também muda para CIF.
+
 Use **Gerar ordem de compra** na análise ou na lista de cotações salvas. A ordem traz os mesmos itens e preços. Edite as quantidades; zero exclui o item. Escolha empresa/CNPJ ou Daniel/CPF, pagamento à vista ou faturado, condições, transportadora, número da coleta, frete e observações. Escolha **CIF** quando o fornecedor não informou tarifa nem peso: esses valores simulados não são copiados para a ordem. O total da ordem fica identificado como subtotal sem frete, e o frete pode ser lançado depois na auditoria da NF. O volume alterado pode exigir renegociação com o fornecedor; o preço permanece o da cotação de origem.
 
 Os cadastros de compradores são persistidos juntos com endereço e e-mail compartilhados. Os padrões da Radra foram conferidos no destinatário da NF-e `server/__fixtures__/nf-aczinox-213876.xml`; CPF e nome de Daniel foram informados pelo usuário. Os dados são editáveis antes da emissão.
