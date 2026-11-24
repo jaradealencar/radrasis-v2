@@ -52,6 +52,28 @@ function primeiroEndereco(os: MubiSysOS): { cidade: string; estado: string } {
   return { cidade: e?.cidade ?? '', estado: e?.estado ?? '' };
 }
 
+const UFS_VALIDAS = new Set([
+  'AC', 'AL', 'AP', 'AM', 'BA', 'CE', 'DF', 'ES', 'GO', 'MA', 'MT', 'MS', 'MG',
+  'PA', 'PB', 'PR', 'PE', 'PI', 'RJ', 'RN', 'RS', 'RO', 'RR', 'SC', 'SP', 'SE', 'TO',
+]);
+
+function enderecoDoOrcamento(orc: MubiSysOrcamento): { cidade: string | null; estado: string | null } {
+  const cliente = typeof orc.cliente === 'object' && orc.cliente !== null ? orc.cliente as any : null;
+  const raw = (orc as any).cliente_endereco ?? cliente?.cliente_endereco ?? cliente?.enderecos ?? cliente?.endereco;
+  const enderecos: any[] = Array.isArray(raw) ? raw : raw ? [raw] : [];
+  let primeiraCidade: string | null = null;
+
+  for (const endereco of enderecos) {
+    const cidade = typeof endereco?.cidade === 'string' ? endereco.cidade.trim().slice(0, 128) || null : null;
+    const ufRaw = String(endereco?.estado ?? endereco?.uf ?? '').trim().toUpperCase();
+    const estado = UFS_VALIDAS.has(ufRaw) ? ufRaw : null;
+    primeiraCidade ??= cidade;
+    if (estado) return { cidade: cidade ?? primeiraCidade, estado };
+  }
+
+  return { cidade: primeiraCidade, estado: null };
+}
+
 /** Celular do cliente na OS — mesmo campo e mesma preferência (primeiro contato ATIVO com
  * número; senão o primeiro com número) de `extrairContatoDaOs` em
  * ../routers/performanceComercial.ts. Duplicado aqui (em vez de importado) de propósito: este
@@ -74,7 +96,7 @@ const HISTORICO_OS_COLS = [
 
 export const HISTORICO_ORC_COLS = [
   'orcNumero', 'empresa', 'trabalho', 'dataCadastro', 'validade', 'vendedor', 'status', 'motivoCancelamento',
-  'total', 'custosTotal', 'margemLiquida', 'clienteId', 'mes', 'ano',
+  'total', 'custosTotal', 'margemLiquida', 'clienteId', 'mes', 'ano', 'cidade', 'estado',
 ];
 
 function osParaLinha(os: MubiSysOS, mes: number, ano: number): Record<string, unknown> {
@@ -122,6 +144,7 @@ function osParaLinha(os: MubiSysOS, mes: number, ano: number): Record<string, un
 }
 
 export function orcParaLinha(orc: MubiSysOrcamento, mes: number, ano: number): Record<string, unknown> {
+  const endereco = enderecoDoOrcamento(orc);
   return {
     orcNumero: String(orc.sequencial_orcamento || orc.id || ''),
     empresa: nomeCliente(orc.cliente),
@@ -137,6 +160,8 @@ export function orcParaLinha(orc: MubiSysOrcamento, mes: number, ano: number): R
     clienteId: Number.isInteger(orc.cliente_id) && orc.cliente_id > 0 ? orc.cliente_id : null,
     mes,
     ano,
+    cidade: endereco.cidade,
+    estado: endereco.estado,
   };
 }
 
@@ -144,7 +169,10 @@ export function orcParaLinha(orc: MubiSysOrcamento, mes: number, ano: number): R
 export async function upsertEmLotes(table: string, cols: string[], linhas: Record<string, unknown>[], conflictCol: string, batchSize = 150) {
   if (linhas.length === 0) return 0;
   const colList = cols.map(c => `"${c}"`).join(', ');
-  const updateSet = cols.filter(c => c !== conflictCol).map(c => `"${c}" = EXCLUDED."${c}"`).join(', ');
+  const preservarEndereco = table === 'historico_orcamentos' ? new Set(['cidade', 'estado']) : new Set<string>();
+  const updateSet = cols.filter(c => c !== conflictCol).map(c => preservarEndereco.has(c)
+    ? `"${c}" = COALESCE(EXCLUDED."${c}", "${table}"."${c}")`
+    : `"${c}" = EXCLUDED."${c}"`).join(', ');
 
   let processadas = 0;
   for (let i = 0; i < linhas.length; i += batchSize) {
