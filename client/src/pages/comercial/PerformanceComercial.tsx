@@ -1412,7 +1412,7 @@ export default function PerformanceComercial() {
               ) : erroComparaMeses ? (
                 <Empty>
                   <EmptyHeader>
-                    <EmptyTitle>Não foi possível carregar os meses (a API demorou demais)</EmptyTitle>
+                    <EmptyTitle>Não foi possível carregar os meses do histórico comercial.</EmptyTitle>
                   </EmptyHeader>
                   <button onClick={() => refetchComparaMeses()} className="text-xs text-blue-600 underline">
                     Tentar novamente
