@@ -1986,11 +1986,11 @@ export default function PerformanceComercial() {
             <div className="flex items-center gap-2">
               <Target className="w-4 h-4 text-indigo-600" />
               <h2 className="text-sm font-semibold text-slate-800">
-                Conversão observada x probabilidade — {periodoProbabilidadeTitulo}
+                Previsões de venda e resultados confirmados — {periodoProbabilidadeTitulo}
               </h2>
             </div>
             <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
-              <p className="text-xs text-slate-500">Compara previsões salvas a desfechos confirmados no ERP ou CRM, por ID interno exato; mostra cobertura, pendências, perdas presumidas e carteira aberta.</p>
+              <p className="text-xs text-slate-500">Veja quantas propostas têm previsão registrada, quantas já tiveram resultado confirmado e qual é a estimativa para as que continuam abertas.</p>
               <div className="inline-flex rounded-lg border border-slate-200 bg-slate-50 p-1" aria-label={"Per\u00edodo da an\u00e1lise de probabilidade"}>
                 <button type="button" onClick={() => setJanelaProbabilidade(1)} aria-pressed={janelaProbabilidade === 1} className={janelaProbabilidade === 1 ? "rounded-md bg-white px-3 py-1.5 text-xs font-medium text-indigo-700 shadow-sm" : "rounded-md px-3 py-1.5 text-xs font-medium text-slate-600 hover:bg-white/70"}>M&ecirc;s selecionado</button>
                 <button type="button" onClick={() => setJanelaProbabilidade(3)} aria-pressed={janelaProbabilidade === 3} className={janelaProbabilidade === 3 ? "rounded-md bg-white px-3 py-1.5 text-xs font-medium text-indigo-700 shadow-sm" : "rounded-md px-3 py-1.5 text-xs font-medium text-slate-600 hover:bg-white/70"}>&Uacute;ltimos 3 meses</button>
@@ -2013,50 +2013,53 @@ export default function PerformanceComercial() {
             <div className="p-5 space-y-5">
               <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3">
                 <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
-                  <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Cobertura do hist&oacute;rico</p>
+                  <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Propostas com previsão registrada</p>
                   <p className="mt-1 text-lg font-bold text-slate-800">
                     {probabilidadeVendedores.cobertura.percentual == null ? "\u2014" : fmtPct(probabilidadeVendedores.cobertura.percentual)}
                   </p>
                   <p className="text-xs text-slate-600">
-                    {fmtNum(probabilidadeVendedores.cobertura.propostasCorrespondidas)} de {fmtNum(probabilidadeVendedores.cobertura.propostasNoHistorico)} propostas do per&iacute;odo t&ecirc;m previs&atilde;o correspondente
+                    {fmtNum(probabilidadeVendedores.cobertura.propostasCorrespondidas)} de {fmtNum(probabilidadeVendedores.cobertura.propostasNoHistorico)} propostas do período têm uma previsão associada.
+                  </p>
+                  <p className="mt-1 text-xs text-slate-600">
+                    Sem previsão correspondente: {fmtNum(probabilidadeVendedores.cobertura.propostasSemScore)} propostas.
                   </p>
                   <p className="mt-1 text-[11px] text-slate-500">
-                    Sem score: {fmtNum(probabilidadeVendedores.cobertura.propostasSemScore)} &middot; snapshot sem hist&oacute;rico: {fmtNum(probabilidadeVendedores.cobertura.snapshotsSemHistorico)} &middot; chave amb&iacute;gua: {fmtNum(probabilidadeVendedores.cobertura.snapshotsComHistoricoAmbiguo)} &middot; sem ID interno: {fmtNum(probabilidadeVendedores.cobertura.snapshotsSemIdMubiSys)}
+                    Previsões sem correspondência no histórico: {fmtNum(probabilidadeVendedores.cobertura.snapshotsSemHistorico)} &middot; orçamentos com número duplicado no histórico: {fmtNum(probabilidadeVendedores.cobertura.snapshotsComHistoricoAmbiguo)} &middot; sem ID interno do MubiSys: {fmtNum(probabilidadeVendedores.cobertura.snapshotsSemIdMubiSys)}
                   </p>
                 </div>
                 <div className="rounded-lg border border-blue-200 bg-blue-50/60 p-3">
-                  <p className="text-[11px] font-semibold uppercase tracking-wide text-blue-700">Desfechos confirmados</p>
+                  <p className="text-[11px] font-semibold uppercase tracking-wide text-blue-700">Resultados confirmados</p>
                   <p className="mt-1 text-lg font-bold text-slate-800">{fmtNum(probabilidadeVendedores.total.decididas)}</p>
+                  <p className="text-xs text-slate-600">propostas com resultado confirmado no ERP ou no CRM</p>
                   <p className="text-xs text-slate-600">
-                    {fmtNum(probabilidadeVendedores.total.ganhos)} ganhos &middot; {fmtNum(probabilidadeVendedores.total.perdas)} perdas &middot; {fmtNum(probabilidadeVendedores.total.conflitos)} conflitos
+                    {fmtNum(probabilidadeVendedores.total.ganhos)} ganhas &middot; {fmtNum(probabilidadeVendedores.total.perdas)} perdidas &middot; {fmtNum(probabilidadeVendedores.total.conflitos)} divergências entre sistemas
                   </p>
                   <p className="mt-1 text-[11px] text-slate-600">
-                    Vencidas presumidas: {fmtNum(probabilidadeVendedores.total.perdasPresumidas)} &middot; abertas no prazo: {fmtNum(probabilidadeVendedores.total.abertasNaValidade)} &middot; abertas sem data: {fmtNum(probabilidadeVendedores.total.abertasSemData)}
+                    Ainda abertas no ERP: {fmtNum(probabilidadeVendedores.total.abertas)} ({fmtNum(probabilidadeVendedores.total.abertasNaValidade)} dentro do prazo; {fmtNum(probabilidadeVendedores.total.perdasPresumidas)} com validade vencida).
                   </p>
                   <p className="text-[11px] text-slate-500">
-                    Sem hist&oacute;rico: {fmtNum(probabilidadeVendedores.total.semHistorico)} &middot; sem status: {fmtNum(probabilidadeVendedores.total.semStatus)} &middot; status desconhecido: {fmtNum(probabilidadeVendedores.total.statusNaoReconhecido)} &middot; amb&iacute;guos: {fmtNum(probabilidadeVendedores.total.statusAmbiguo)}
+                    Sem registro no histórico: {fmtNum(probabilidadeVendedores.total.semHistorico)} &middot; sem status: {fmtNum(probabilidadeVendedores.total.semStatus)} &middot; status não reconhecido: {fmtNum(probabilidadeVendedores.total.statusNaoReconhecido)} &middot; correspondência ambígua: {fmtNum(probabilidadeVendedores.total.statusAmbiguo)}
                   </p>
                 </div>
                 <div className="rounded-lg border border-indigo-200 bg-indigo-50/60 p-3">
-                  <p className="text-[11px] font-semibold uppercase tracking-wide text-indigo-700">Propostas decididas: realizado x expectativa</p>
+                  <p className="text-[11px] font-semibold uppercase tracking-wide text-indigo-700">Vendas confirmadas x previsão</p>
                   {probabilidadeVendedores.total.decididas > 0 ? <>
                     <p className="mt-1 text-lg font-bold text-slate-800">{fmtNum(probabilidadeVendedores.total.ganhos)} ganhos <span className="text-sm font-medium text-slate-500">x {fmtNum(probabilidadeVendedores.total.ganhosEsperados, 1)} esperados</span></p>
-                    <p className="text-xs text-slate-600">Convers&atilde;o observada {fmtPct(probabilidadeVendedores.total.conversaoRealPct)} x expectativa {fmtPct(probabilidadeVendedores.total.conversaoEsperadaPct)} nas mesmas decis&otilde;es.</p>
-                    <p className="mt-1 text-xs text-slate-600">Valor das propostas ganhas: {fmtBrl(probabilidadeVendedores.total.valorGanhoReal)} realizado x {fmtBrl(probabilidadeVendedores.total.valorGanhoEsperado)} esperado.</p>
-                    <p className="mt-1 text-[11px] text-slate-600">Real menos esperado: {fmtBrl(probabilidadeVendedores.total.valorGanhoReal - probabilidadeVendedores.total.valorGanhoEsperado)}; sinal para investigar, n&atilde;o venda perdida comprovada.</p>
-                  </> : <p className="mt-2 text-sm font-semibold text-slate-600">Sem decis&otilde;es confirmadas para comparar realizado e expectativa.</p>}
-                  <p className="mt-2 text-[11px] text-slate-600">Validade vencida, mas ainda aberta no ERP: {fmtNum(probabilidadeVendedores.total.perdasPresumidas)} propostas; permanecem fora da convers&atilde;o confirmada.</p>
+                    <p className="text-xs text-slate-600">Conversão nas propostas decididas: {fmtPct(probabilidadeVendedores.total.conversaoRealPct)} confirmada; {fmtPct(probabilidadeVendedores.total.conversaoEsperadaPct)} prevista pelo modelo.</p>
+                    <p className="mt-1 text-xs text-slate-600">Valor das ganhas: {fmtBrl(probabilidadeVendedores.total.valorGanhoReal)}. Previsão calculada para essas mesmas propostas: {fmtBrl(probabilidadeVendedores.total.valorGanhoEsperado)}.</p>
+                    <p className="mt-1 text-[11px] text-slate-600">Diferença entre valor ganho e previsto: {fmtBrl(probabilidadeVendedores.total.valorGanhoReal - probabilidadeVendedores.total.valorGanhoEsperado)}.</p>
+                  </> : <p className="mt-2 text-sm font-semibold text-slate-600">Ainda não há propostas com resultado confirmado neste período. A comparação aparecerá quando houver ganhos ou perdas registrados no ERP ou no CRM.</p>}
                 </div>
                 <div className="rounded-lg border border-emerald-200 bg-emerald-50/60 p-3">
-                  <p className="text-[11px] font-semibold uppercase tracking-wide text-emerald-700">Carteira aberta ponderada</p>
+                  <p className="text-[11px] font-semibold uppercase tracking-wide text-emerald-700">Estimativa das propostas abertas</p>
                   <p className="mt-1 text-lg font-bold text-slate-800">{fmtBrl(probabilidadeVendedores.total.pipelinePonderado)}</p>
-                  <p className="text-xs text-slate-600">Expectativa estat&iacute;stica das {fmtNum(probabilidadeVendedores.total.abertas)} propostas que seguem abertas no ERP; valor nominal: {fmtBrl(probabilidadeVendedores.total.valorAbertas)}.</p>
-                  <p className="mt-1 text-[11px] text-slate-600">Na janela toda, incluindo propostas j&aacute; decididas: {fmtBrl(probabilidadeVendedores.total.valorCarteiraEsperado)} de expectativa somada.</p>
+                  <p className="text-xs text-slate-600">O modelo aplica a chance estimada de fechamento ao valor de cada uma das {fmtNum(probabilidadeVendedores.total.abertas)} propostas abertas. O valor total dos orçamentos é {fmtBrl(probabilidadeVendedores.total.valorAbertas)}; a estimativa não representa venda realizada.</p>
+                  <p className="mt-1 text-[11px] text-slate-600">Previsão inicial somada de todas as propostas acompanhadas no período (abertas e decididas): {fmtBrl(probabilidadeVendedores.total.valorCarteiraEsperado)}.</p>
                 </div>
               </div>
               <div className="flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-slate-500">
-                <span>Origem confirmada: ERP {fmtNum(probabilidadeVendedores.total.fontesDesfecho.mubisys)} &middot; CRM {fmtNum(probabilidadeVendedores.total.fontesDesfecho.crm)} &middot; ambos {fmtNum(probabilidadeVendedores.total.fontesDesfecho.ambos)}</span>
-                <span>Vers&otilde;es do modelo: {probabilidadeVendedores.versoes.map((item: any) => String(item.versao) + " (" + fmtNum(item.propostas) + ")").join(" \u00b7 ") || "sem dados"}</span>
+                <span>Resultados confirmados no ERP (MubiSys): {fmtNum(probabilidadeVendedores.total.fontesDesfecho.mubisys)} &middot; no CRM: {fmtNum(probabilidadeVendedores.total.fontesDesfecho.crm)} &middot; nos dois: {fmtNum(probabilidadeVendedores.total.fontesDesfecho.ambos)}</span>
+                <span>Modelo usado nas previs&otilde;es: {probabilidadeVendedores.versoes.map((item: any) => String(item.versao) + " (" + fmtNum(item.propostas) + " propostas)").join(" \u00b7 ") || "sem dados"}</span>
               </div>
               {probabilidadeVendedores.statusNaoReconhecidos.length > 0 && (
                 <p className="text-[11px] text-amber-700">
@@ -2065,11 +2068,11 @@ export default function PerformanceComercial() {
               )}
 
               <div className="rounded-lg border border-indigo-100 bg-indigo-50/50 p-3 text-xs leading-relaxed text-slate-700">
-                <strong>Como ler:</strong> o esperado &eacute; uma refer&ecirc;ncia estat&iacute;stica, n&atilde;o meta nem garantia. S&oacute; entram na convers&atilde;o confirmada ganhos e perdas com status reconhecido no ERP ou decis&atilde;o manual ligada ao ID interno exato do MubiSys; conflito entre as fontes fica fora. Or&ccedil;amentos abertos vencidos aparecem como perda presumida, mas continuam abertos no ERP; sem hist&oacute;rico, sem status, status desconhecido e identificador amb&iacute;guo ficam separados. Convers&atilde;o real e esperada usam as mesmas propostas decididas. Para propostas decididas, somamos probabilidade inicial x valor e comparamos ao valor das propostas ganhas; a diferen&ccedil;a &eacute; um sinal para investigar, n&atilde;o prova de venda perdida. A carteira aberta &eacute; mostrada separadamente. Contato significa registro no CRM, n&atilde;o confirma&ccedil;&atilde;o de entrega da mensagem. Faturamento de O.S. do m&ecirc;s selecionado aparece separado e n&atilde;o &eacute; atribuido a or&ccedil;amentos sem chave confi&aacute;vel. O comparativo entre colegas exige amostra e pareia faixa de probabilidade e perfil de cliente. Clientes sem coorte conhecida aparecem no geral, sem serem atribu&iacute;dos artificialmente a um grupo.
+                <strong>Como interpretar:</strong> a previs&atilde;o &eacute; uma estimativa estat&iacute;stica calculada para cada proposta. O valor esperado soma (chance estimada de ganho x valor da proposta); serve como proje&ccedil;&atilde;o e n&atilde;o como meta ou garantia de venda. Ganhos e perdas s&oacute; s&atilde;o confirmados quando o resultado est&aacute; reconhecido no ERP ou registrado no CRM e ligado a uma proposta identificada sem ambiguidade. Se ERP e CRM divergem, o caso fica separado. Propostas com validade vencida continuam abertas at&eacute; o status ser atualizado no ERP, por isso n&atilde;o contam como perdas confirmadas. Contato significa registro no CRM, sem confirmar que a mensagem foi entregue. O faturamento de O.S. aparece &agrave; parte porque n&atilde;o h&aacute; uma chave confi&aacute;vel para lig&aacute;-lo a cada proposta.
                 <div className="mt-2 grid gap-1 border-t border-indigo-200 pt-2 sm:grid-cols-3">
-                  <span><strong>Esperado nas decididas:</strong> soma de (probabilidade inicial x valor) das propostas com desfecho confirmado.</span>
-                  <span><strong>Realizado:</strong> soma do valor das propostas confirmadas como ganhas. O desvio &eacute; real menos esperado.</span>
-                  <span><strong>Refer&ecirc;ncia dos pares:</strong> convers&atilde;o dos colegas em propostas decididas de mesma faixa de probabilidade e grupo, aplicada ao valor das propostas compar&aacute;veis do vendedor.</span>
+                  <span><strong>Previs&atilde;o das decididas:</strong> chance estimada x valor de cada proposta com resultado confirmado.</span>
+                  <span><strong>Vendas confirmadas:</strong> soma do valor das propostas registradas como ganhas. A diferen&ccedil;a mostra o valor ganho menos o previsto.</span>
+                  <span><strong>Compara&ccedil;&atilde;o com colegas:</strong> usa propostas de chance e perfil de cliente parecidos, quando h&aacute; dados suficientes.</span>
                 </div>
               </div>
 
