@@ -153,6 +153,12 @@ export function SalvarCotacaoCompra({
       if (Number.isFinite(pesoExtraido) && pesoExtraido > 0)
         return String(pesoExtraido);
       const itens = Array.isArray(resultado.itens) ? resultado.itens : [];
+      const somaPesosItens = itens.reduce(
+        (total: number, item: any) => total + Number(item.pesoTotalKg || 0),
+        0
+      );
+      if (Number.isFinite(somaPesosItens) && somaPesosItens > 0)
+        return String(somaPesosItens);
       if (
         itens.length > 0 &&
         itens.every((item: any) => unidadeConsumo(item.unidade) === "KG")
@@ -173,6 +179,8 @@ export function SalvarCotacaoCompra({
     ipiAliquota: string;
     ipiValor: string;
     totalFornecedor: string;
+    pesoUnitarioKg: string;
+    pesoTotalKg: string;
   }>>(() => Object.fromEntries(resultado.itens.map((item: any, indice: number) => [
     indice,
     {
@@ -181,6 +189,8 @@ export function SalvarCotacaoCompra({
       ipiAliquota: item.ipiAliquota == null ? "" : String(item.ipiAliquota).replace(".", ","),
       ipiValor: item.ipiValor == null ? "" : String(item.ipiValor).replace(".", ","),
       totalFornecedor: item.totalFornecedor == null ? "" : String(item.totalFornecedor).replace(".", ","),
+      pesoUnitarioKg: item.pesoUnitarioKg == null ? "" : String(item.pesoUnitarioKg).replace(".", ","),
+      pesoTotalKg: item.pesoTotalKg == null ? "" : String(item.pesoTotalKg).replace(".", ","),
     },
   ])));
   const [arquivoFonte, setArquivoFonte] = useState(() => ({
@@ -229,10 +239,7 @@ export function SalvarCotacaoCompra({
         : frete === ""
           ? null
           : Number(frete.replace(",", ".")),
-    pesoFreteKg:
-      freteModo === "cif" || pesoFrete === ""
-        ? null
-        : Number(pesoFrete.replace(",", ".")),
+    pesoFreteKg: pesoFrete === "" ? null : Number(pesoFrete.replace(",", ".")),
     observacoes,
     nomeArquivo,
     ...arquivoFonte,
@@ -251,6 +258,8 @@ export function SalvarCotacaoCompra({
         ipiAliquota: numeroOpcional(impostosItens[indice]?.ipiAliquota ?? ""),
         ipiValor: numeroOpcional(impostosItens[indice]?.ipiValor ?? ""),
         totalFornecedor: numeroOpcional(impostosItens[indice]?.totalFornecedor ?? ""),
+        pesoUnitarioKg: numeroOpcional(impostosItens[indice]?.pesoUnitarioKg ?? ""),
+        pesoTotalKg: numeroOpcional(impostosItens[indice]?.pesoTotalKg ?? ""),
         materiaPrimaId: mp?.id ?? null,
         unidadeDestino:
           i.unidadeDestinoConversaoCotacao ?? mp?.unidadeMubisys ?? null,
@@ -301,7 +310,6 @@ export function SalvarCotacaoCompra({
       if (emitirComCifPendente) {
         setFreteModo("cif");
         setFrete("");
-        setPesoFrete("");
       }
       if (controle.current.assinatura !== assinatura)
         controle.current = { assinatura, chave: crypto.randomUUID() };
@@ -329,7 +337,7 @@ export function SalvarCotacaoCompra({
             frete: null,
             freteModo: "cif" as const,
             freteValorInformado: null,
-            pesoFreteKg: null,
+            pesoFreteKg: payload.pesoFreteKg,
           }
         : payload;
       const payloadComArquivo = { ...payloadParaSalvar, ...arquivoAtual };
@@ -401,7 +409,6 @@ export function SalvarCotacaoCompra({
           setFreteModo(modo);
           if (modo === "cif") {
             setFrete("");
-            setPesoFrete("");
           }
         }}
         mudarValor={setFrete}
@@ -412,13 +419,13 @@ export function SalvarCotacaoCompra({
       </div>
       <div className="space-y-2 rounded-lg border border-amber-200 bg-amber-50 p-3">
         <div>
-          <strong className="block text-sm text-slate-800">Impostos destacados pelo fornecedor</strong>
+          <strong className="block text-sm text-slate-800">Impostos e pesos por produto</strong>
           <p className="mt-1 text-[11px] text-slate-600">
-            Revise os dados extraídos do PDF. O ICMS em alíquota fica identificado; um valor de ICMS em R$ só é somado quando estiver destacado separadamente. O total exato da linha do fornecedor tem prioridade e evita diferenças de arredondamento.
+            Revise os dados extraídos do PDF. As alíquotas de ICMS e IPI e os pesos unitário e total são registrados por produto. Valores monetários de imposto só são somados quando destacados separadamente; o total exato da linha do fornecedor tem prioridade.
           </p>
         </div>
         {resultado.itens.map((item: any, indice: number) => {
-          const impostos = impostosItens[indice] ?? { icmsAliquota: "", icmsValor: "", ipiAliquota: "", ipiValor: "", totalFornecedor: "" };
+          const impostos = impostosItens[indice] ?? { icmsAliquota: "", icmsValor: "", ipiAliquota: "", ipiValor: "", totalFornecedor: "", pesoUnitarioKg: "", pesoTotalKg: "" };
           const quantidade = Number(item.quantidade);
           const precoUnitario = Number(item.precoUnitario);
           const icmsAliquota = numeroOpcional(impostos.icmsAliquota);
@@ -438,14 +445,14 @@ export function SalvarCotacaoCompra({
             ipiValorCotado: ipiValor,
           });
           return (
-            <div key={`${item.codigo ?? item.descricao}-${indice}`} className="grid gap-2 border-t border-amber-200 pt-2 sm:grid-cols-[minmax(180px,1.4fr)_repeat(5,minmax(90px,1fr))]">
+            <div key={`${item.codigo ?? item.descricao}-${indice}`} className="grid gap-2 border-t border-amber-200 pt-2 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-[minmax(180px,1.4fr)_repeat(7,minmax(90px,1fr))]">
               <div className="text-xs font-medium text-slate-700">{item.descricao}<span className="block text-[10px] font-normal text-slate-500">{fmtNum(quantidade, 3)} {item.unidade} · preço unitário {fmtBrl(precoUnitario)}</span></div>
-              {(["icmsAliquota", "icmsValor", "ipiAliquota", "ipiValor", "totalFornecedor"] as const).map(campo => (
-                <Campo key={campo} titulo={{ icmsAliquota: "ICMS (%)", icmsValor: "ICMS destacado (R$)", ipiAliquota: "IPI (%)", ipiValor: "IPI destacado (R$)", totalFornecedor: "Total da linha (R$)" }[campo]}>
+              {(["icmsAliquota", "icmsValor", "ipiAliquota", "ipiValor", "totalFornecedor", "pesoUnitarioKg", "pesoTotalKg"] as const).map(campo => (
+                <Campo key={campo} titulo={{ icmsAliquota: "ICMS (%)", icmsValor: "ICMS destacado (R$)", ipiAliquota: "IPI (%)", ipiValor: "IPI destacado (R$)", totalFornecedor: "Total da linha (R$)", pesoUnitarioKg: "Peso unit. (kg)", pesoTotalKg: "Peso total (kg)" }[campo]}>
                   <Input
                     inputMode="decimal"
                     value={impostos[campo]}
-                    placeholder={campo === "totalFornecedor" ? fmtBrl(calculo.totalFornecedor) : "Não destacado"}
+                    placeholder={campo === "totalFornecedor" ? fmtBrl(calculo.totalFornecedor) : campo === "pesoUnitarioKg" || campo === "pesoTotalKg" ? "Não informado" : "Não destacado"}
                     onChange={e => setImpostosItens(atual => ({ ...atual, [indice]: { ...impostos, [campo]: e.target.value } }))}
                   />
                 </Campo>

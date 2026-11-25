@@ -106,17 +106,19 @@ export function criarOrdemCompraPdf(
     (doc as jsPDF & { lastAutoTable: { finalY: number } }).lastAutoTable
       .finalY + 9;
   const detalhesTributosPorItem = ordem.itens
-    .filter(item => item.icmsAliquota != null || item.icmsValor != null || item.ipiAliquota != null || item.ipiValor != null)
+    .filter(item => item.icmsAliquota != null || item.icmsValor != null || item.ipiAliquota != null || item.ipiValor != null || item.pesoUnitarioKg != null || item.pesoTotalKg != null)
     .map(item => {
       const tributos = [
         item.icmsAliquota == null && item.icmsValor == null ? null : `ICMS${item.icmsAliquota == null ? "" : ` ${fmtPct(item.icmsAliquota, 2)}`}${item.icmsValor == null ? "" : ` · ${fmtBrl(item.icmsValor)}`}`,
         item.ipiAliquota == null && item.ipiValor == null ? null : `IPI ${item.ipiAliquota == null ? "" : fmtPct(item.ipiAliquota, 2)}${item.ipiValor == null ? "" : ` · ${fmtBrl(item.ipiValor)}`}`,
+        item.pesoUnitarioKg == null ? null : `peso unitário ${fmtNum(item.pesoUnitarioKg, 4)} kg`,
+        item.pesoTotalKg == null ? null : `peso total ${fmtNum(item.pesoTotalKg, 4)} kg`,
       ].filter((valor): valor is string => valor != null);
       return `${item.descricao}: ${tributos.join(" · ")} · total fornecedor ${fmtBrl(item.totalFornecedor ?? item.total)}`;
     });
   if (detalhesTributosPorItem.length > 0) {
     doc.setFont("helvetica", "bold");
-    doc.text("Impostos destacados pelo fornecedor", 14, y);
+    doc.text("Impostos e pesos informados pelo fornecedor", 14, y);
     y += 6;
     doc.setFont("helvetica", "normal");
     for (const detalhe of detalhesTributosPorItem) {

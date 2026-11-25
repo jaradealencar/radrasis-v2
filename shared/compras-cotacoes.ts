@@ -60,6 +60,8 @@ export const itemCotacaoCompraSchema = z.object({
   ipiAliquota: z.number().finite().nonnegative().max(100).nullable().default(null),
   ipiValor: z.number().finite().nonnegative().max(1e12).nullable().default(null),
   totalFornecedor: z.number().finite().nonnegative().max(1e12).nullable().default(null),
+  pesoUnitarioKg: z.number().finite().positive().max(1e12).nullable().default(null),
+  pesoTotalKg: z.number().finite().positive().max(1e12).nullable().default(null),
   materiaPrimaId: z.number().int().positive().nullable(),
   unidadeDestino: z.string().max(80).nullable(),
   fatorConversao: z.number().finite().positive().max(1e10).nullable(),
@@ -331,6 +333,8 @@ export type LinhaOrdemCompra = {
   icmsValor?: number | null;
   ipiAliquota?: number | null;
   ipiValor?: number | null;
+  pesoUnitarioKg?: number | null;
+  pesoTotalKg?: number | null;
   total: number;
   totalFornecedor?: number;
   unidadeDestino: string | null;

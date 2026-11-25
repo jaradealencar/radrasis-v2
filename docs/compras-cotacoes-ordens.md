@@ -112,3 +112,9 @@ O total exato da linha informado pelo fornecedor prevalece sobre qualquer cálcu
 A migration `0154_compras_impostos_fornecedor` adiciona colunas opcionais de ICMS, IPI e total do fornecedor em `compras_cotacao_itens`. Cotações antigas permanecem intactas; para emitir uma nova ordem com os tributos, reabra a cotação salva, confira ou preencha manualmente os campos fiscais com o PDF original e salve uma nova versão.
 
 Na mesma aplicação protegida em produção, a migration `0153_historico_orcamentos_regiao` foi aplicada antes da 0154 (recibos `1795514179963` e `1795532953382`, respectivamente), após confirmar que a base ainda estava na 0152.
+
+## IPI e pesos por produto extraídos do PDF
+
+A extração preserva as posições horizontais e verticais dos trechos de texto do PDF para associar cada valor ao cabeçalho da coluna correta. A tela revisa e permite corrigir por produto a alíquota de IPI, o peso unitário em kg e o peso total da linha. O valor da coluna “item com IPI” permanece como total exato do fornecedor; não é tratado como valor de IPI destacado separadamente. Quando a cotação traz os pesos totais por item, a soma preenche o peso previsto da carga caso o PDF não traga um peso geral explícito. Em CIF, o peso extraído é salvo para consulta mesmo com o valor do frete pendente.
+
+Os pesos unitário e total são salvos em `compras_cotacao_itens`, copiados ao snapshot da ordem e apresentados na edição e no PDF da ordem. A migration `0155_compras_cotacao_peso_item` adiciona as duas colunas opcionais sem alterar cotações antigas; a aplicação protegida ao banco está pendente de configuração explícita do alvo.

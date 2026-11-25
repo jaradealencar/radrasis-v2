@@ -1072,6 +1072,13 @@
       "when": 1795532953382,
       "tag": "0154_compras_impostos_fornecedor",
       "breakpoints": true
+    },
+    {
+      "idx": 153,
+      "version": "7",
+      "when": 1795573334450,
+      "tag": "0155_compras_cotacao_peso_item",
+      "breakpoints": true
     }
   ]
 }

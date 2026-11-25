@@ -2,7 +2,7 @@ import { useState } from "react";
 import { RotateCcw, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { trpc, type RouterOutputs } from "@/lib/trpc";
-import { fmtBrl } from "@/lib/format";
+import { fmtBrl, fmtNum } from "@/lib/format";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -450,6 +450,13 @@ function EditorSalva({
                       {(item.icmsAliquota != null || item.icmsValor != null) && `ICMS${item.icmsAliquota == null ? "" : ` ${Number(item.icmsAliquota)}%`}${item.icmsValor == null ? "" : ` · ${fmtBrl(tributos?.icmsValor ?? Number(item.icmsValor))}`}`}
                       {(item.icmsAliquota != null || item.icmsValor != null) && (item.ipiAliquota != null || item.ipiValor != null) ? " · " : ""}
                       {(item.ipiAliquota != null || item.ipiValor != null) && `IPI${item.ipiAliquota == null ? "" : ` ${Number(item.ipiAliquota)}%`}${(tributos?.ipiValor ?? item.ipiValor) == null ? "" : ` · ${fmtBrl(tributos?.ipiValor ?? Number(item.ipiValor))}`}`}
+                    </span>
+                  )}
+                  {(item.pesoUnitarioKg != null || item.pesoTotalKg != null) && (
+                    <span className="mt-1 block text-[10px] text-slate-600">
+                      {item.pesoUnitarioKg != null && `Peso unitário: ${fmtNum(Number(item.pesoUnitarioKg), 4)} kg`}
+                      {item.pesoUnitarioKg != null && item.pesoTotalKg != null ? " · " : ""}
+                      {item.pesoTotalKg != null && `Peso total: ${fmtNum(Number(item.pesoTotalKg), 4)} kg`}
                     </span>
                   )}
                 </TableCell>

@@ -1751,6 +1751,7 @@ export default function NfCompraAuditoria() {
             icmsAliquota: i.icmsAliquota == null ? null : Number(i.icmsAliquota), icmsValor: i.icmsValor == null ? null : Number(i.icmsValor),
             ipiAliquota: i.ipiAliquota == null ? null : Number(i.ipiAliquota), ipiValor: i.ipiValor == null ? null : Number(i.ipiValor),
             totalFornecedor: i.totalFornecedor == null ? null : Number(i.totalFornecedor),
+            pesoUnitarioKg: i.pesoUnitarioKg == null ? null : Number(i.pesoUnitarioKg), pesoTotalKg: i.pesoTotalKg == null ? null : Number(i.pesoTotalKg),
             materiaPrimaVinculada: i.materiaPrimaId ? { id: i.materiaPrimaId, nome: i.nomeMateriaPrima, unidadeMubisys: i.unidadeDestino, custoUnitarioMubisys: i.custoMubisys == null ? null : Number(i.custoMubisys) } : null,
             fatorConversaoCotacao: i.fatorConversao == null ? null : Number(i.fatorConversao), unidadeOrigemConversaoCotacao: i.unidadeOrigem, unidadeDestinoConversaoCotacao: i.unidadeDestino, baseCalculoConversaoCotacao: i.formula, origemVinculo: "cotação salva (snapshot)" };
         }));

@@ -50,7 +50,7 @@ export function FreteCompraCampos({
         >
           <option value="valor_total">Valor total / fixo (R$)</option>
           <option value="por_kg">Por kg (R$/kg)</option>
-          <option value="cif">CIF (valor e peso pendentes)</option>
+          <option value="cif">CIF (frete pendente)</option>
           <option value="gratis">Grátis</option>
         </select>
       </Campo>
@@ -90,8 +90,10 @@ export function FreteCompraCampos({
       {modo === "cif" ? (
         <p className="sm:col-span-3 text-xs text-amber-800">
           {calculo.total == null
-            ? "CIF selecionado: a ordem pode ser emitida sem tarifa nem peso. O frete fica pendente e não entra no total até ser informado."
-            : `Frete CIF registrado: ${fmtBrl(calculo.total)}. O peso não é necessário para emitir a ordem.`}
+            ? pesoValido
+              ? `CIF selecionado: frete pendente. Peso registrado: ${fmtNum(Number(peso.replace(",", ".")), 3)} kg; ele fica salvo para consulta, mas não entra no total do frete.`
+              : "CIF selecionado: a ordem pode ser emitida sem tarifa nem peso. O frete fica pendente e não entra no total até ser informado."
+            : `Frete CIF registrado: ${fmtBrl(calculo.total)}. O peso não é necessário para calcular esse frete.`}
         </p>
       ) : modo === "por_kg" && (
         <p className="sm:col-span-3 text-xs text-slate-500">

@@ -4262,6 +4262,8 @@ var init_schema = __esm({
       ipiAliquota: decimal("ipi_aliquota", { precision: 8, scale: 4 }),
       ipiValor: decimal("ipi_valor", { precision: 18, scale: 2 }),
       totalFornecedor: decimal("total_fornecedor", { precision: 18, scale: 2 }),
+      pesoUnitarioKg: decimal("peso_unitario_kg", { precision: 18, scale: 6 }),
+      pesoTotalKg: decimal("peso_total_kg", { precision: 18, scale: 6 }),
       unidadeOrigem: varchar("unidade_origem", { length: 80 }),
       unidadeDestino: varchar("unidade_destino", { length: 80 }),
       fatorConversao: decimal("fator_conversao", { precision: 24, scale: 8 }),
@@ -44013,10 +44015,31 @@ async function extrairCotacaoDePdf(pdfBuffer, fileName = "cotacao.pdf") {
   let textoPdf = "";
   try {
     const pdfParse2 = (await import("pdf-parse/lib/pdf-parse.js")).default;
-    const parsed = await pdfParse2(pdfBuffer);
+    let paginaAtual = 0;
+    const parsed = await pdfParse2(pdfBuffer, {
+      pagerender: async (pagina) => {
+        paginaAtual += 1;
+        const conteudo = await pagina.getTextContent();
+        const linhas = (conteudo.items ?? []).filter((item) => typeof item.str === "string" && item.str.trim()).map((item) => {
+          const x = Number(item.transform?.[4]);
+          const y = Number(item.transform?.[5]);
+          const posicao = Number.isFinite(x) && Number.isFinite(y) ? `x=${x.toFixed(1)} y=${y.toFixed(1)}` : "posi\xE7\xE3o indispon\xEDvel";
+          return `[p\xE1gina ${paginaAtual} ${posicao}] ${item.str.trim()}`;
+        });
+        return `--- P\xC1GINA ${paginaAtual} ---
+${linhas.join("\n")}`;
+      }
+    });
     textoPdf = parsed.text?.trim() ?? "";
   } catch (err) {
     console.warn("[PDF-PARSE] Falha no parse direto do PDF:", err?.message);
+    try {
+      const pdfParse2 = (await import("pdf-parse/lib/pdf-parse.js")).default;
+      const parsed = await pdfParse2(pdfBuffer);
+      textoPdf = parsed.text?.trim() ?? "";
+    } catch {
+      textoPdf = "";
+    }
   }
   const promptExtracao = `Voc\xEA \xE9 um assistente especialista em compras industriais e leitura de propostas comerciais / or\xE7amentos em PDF.
 Analise o texto deste or\xE7amento de fornecedor e extraia com m\xE1xima precis\xE3o os dados comerciais e os itens cotados.
@@ -44055,7 +44078,9 @@ Retorne OBRIGATORIAMENTE um JSON estrito no seguinte formato (sem markdown, apen
       "icmsValor": null,
       "ipiAliquota": null,
       "ipiValor": null,
-      "totalFornecedor": null
+      "totalFornecedor": null,
+      "pesoUnitarioKg": null,
+      "pesoTotalKg": null
     }
   ]
 }
@@ -44064,7 +44089,11 @@ Importante:
 - Se houver frete mencionado, extraia a modalidade: "por_kg" para tarifa expl\xEDcita em R$/kg, "gratis" quando o documento disser que \xE9 gr\xE1tis, "cif" quando indicar entrega CIF sem um valor de frete destacado, e "valor_total" para frete total/fixo. Para CIF sem valor separado, retorne valorFrete=null; nunca presuma frete zero. Se o documento n\xE3o informar frete nem condi\xE7\xE3o, retorne freteModo=null e valorFrete=null.
 - Extraia pesoFreteKg somente se o peso total da carga estiver explicitamente escrito no documento e convertido para kg. Se n\xE3o houver peso total expl\xEDcito, retorne null; nunca estime o peso pelas descri\xE7\xF5es ou quantidades dos itens.
 - Extraia cada linha de produto individualmente.
-- Extract ICMS and IPI rates and amounts per line only when the document explicitly displays them. If a single rate explicitly applies to every item, repeat it on each item. Otherwise return null for missing values.
+- O texto do PDF preserva a posi\xE7\xE3o horizontal (x) e vertical (y) de cada trecho. Use os cabe\xE7alhos e o alinhamento das colunas para associar cada valor ao campo correto; valores pr\xF3ximos no mesmo y pertencem \xE0 mesma linha de produto.
+- Extraia ICMS e IPI por linha quando estiverem impressos. Se uma mesma al\xEDquota estiver explicitamente aplicada a todos os itens, repita-a em cada item. Se um campo n\xE3o estiver impresso, retorne null.
+- Extraia o percentual da coluna "% IPI" para ipiAliquota, mesmo quando o pre\xE7o de venda j\xE1 considere o imposto. N\xE3o confunda a coluna "Valor do item com IPI" com ipiValor: ela informa o total exato da linha com IPI e deve preencher totalFornecedor. Preencha ipiValor apenas se houver um valor monet\xE1rio de IPI destacado separadamente.
+- Extraia pesoUnitarioKg da coluna "Peso Un. (Kg)" e pesoTotalKg da coluna "Peso Total (Kg)" de cada linha. Preserve os valores impressos; n\xE3o estime nem calcule valores ausentes.
+- Quando houver coluna "Pre\xE7o de venda" e coluna separada "Valor do item com IPI", precoUnitario deve ser o valor unit\xE1rio da coluna "Pre\xE7o de venda"; totalFornecedor deve ser o total da linha da coluna "Valor do item com IPI".
 - icmsValor and ipiValor are values charged separately on top of the unit price. Do not copy a tax amount that the document says is already included in the unit price; preserve its rate instead.
 - totalFornecedor must be the exact supplier line total after the taxes shown (for example, "item total with IPI"), excluding freight, handling, shipping, and other fees. Return null if the document does not show an exact taxed item total.
 - At the quote level, totalFornecedor must be the exact sum for all merchandise lines after the taxes shown, excluding freight, handling, shipping, and other fees. Return null if the document does not show that merchandise total.
@@ -44931,6 +44960,7 @@ var init_nfCompra = __esm({
         const cotacao = await extrairCotacaoDePdf2(buffer, input.nomeArquivo);
         const valorFiscal = (valor2) => typeof valor2 === "number" && Number.isFinite(valor2) && valor2 >= 0 && valor2 <= 1e12 ? Number(valor2.toFixed(2)) : null;
         const aliquotaFiscal = (valor2) => typeof valor2 === "number" && Number.isFinite(valor2) && valor2 >= 0 && valor2 <= 100 ? Number(valor2.toFixed(4)) : null;
+        const pesoItemKg = (valor2) => typeof valor2 === "number" && Number.isFinite(valor2) && valor2 > 0 && valor2 <= 1e12 ? Number(valor2.toFixed(6)) : null;
         const basesItens = cotacao.itens.map(
           (item) => Math.round(item.quantidade * item.precoUnitario * 100) / 100
         );
@@ -44968,7 +44998,9 @@ var init_nfCompra = __esm({
           icmsValor: valorFiscal(item.icmsValor) ?? icmsGlobalRateado[indice],
           ipiAliquota: aliquotaFiscal(item.ipiAliquota) ?? aliquotaFiscal(cotacao.ipiAliquota),
           ipiValor: valorFiscal(item.ipiValor) ?? ipiGlobalRateado[indice],
-          totalFornecedor: valorFiscal(item.totalFornecedor) ?? totalFornecedorGlobalRateado[indice]
+          totalFornecedor: valorFiscal(item.totalFornecedor) ?? totalFornecedorGlobalRateado[indice],
+          pesoUnitarioKg: pesoItemKg(item.pesoUnitarioKg),
+          pesoTotalKg: pesoItemKg(item.pesoTotalKg)
         }));
         const freteModo = ["valor_total", "por_kg", "gratis", "cif"].includes(
           cotacao.freteModo ?? ""
@@ -45381,6 +45413,8 @@ var init_compras_cotacoes = __esm({
       ipiAliquota: z41.number().finite().nonnegative().max(100).nullable().default(null),
       ipiValor: z41.number().finite().nonnegative().max(1e12).nullable().default(null),
       totalFornecedor: z41.number().finite().nonnegative().max(1e12).nullable().default(null),
+      pesoUnitarioKg: z41.number().finite().positive().max(1e12).nullable().default(null),
+      pesoTotalKg: z41.number().finite().positive().max(1e12).nullable().default(null),
       materiaPrimaId: z41.number().int().positive().nullable(),
       unidadeDestino: z41.string().max(80).nullable(),
       fatorConversao: z41.number().finite().positive().max(1e10).nullable(),
@@ -45687,6 +45721,8 @@ var init_compras = __esm({
               ipiAliquota: i.ipiAliquota == null ? null : String(i.ipiAliquota),
               ipiValor: i.ipiValor == null ? null : String(i.ipiValor),
               totalFornecedor: i.totalFornecedor == null ? null : String(i.totalFornecedor),
+              pesoUnitarioKg: i.pesoUnitarioKg == null ? null : String(i.pesoUnitarioKg),
+              pesoTotalKg: i.pesoTotalKg == null ? null : String(i.pesoTotalKg),
               unidadeOrigem: i.unidadeOrigem ?? i.unidade,
               unidadeDestino: destino,
               fatorConversao: fator ? String(fator) : null,
@@ -45709,7 +45745,7 @@ var init_compras = __esm({
             total: total.toFixed(2),
             frete: freteCalculado == null ? null : freteCalculado.toFixed(2),
             freteValorInformado: valorFreteInformado == null ? null : String(valorFreteInformado),
-            pesoFreteKg: input.freteModo === "cif" || input.pesoFreteKg == null ? null : String(input.pesoFreteKg),
+            pesoFreteKg: input.pesoFreteKg == null ? null : String(input.pesoFreteKg),
             criadoPor: ctx.user.id
           }).onConflictDoNothing({ target: comprasCotacoes.chave }).returning();
           if (!cotacao) {
@@ -45859,6 +45895,8 @@ var init_compras = __esm({
               icmsValor: tributos.icmsValor,
               ipiAliquota: origem.ipiAliquota == null ? null : Number(origem.ipiAliquota),
               ipiValor: tributos.ipiValor,
+              pesoUnitarioKg: origem.pesoUnitarioKg == null ? null : Number(origem.pesoUnitarioKg),
+              pesoTotalKg: origem.pesoTotalKg == null ? null : Number(origem.pesoTotalKg),
               total: tributos.total,
               totalFornecedor: tributos.totalFornecedor,
               unidadeDestino: origem.unidadeDestino,
@@ -46081,6 +46119,8 @@ var init_compras = __esm({
               icmsValor: tributos.icmsValor,
               ipiAliquota: origem.ipiAliquota == null ? null : Number(origem.ipiAliquota),
               ipiValor: tributos.ipiValor,
+              pesoUnitarioKg: origem.pesoUnitarioKg == null ? null : Number(origem.pesoUnitarioKg),
+              pesoTotalKg: origem.pesoTotalKg == null ? null : Number(origem.pesoTotalKg),
               total: tributos.total,
               totalFornecedor: tributos.totalFornecedor,
               unidadeDestino: origem.unidadeDestino,

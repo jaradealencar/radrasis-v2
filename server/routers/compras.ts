@@ -241,6 +241,8 @@ export const comprasRouter = router({
             ipiAliquota: i.ipiAliquota == null ? null : String(i.ipiAliquota),
             ipiValor: i.ipiValor == null ? null : String(i.ipiValor),
             totalFornecedor: i.totalFornecedor == null ? null : String(i.totalFornecedor),
+            pesoUnitarioKg: i.pesoUnitarioKg == null ? null : String(i.pesoUnitarioKg),
+            pesoTotalKg: i.pesoTotalKg == null ? null : String(i.pesoTotalKg),
             unidadeOrigem: i.unidadeOrigem ?? i.unidade,
             unidadeDestino: destino,
             fatorConversao: fator ? String(fator) : null,
@@ -269,8 +271,7 @@ export const comprasRouter = router({
             total: total.toFixed(2),
             frete: freteCalculado == null ? null : freteCalculado.toFixed(2),
             freteValorInformado: valorFreteInformado == null ? null : String(valorFreteInformado),
-            pesoFreteKg:
-              input.freteModo === "cif" || input.pesoFreteKg == null ? null : String(input.pesoFreteKg),
+            pesoFreteKg: input.pesoFreteKg == null ? null : String(input.pesoFreteKg),
             criadoPor: ctx.user.id,
           })
           .onConflictDoNothing({ target: cotacoes.chave })
@@ -457,6 +458,8 @@ export const comprasRouter = router({
             icmsValor: tributos.icmsValor,
             ipiAliquota: origem.ipiAliquota == null ? null : Number(origem.ipiAliquota),
             ipiValor: tributos.ipiValor,
+            pesoUnitarioKg: origem.pesoUnitarioKg == null ? null : Number(origem.pesoUnitarioKg),
+            pesoTotalKg: origem.pesoTotalKg == null ? null : Number(origem.pesoTotalKg),
             total: tributos.total,
             totalFornecedor: tributos.totalFornecedor,
             unidadeDestino: origem.unidadeDestino,
@@ -767,6 +770,8 @@ export const comprasRouter = router({
             icmsValor: tributos.icmsValor,
             ipiAliquota: origem.ipiAliquota == null ? null : Number(origem.ipiAliquota),
             ipiValor: tributos.ipiValor,
+            pesoUnitarioKg: origem.pesoUnitarioKg == null ? null : Number(origem.pesoUnitarioKg),
+            pesoTotalKg: origem.pesoTotalKg == null ? null : Number(origem.pesoTotalKg),
             total: tributos.total,
             totalFornecedor: tributos.totalFornecedor,
             unidadeDestino: origem.unidadeDestino,

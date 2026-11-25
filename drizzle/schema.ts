@@ -4719,6 +4719,8 @@ export const comprasCotacaoItens = pgTable("compras_cotacao_itens", {
   ipiAliquota: decimal("ipi_aliquota", { precision: 8, scale: 4 }),
   ipiValor: decimal("ipi_valor", { precision: 18, scale: 2 }),
   totalFornecedor: decimal("total_fornecedor", { precision: 18, scale: 2 }),
+  pesoUnitarioKg: decimal("peso_unitario_kg", { precision: 18, scale: 6 }),
+  pesoTotalKg: decimal("peso_total_kg", { precision: 18, scale: 6 }),
   unidadeOrigem: varchar("unidade_origem", { length: 80 }), unidadeDestino: varchar("unidade_destino", { length: 80 }),
   fatorConversao: decimal("fator_conversao", { precision: 24, scale: 8 }), formula: text("formula"),
   custoMubisys: decimal("custo_mubisys", { precision: 18, scale: 6 }),

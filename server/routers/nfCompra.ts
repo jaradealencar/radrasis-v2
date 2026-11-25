@@ -1088,6 +1088,10 @@ export const nfCompraRouter = router({
         typeof valor === "number" && Number.isFinite(valor) && valor >= 0 && valor <= 100
           ? Number(valor.toFixed(4))
           : null;
+      const pesoItemKg = (valor: unknown) =>
+        typeof valor === "number" && Number.isFinite(valor) && valor > 0 && valor <= 1e12
+          ? Number(valor.toFixed(6))
+          : null;
       const basesItens = cotacao.itens.map(item =>
         Math.round(item.quantidade * item.precoUnitario * 100) / 100
       );
@@ -1130,6 +1134,8 @@ export const nfCompraRouter = router({
         ipiAliquota: aliquotaFiscal(item.ipiAliquota) ?? aliquotaFiscal(cotacao.ipiAliquota),
         ipiValor: valorFiscal(item.ipiValor) ?? ipiGlobalRateado[indice],
         totalFornecedor: valorFiscal(item.totalFornecedor) ?? totalFornecedorGlobalRateado[indice],
+        pesoUnitarioKg: pesoItemKg(item.pesoUnitarioKg),
+        pesoTotalKg: pesoItemKg(item.pesoTotalKg),
       }));
       const freteModo = ["valor_total", "por_kg", "gratis", "cif"].includes(
         cotacao.freteModo ?? ""
