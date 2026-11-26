@@ -3712,11 +3712,13 @@ export default function TabelaPrecos() {
       .sort((a, b) => a.sectionOrder - b.sectionOrder);
 
   const allPagesNC = [
-    { key: "11", label: "Pág. 1" },
-    { key: "12", label: "Pág. 2" },
-    { key: "13", label: "Pág. 3" },
+    { key: "11", label: "Pág. 1 — Frontlight / Galvanizado" },
+    { key: "12", label: "Pág. 2 — Inox / PVC / Acrílico" },
+    { key: "13", label: "Pág. 3 — Pintura" },
     { key: "14", label: "Produtos e Modelos" },
     { key: "4", label: "Pág. 4 — Fontes Chaveadas" },
+    { key: "5", label: "Pág. 5 — Produtividades de solda" },
+    { key: "6", label: "Pág. 6 — Condições Comerciais" },
   ];
 
   return (
@@ -3787,7 +3789,7 @@ export default function TabelaPrecos() {
                   <Calculator className="w-4 h-4" />
                   Simular reajuste
                 </Button>
-                {activeTabNC !== "4" && activeTabNC !== "14" && (
+                {["11", "12", "13"].includes(activeTabNC) && (
                   <Button
                     size="sm"
                     className="flex items-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white"
@@ -3815,17 +3817,24 @@ export default function TabelaPrecos() {
                   size="sm"
                   variant="outline"
                   className="flex items-center gap-2 border-emerald-300 text-emerald-700 hover:bg-emerald-50"
-                  onClick={() =>
-                    gerarPdfTabela(
-                      (allSections ?? []).filter(
-                        s => (s.page >= 11 && s.page <= 13) || s.page === 4
-                      ),
-                      meta ?? null,
-                      dimensionamentoLed!.tables,
-                      dimensionamentoLed!.texts,
-                      "Tabela Novo Cliente"
-                    )
-                  }
+                  onClick={async () => {
+                    try {
+                      const catalogo = await utils.produtos.materiasPrimas.listar.fetch();
+                      gerarPdfTabela(
+                        (allSections ?? []).filter(
+                          s => (s.page >= 11 && s.page <= 13) || s.page === 4 || s.page === 6
+                        ),
+                        meta ?? null,
+                        dimensionamentoLed!.tables,
+                        dimensionamentoLed!.texts,
+                        "Tabela Novo Cliente",
+                        catalogo.filter(material => material.ehProdutividade)
+                      );
+                    } catch (erro) {
+                      console.error("[Tabela de Preços] Falha ao carregar produtividades para impressão:", erro);
+                      toast.error("Não foi possível carregar as produtividades de solda para o PDF.");
+                    }
+                  }}
                   disabled={isLoadingNC || !dimensionamentoLed}
                 >
                   <Download className="w-4 h-4" />
@@ -3866,6 +3875,43 @@ export default function TabelaPrecos() {
                     </div>
                     <LedPowerSourcesSection dimensionamento={dimensionamentoLed} />
                   </div>
+                ) : p.key === "5" ? (
+                  <ProdutividadesSolda />
+                ) : p.key === "6" ? (
+                  <>
+                    <div className="grid gap-4 xl:grid-cols-2">
+                      <SimuladorBoletos />
+                      <SimuladorCartao />
+                    </div>
+                    <div className="mb-3 flex items-center gap-2 text-xs text-emerald-700 bg-emerald-50 border border-emerald-200 rounded px-3 py-2">
+                      <Pencil className="w-3 h-3" />
+                      Clique em <strong>Editar</strong> para atualizar valores.
+                    </div>
+                    {isLoading ? (
+                      <div className="space-y-3">
+                        {[1, 2, 3].map(i => (
+                          <div key={i} className="h-32 bg-slate-100 rounded-lg animate-pulse" />
+                        ))}
+                      </div>
+                    ) : sectionsForPage(6).length === 0 ? (
+                      <Empty>
+                        <EmptyHeader>
+                          <EmptyTitle>Nenhuma seção encontrada para esta página.</EmptyTitle>
+                        </EmptyHeader>
+                      </Empty>
+                    ) : (
+                      <div className="space-y-4">
+                        {sectionsForPage(6).map(section => (
+                          <EditableSection
+                            key={section.id}
+                            section={section as Section}
+                            products={affiliationsBySection.get(section.id)?.produtos ?? []}
+                            showProducts={affiliationsBySection.has(section.id)}
+                          />
+                        ))}
+                      </div>
+                    )}
+                  </>
                 ) : (
                   <>
                     <div className="mb-3 flex items-center gap-2 text-xs text-emerald-700 bg-emerald-50 border border-emerald-200 rounded px-3 py-2">
