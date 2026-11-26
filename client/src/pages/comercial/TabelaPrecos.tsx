@@ -1961,7 +1961,7 @@ function EditableSection({
 // ─── SearchResults ─────────────────────────────────────────────────────────────
 
 const PAGE_LABELS: Record<number, string> = {
-  1: "Pág. 1 — Frontlight Galvanizado",
+  1: "Pág. 1 — Frontlight / Galvanizado / Alumínio",
   2: "Pág. 2 — Inox / PVC / Acrílico / ACM",
   3: "Pág. 3 — Pintura",
   4: "Pág. 4 — Fontes Chaveadas",
@@ -2054,7 +2054,7 @@ function gerarPdfTabela(
   const isNovoCliente = sections.some(s => s.page >= 11);
   const pageOffset = isNovoCliente ? 10 : 0; // 11 → 1, 12 → 2, 13 → 3
   const pageNames: Record<number, string> = {
-    1: "Frontlight / Galvanizado",
+    1: "Frontlight / Galvanizado / Alumínio",
     2: "Inox / PVC / Acrílico",
     3: "Pintura",
     4: getLedText(ledTexts, ledPowerSourceTextKey.page("pdfTitle"), "Fontes Chaveadas"),
@@ -3703,7 +3703,7 @@ export default function TabelaPrecos() {
   }, [allSections, filterPage]);
 
   const allPages = [
-    { key: "1", label: "Pág. 1 — Frontlight / Galvanizado" },
+    { key: "1", label: "Pág. 1 — Frontlight / Galvanizado / Alumínio" },
     { key: "2", label: "Pág. 2 — Inox / PVC / Acrílico / ACM" },
     { key: "3", label: "Pág. 3 — Pintura" },
     { key: "4", label: "Pág. 4 — Fontes Chaveadas" },
@@ -3718,7 +3718,7 @@ export default function TabelaPrecos() {
       .sort((a, b) => a.sectionOrder - b.sectionOrder);
 
   const allPagesNC = [
-    { key: "11", label: "Pág. 1 — Frontlight / Galvanizado" },
+    { key: "11", label: "Pág. 1 — Frontlight / Galvanizado / Alumínio" },
     { key: "12", label: "Pág. 2 — Inox / PVC / Acrílico / ACM" },
     { key: "13", label: "Pág. 3 — Pintura" },
     { key: "4", label: "Pág. 4 — Fontes Chaveadas" },
@@ -4182,7 +4182,7 @@ export default function TabelaPrecos() {
                 <div className="flex gap-2 flex-wrap">
                   {[
                     { value: "all", label: "Todas" },
-                    { value: "1", label: "Frontlight / Galvanizado" },
+                    { value: "1", label: "Frontlight / Galvanizado / Alumínio" },
                     { value: "2", label: "Inox / PVC / Acrílico" },
                     { value: "3", label: "Pintura" },
                     { value: "4", label: "Fontes Chaveadas" },
