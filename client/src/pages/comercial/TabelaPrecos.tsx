@@ -112,7 +112,6 @@ import { PriceTableHistoryDashboard } from "@/components/PriceTableHistoryDashbo
 import PriceRevenueDashboard from "@/components/PriceRevenueDashboard";
 import { PriceAdjustmentCalculator } from "@/components/PriceAdjustmentCalculator";
 import { PriceBlockAffiliationEditor } from "@/components/PriceBlockAffiliationEditor";
-import { PriceTableModelMappings } from "@/components/PriceTableModelMappings";
 import { Link2 } from "lucide-react";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -3701,7 +3700,6 @@ export default function TabelaPrecos() {
     { key: "3", label: "Pág. 3 — Pintura" },
     { key: "4", label: "Pág. 4 — Fontes Chaveadas" },
     { key: "5", label: "Pág. 5 — Produtividades de solda" },
-    { key: "7", label: "Produtos e Modelos" },
     { key: "6", label: "Pág. 6 — Condições Comerciais" },
   ];
 
@@ -3715,7 +3713,6 @@ export default function TabelaPrecos() {
     { key: "11", label: "Pág. 1 — Frontlight / Galvanizado" },
     { key: "12", label: "Pág. 2 — Inox / PVC / Acrílico" },
     { key: "13", label: "Pág. 3 — Pintura" },
-    { key: "14", label: "Produtos e Modelos" },
     { key: "4", label: "Pág. 4 — Fontes Chaveadas" },
     { key: "5", label: "Pág. 5 — Produtividades de solda" },
     { key: "6", label: "Pág. 6 — Condições Comerciais" },
@@ -3865,9 +3862,7 @@ export default function TabelaPrecos() {
 
             {allPagesNC.map(p => (
               <TabsContent key={p.key} value={p.key}>
-                {p.key === "14" ? (
-                  <PriceTableModelMappings tabela="novo_cliente" secoes={(allSections ?? []) as { id: number; page: number; sectionTitle: string; contentJson: string }[]} podeEditar={canEditBlockProducts} />
-                ) : p.key === "4" ? (
+                {p.key === "4" ? (
                   <div className="space-y-4">
                     <div className="flex items-center justify-end gap-2 text-xs text-slate-500">
                       <span>Nome da aba:</span>
@@ -4250,9 +4245,7 @@ export default function TabelaPrecos() {
 
             {allPages.map(p => (
               <TabsContent key={p.key} value={p.key}>
-                {p.key === "7" ? (
-                  <PriceTableModelMappings tabela="principal" secoes={(allSections ?? []) as { id: number; page: number; sectionTitle: string; contentJson: string }[]} podeEditar={canEditBlockProducts} />
-                ) : p.key === "5" ? (
+                {p.key === "5" ? (
                   <ProdutividadesSolda />
                 ) : p.key === "4" ? (
                   <div className="space-y-4">
