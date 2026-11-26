@@ -4441,6 +4441,24 @@ var init_auth = __esm({
   }
 });
 
+// shared/page-permissions.ts
+function hasDefaultPagePermission(role, pageKey) {
+  return DEFAULT_PAGE_ACCESS[pageKey]?.includes(role) ?? false;
+}
+function getDefaultPagePermissions(role) {
+  return Object.entries(DEFAULT_PAGE_ACCESS).filter(([, roles]) => roles.includes(role)).map(([pageKey]) => pageKey);
+}
+var DEFAULT_PAGE_ACCESS;
+var init_page_permissions = __esm({
+  "shared/page-permissions.ts"() {
+    "use strict";
+    DEFAULT_PAGE_ACCESS = {
+      // O custo de LED segue os perfis que já podem acessar o custo de solda.
+      "operacoes-custo-led": ["producao", "financeiro"]
+    };
+  }
+});
+
 // server/integrations/priceTableDiff.ts
 function resumirDiffTabelaPrecos(anteriorRaw, novoRaw) {
   let antes;
@@ -5343,17 +5361,21 @@ async function setRolePermission(role, pageKey, canAccess) {
 async function canRoleAccessPage(role, pageKey) {
   if (role === "master" || role === "admin") return true;
   const db5 = await getDb();
-  if (!db5) return false;
+  if (!db5) return hasDefaultPagePermission(role, pageKey);
   const rows = await db5.select().from(rolePermissions).where(eq(rolePermissions.role, role)).limit(100);
   const perm = rows.find((r) => r.pageKey === pageKey);
-  return perm?.canAccess === "sim";
+  return perm ? perm.canAccess === "sim" : hasDefaultPagePermission(role, pageKey);
 }
 async function getPermissionsForRole(role) {
   if (role === "master" || role === "admin") return [...PAGE_KEYS];
   const db5 = await getDb();
-  if (!db5) return [];
+  if (!db5) return getDefaultPagePermissions(role);
   const rows = await db5.select().from(rolePermissions).where(eq(rolePermissions.role, role)).limit(100);
-  return rows.filter((r) => r.canAccess === "sim").map((r) => r.pageKey);
+  const allowed = new Set(rows.filter((r) => r.canAccess === "sim").map((r) => r.pageKey));
+  for (const pageKey of getDefaultPagePermissions(role)) {
+    if (!rows.some((r) => r.pageKey === pageKey)) allowed.add(pageKey);
+  }
+  return [...allowed];
 }
 async function getLedPowerSourceTextOverrides() {
   const db5 = await getDb();
@@ -5845,6 +5867,7 @@ var init_db = __esm({
     "use strict";
     init_schema();
     init_db_connection();
+    init_page_permissions();
     init_schema();
     init_priceTableDiff();
     init_priceTableIds();
@@ -47641,6 +47664,7 @@ var init_routers = __esm({
     init_schema();
     init_db();
     init_produtividade_solda();
+    init_page_permissions();
     init_db();
     init_db();
     filterSchema = z44.object({
@@ -48734,7 +48758,7 @@ O POP deve:
           for (const role of APP_ROLES) {
             matrix[role] = {};
             for (const page of PAGE_KEYS) {
-              matrix[role][page] = role === "master" || role === "admin";
+              matrix[role][page] = role === "master" || role === "admin" || hasDefaultPagePermission(role, page);
             }
           }
           for (const row of rows) {

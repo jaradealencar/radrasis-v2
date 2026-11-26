@@ -53,6 +53,7 @@ import { APP_ROLES, PAGE_KEYS, user as userTable, priceTableBlockPairs, priceTab
 import { asc, eq, and, isNull, or, count as sqlCount } from "drizzle-orm";
 import { getDb } from "./db/db";
 import { ehMateriaProdutividade } from "../shared/produtividade-solda";
+import { hasDefaultPagePermission } from "../shared/page-permissions";
 import {
   getAllRolePermissions, setRolePermission, getPermissionsForRole,
   getFinanceiros, getFinanceiroByMesAno, upsertFinanceiro,
@@ -1511,7 +1512,7 @@ O POP deve:
       for (const role of APP_ROLES) {
         matrix[role] = {};
         for (const page of PAGE_KEYS) {
-          matrix[role][page] = role === "master" || role === "admin";
+          matrix[role][page] = role === "master" || role === "admin" || hasDefaultPagePermission(role, page);
         }
       }
       for (const row of rows) {

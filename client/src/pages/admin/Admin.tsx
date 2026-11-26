@@ -44,6 +44,7 @@ const PAGES = [
   { key: "rotinas", label: "Rotinas" },
   { key: "regulamentos", label: "Regulamentos" },
   { key: "pops", label: "POPs" },
+  { key: "operacoes-custo-led", label: "Custo de LED" },
   { key: "admin", label: "Administração" },
 ];
 

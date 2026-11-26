@@ -14,6 +14,7 @@ import {
   sql,
 } from "drizzle-orm";
 import { createAppDatabase, getPool, safeErrorType } from "./db-connection";
+import { getDefaultPagePermissions, hasDefaultPagePermission } from "../../shared/page-permissions";
 import {
   errorLibrary,
   faturamento,
@@ -911,26 +912,30 @@ export async function canRoleAccessPage(
   // master e admin têm acesso total
   if (role === "master" || role === "admin") return true;
   const db = await getDb();
-  if (!db) return false;
+  if (!db) return hasDefaultPagePermission(role, pageKey);
   const rows = await db
     .select()
     .from(rolePermissions)
     .where(eq(rolePermissions.role, role))
     .limit(100);
   const perm = rows.find(r => r.pageKey === pageKey);
-  return perm?.canAccess === "sim";
+  return perm ? perm.canAccess === "sim" : hasDefaultPagePermission(role, pageKey);
 }
 
 export async function getPermissionsForRole(role: AppRole): Promise<string[]> {
   if (role === "master" || role === "admin") return [...PAGE_KEYS];
   const db = await getDb();
-  if (!db) return [];
+  if (!db) return getDefaultPagePermissions(role);
   const rows = await db
     .select()
     .from(rolePermissions)
     .where(eq(rolePermissions.role, role))
     .limit(100);
-  return rows.filter(r => r.canAccess === "sim").map(r => r.pageKey);
+  const allowed = new Set(rows.filter(r => r.canAccess === "sim").map(r => r.pageKey));
+  for (const pageKey of getDefaultPagePermissions(role)) {
+    if (!rows.some(r => r.pageKey === pageKey)) allowed.add(pageKey);
+  }
+  return [...allowed];
 }
 
 // ─── TABELA DE PREÇOS ────────────────────────────────────────────────────────
