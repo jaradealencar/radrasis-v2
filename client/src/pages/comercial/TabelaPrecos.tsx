@@ -1954,7 +1954,7 @@ function EditableSection({
 
 const PAGE_LABELS: Record<number, string> = {
   1: "Pág. 1 — Frontlight Galvanizado",
-  2: "Pág. 2 — Inox / PVC / Acrílico",
+  2: "Pág. 2 — Inox / PVC / Acrílico / ACM",
   3: "Pág. 3 — Pintura",
   4: "Pág. 4 — Fontes Chaveadas",
   5: "Pág. 5 — Produtividades de solda",
@@ -3696,7 +3696,7 @@ export default function TabelaPrecos() {
 
   const allPages = [
     { key: "1", label: "Pág. 1 — Frontlight / Galvanizado" },
-    { key: "2", label: "Pág. 2 — Inox / PVC / Acrílico" },
+    { key: "2", label: "Pág. 2 — Inox / PVC / Acrílico / ACM" },
     { key: "3", label: "Pág. 3 — Pintura" },
     { key: "4", label: "Pág. 4 — Fontes Chaveadas" },
     { key: "5", label: "Pág. 5 — Produtividades de solda" },
@@ -3711,7 +3711,7 @@ export default function TabelaPrecos() {
 
   const allPagesNC = [
     { key: "11", label: "Pág. 1 — Frontlight / Galvanizado" },
-    { key: "12", label: "Pág. 2 — Inox / PVC / Acrílico" },
+    { key: "12", label: "Pág. 2 — Inox / PVC / Acrílico / ACM" },
     { key: "13", label: "Pág. 3 — Pintura" },
     { key: "4", label: "Pág. 4 — Fontes Chaveadas" },
     { key: "5", label: "Pág. 5 — Produtividades de solda" },
