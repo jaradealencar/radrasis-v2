@@ -387,7 +387,8 @@ server/
                        (`isOsNormalDb`: regra única de "compra válida"; o número de compras do CRM e
                        das Propostas de Alto Valor conta só essas OS, e orçamento ganho só entra nos meses
                        sem OS sincronizada — `contarComprasPorCliente` em services/probabilidadeCompra.ts)
-  scripts/             scripts de seed do server (seed.mjs, seed-operacoes.mjs)
+  scripts/             scripts operacionais do server (seeds e backfills de dados; gravações protegidas por alvo)
+                       sincronizar-pintura-novo-cliente.ts copia Galvanizado/PVC da pág. 3 para a pág. 13, preserva IDs da tabela destino e registra histórico; simula por padrão
   __tests__/           testes do server (*.test.ts)
   _core/               infra do server: auth.ts (Better Auth), context.ts/trpc.ts
                        (contexto e middlewares tRPC), vite dev middleware
