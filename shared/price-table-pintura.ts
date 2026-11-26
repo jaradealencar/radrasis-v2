@@ -45,6 +45,27 @@ function ajustarPontosPercentuais(value: string, pontos: number): string {
   return `${formatado}%`;
 }
 
+/** Retorna a margem bruta equivalente para obter um preço final com desconto. */
+export function margemEquivalenteParaReducaoDePreco(
+  value: string,
+  descontoPct: number
+): string {
+  const match = value.trim().match(/^(-?\d+(?:[.,]\d+)?)\s*%$/);
+  if (
+    !match ||
+    !Number.isFinite(descontoPct) ||
+    descontoPct < 0 ||
+    descontoPct >= 100
+  ) {
+    return value;
+  }
+
+  const margemPct = Number(match[1].replace(",", "."));
+  const fatorPreco = 1 - descontoPct / 100;
+  const margemEquivalentePct = (margemPct - descontoPct) / fatorPreco;
+  return `${margemEquivalentePct.toFixed(2).replace(".", ",")}%`;
+}
+
 function indiceColunaDeValores(content: ContentJson): number {
   return content.type === "margin_table_multi" ? 1 : 0;
 }

@@ -108,7 +108,10 @@ import { enviarArquivo } from "@/lib/upload";
 import RichTextEditor from "../../components/RichTextEditor";
 import type { ConfigItem, MarginRow, ContentJson } from "@shared/price-table";
 import { formatarValorParaColar } from "@shared/price-table-clipboard";
-import { ajustarTabelaDePintura } from "@shared/price-table-pintura";
+import {
+  ajustarTabelaDePintura,
+  margemEquivalenteParaReducaoDePreco,
+} from "@shared/price-table-pintura";
 import { PriceTableHistoryDashboard } from "@/components/PriceTableHistoryDashboard";
 import PriceRevenueDashboard from "@/components/PriceRevenueDashboard";
 import { PriceAdjustmentCalculator } from "@/components/PriceAdjustmentCalculator";
@@ -118,6 +121,32 @@ import { Link2 } from "lucide-react";
 // ─── Types ───────────────────────────────────────────────────────────────────
 
 type BlockAffiliation = RouterOutputs["price"]["listBlockAffiliations"][number];
+
+const NOME_ADICIONAL_PINTURA_GALVANIZADO =
+  "Adicional Pintura - Por Objeto - Galvanizado menor que 11cm";
+const DESCONTO_PRECO_PINTURA_FRONTLIGHT_PCT = 20;
+
+function isSecaoPinturaGalvanizado(sectionTitle: string): boolean {
+  const tituloNormalizado = sectionTitle
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLocaleLowerCase("pt-BR");
+  return tituloNormalizado.includes(
+    "servico de pintura galvanizado - pu (poliuretano)"
+  );
+}
+
+function linhasMargemFrontlight(rows: MarginRow[]): MarginRow[] {
+  return rows.map(row => ({
+    ...row,
+    values: row.values.map(value =>
+      margemEquivalenteParaReducaoDePreco(
+        value,
+        DESCONTO_PRECO_PINTURA_FRONTLIGHT_PCT
+      )
+    ),
+  }));
+}
 
 function adicionarQuinzePontosPercentuaisDesdeFaixa2(contentJson: string): string {
   const content = JSON.parse(contentJson) as ContentJson;
@@ -313,17 +342,23 @@ function ConfigTable({ items }: { items: ConfigItem[] }) {
 function MarginTable({
   columns,
   rows,
+  showIds = true,
+  alertNegativeMargins = false,
 }: {
   columns: string[];
   rows: MarginRow[];
+  showIds?: boolean;
+  alertNegativeMargins?: boolean;
 }) {
   return (
     <Table className="border-collapse">
       <TableHeader>
         <TableRow className="bg-slate-100">
-          <TableHead className="text-center border border-slate-300 w-20 text-slate-800 font-semibold">
-            ID
-          </TableHead>
+          {showIds && (
+            <TableHead className="text-center border border-slate-300 w-20 text-slate-800 font-semibold">
+              ID
+            </TableHead>
+          )}
           {rows.length > 1 && (
             <TableHead className="text-center border border-slate-300 min-w-[140px] text-slate-800 font-semibold">
               {columns[0] ?? ""}
@@ -347,25 +382,43 @@ function MarginTable({
             key={ri}
             className={ri % 2 === 0 ? "bg-white" : "bg-slate-50"}
           >
-            <TableCell className="text-center border border-slate-200">
-              <IdBadge id={row.id} />
-            </TableCell>
+            {showIds && (
+              <TableCell className="text-center border border-slate-200">
+                <IdBadge id={row.id} />
+              </TableCell>
+            )}
             {rows.length > 1 && (
               <TableCell className="font-medium text-slate-700 border border-slate-200">
                 {row.label}
               </TableCell>
             )}
-            {row.values.map((val, vi) => (
-              <TableCell
-                key={vi}
-                className="group text-center border border-slate-200"
-              >
-                <span className="font-semibold text-blue-700">
-                  {renderPercentDecorated(val)}
-                </span>
-                {val.trim() !== "" && <CopyButton value={val} />}
-              </TableCell>
-            ))}
+            {row.values.map((val, vi) => {
+              const percentual = val.trim().match(/^(-?\d+(?:[.,]\d+)?)\s*%$/);
+              const margemNegativa =
+                alertNegativeMargins &&
+                percentual != null &&
+                Number(percentual[1].replace(",", ".")) < 0;
+              return (
+                <TableCell
+                  key={vi}
+                  className="group text-center border border-slate-200"
+                >
+                  <span
+                    className={`font-semibold ${margemNegativa ? "text-red-700" : "text-blue-700"}`}
+                    title={
+                      margemNegativa
+                        ? "Desconto leva a margem abaixo de zero; revisar antes de cotar."
+                        : undefined
+                    }
+                  >
+                    {renderPercentDecorated(val)}
+                  </span>
+                  {val.trim() !== "" && !margemNegativa && (
+                    <CopyButton value={val} />
+                  )}
+                </TableCell>
+              );
+            })}
           </TableRow>
         ))}
       </TableBody>
@@ -1143,14 +1196,45 @@ function ListContent({ items }: { items: string[] }) {
   );
 }
 
-function SectionContent({ contentJson }: { contentJson: string }) {
+function SectionContent({
+  contentJson,
+  sectionTitle,
+}: {
+  contentJson: string;
+  sectionTitle: string;
+}) {
   try {
     const data: ContentJson = JSON.parse(contentJson);
     if (data.type === "config")
       return <ConfigTable items={data.items as ConfigItem[]} />;
     if (data.type === "margin_table" || data.type === "margin_table_multi") {
+      const mostrarFrontlight = isSecaoPinturaGalvanizado(sectionTitle);
       return (
-        <MarginTable columns={data.columns ?? []} rows={data.rows ?? []} />
+        <div className="space-y-5">
+          <MarginTable columns={data.columns ?? []} rows={data.rows ?? []} />
+          {mostrarFrontlight && (
+            <div className="space-y-2 border-t border-slate-200 pt-4">
+              <h3 className="text-sm font-semibold text-slate-800">
+                Frontlight — pintura com {DESCONTO_PRECO_PINTURA_FRONTLIGHT_PCT}%
+                de redução no preço
+              </h3>
+              <p className="text-xs text-slate-600">
+                Margens equivalentes para chegar a um preço de pintura{" "}
+                {DESCONTO_PRECO_PINTURA_FRONTLIGHT_PCT}% menor que o padrão. Em
+                vermelho, a redução deixa a margem abaixo de zero; revise custo e
+                preço antes de cotar. Para letras menores que 11 cm, cobrar também
+                o adicional MubiSys:{" "}
+                <strong>{NOME_ADICIONAL_PINTURA_GALVANIZADO}</strong>.
+              </p>
+              <MarginTable
+                columns={data.columns ?? []}
+                rows={linhasMargemFrontlight(data.rows ?? [])}
+                showIds={false}
+                alertNegativeMargins
+              />
+            </div>
+          )}
+        </div>
       );
     }
     if (data.type === "list")
@@ -1776,6 +1860,9 @@ function EditableSection({
   const [title, setTitle] = useState(section.sectionTitle);
   const [notes, setNotes] = useState(section.notes ?? "");
   const [contentJson, setContentJson] = useState(section.contentJson);
+  const mostrarAvisoAdicionalPintura = isSecaoPinturaGalvanizado(
+    section.sectionTitle
+  );
 
   const utils = trpc.useUtils();
   const updateMut = trpc.price.update.useMutation({
@@ -1903,6 +1990,19 @@ function EditableSection({
             )}
           </div>
         </div>
+        {mostrarAvisoAdicionalPintura && (
+          <div className="mt-3 flex items-start gap-2 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-xs leading-relaxed text-amber-950">
+            <Info
+              className="mt-0.5 h-4 w-4 shrink-0 text-amber-700"
+              aria-hidden="true"
+            />
+            <p>
+              <strong>Atenção:</strong> letras menores que 11 cm têm acréscimo
+              no valor. Cobrar no MubiSys o produto:{" "}
+              <strong>{NOME_ADICIONAL_PINTURA_GALVANIZADO}</strong>.
+            </p>
+          </div>
+        )}
       </CardHeader>
       {(showProducts || products.length > 0 || canEditProducts) && (
         <div className="border-t border-slate-100 px-4 py-2.5">
@@ -1941,7 +2041,10 @@ function EditableSection({
           </div>
         ) : (
           <>
-            <SectionContent contentJson={section.contentJson} />
+            <SectionContent
+              contentJson={section.contentJson}
+              sectionTitle={section.sectionTitle}
+            />
             {section.notes && (
               <div className="mt-2 p-2 bg-amber-50 border border-amber-200 rounded text-xs text-amber-800">
                 <Info className="w-3 h-3 inline mr-1" />
@@ -2253,6 +2356,9 @@ function gerarPdfTabela(
         ? ` <span class="section-badge" style="color:${lbl.badgeColor};background:${lbl.badgeBg};border-color:${lbl.badgeColor}">${lbl.badge}</span>`
         : "";
       html += `<div class="section-block"><div class="section-title">${lbl.base}${badgeHtml}</div>`;
+      if (isSecaoPinturaGalvanizado(sec.sectionTitle)) {
+        html += `<div class="note-box"><span class="note-icon">⚠️</span><span><strong>Atenção:</strong> letras menores que 11 cm têm acréscimo no valor. Cobrar no MubiSys o produto: <strong>${escapeHtml(NOME_ADICIONAL_PINTURA_GALVANIZADO)}</strong>.</span></div>`;
+      }
       try {
         const c = JSON.parse(sec.contentJson) as ContentJson;
         if (c.type === "margin_table" || c.type === "margin_table_multi") {
@@ -2278,6 +2384,38 @@ function gerarPdfTabela(
             html += `</tr>`;
           });
           html += `</tbody></table>`;
+          if (isSecaoPinturaGalvanizado(sec.sectionTitle)) {
+            const rowsFrontlight = linhasMargemFrontlight(c.rows ?? []);
+            html += `<div class="section-title" style="margin-top:8px">Frontlight — pintura com ${DESCONTO_PRECO_PINTURA_FRONTLIGHT_PCT}% de redução no preço</div>`;
+            html += `<div class="note-box"><span class="note-icon">⚠️</span><span>Margens equivalentes para chegar a um preço de pintura ${DESCONTO_PRECO_PINTURA_FRONTLIGHT_PCT}% menor que o padrão. Valores em vermelho indicam margem abaixo de zero; revisar custo e preço antes de cotar. Para letras menores que 11 cm, cobrar também o adicional MubiSys: <strong>${escapeHtml(NOME_ADICIONAL_PINTURA_GALVANIZADO)}</strong>.</span></div>`;
+            html += `<table><thead><tr style="background:${color}">`;
+            if (hasMultiRows) {
+              html += `<th style="text-align:left">${escapeHtml((c.columns ?? [])[0] ?? "")}</th>`;
+            }
+            (hasMultiRows
+              ? (c.columns ?? []).slice(1)
+              : (c.columns ?? [])
+            ).forEach(col => {
+              html += `<th>${renderCabecalhoMargemHtml(col)}</th>`;
+            });
+            html += `</tr></thead><tbody>`;
+            rowsFrontlight.forEach((row, ri) => {
+              const rowBg = ri % 2 === 0 ? "" : ' style="background:#f8fafc"';
+              html += `<tr${rowBg}>`;
+              if (hasMultiRows) {
+                html += `<td style="text-align:left;font-weight:600;color:#1e3a5f">${escapeHtml(row.label)}</td>`;
+              }
+              row.values.forEach(value => {
+                const match = value.trim().match(/^(-?\d+(?:[.,]\d+)?)\s*%$/);
+                const negativeStyle = match && Number(match[1].replace(",", ".")) < 0
+                  ? "color:#b91c1c"
+                  : "";
+                html += `<td><span class="val" style="${negativeStyle}">${escapeHtml(value)}</span></td>`;
+              });
+              html += `</tr>`;
+            });
+            html += `</tbody></table>`;
+          }
         } else if (c.type === "config") {
           html += `<div class="config-grid">`;
           ((c.items as ConfigItem[]) ?? []).forEach(item => {
