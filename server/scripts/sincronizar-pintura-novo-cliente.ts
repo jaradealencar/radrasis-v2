@@ -1,22 +1,29 @@
 /**
- * Copia as tabelas de pintura da página 3 (Clientes Antigos) para a página 13
- * (Novo Cliente), preservando os IDs próprios da tabela de destino quando as
+ * Copia as tabelas de pintura da página 13 (Novo Cliente, referência) para a
+ * página 3 (Clientes Antigos), preservando os IDs próprios da tabela destino quando as
  * linhas e faixas correspondem. A gravação também registra histórico e métrica
  * pelo fluxo normal da Tabela de Preços.
+ * `--restaurar-referencia` recupera a página 13 a partir do histórico se uma
+ * execução anterior deste script a tiver substituído pela página 3.
  *
  * Por padrão, apenas simula. Para gravar, informe --gravar e confirme o alvo:
  *   yarn tsx server/scripts/sincronizar-pintura-novo-cliente.ts
  *   yarn tsx server/scripts/sincronizar-pintura-novo-cliente.ts --gravar --confirmo-alvo=host/banco
  *   yarn tsx server/scripts/sincronizar-pintura-novo-cliente.ts --prod
  *   yarn tsx server/scripts/sincronizar-pintura-novo-cliente.ts --prod --gravar --confirmo-alvo=host/banco
+ *   yarn tsx server/scripts/sincronizar-pintura-novo-cliente.ts --prod --restaurar-referencia --gravar --confirmo-alvo=host/banco
  */
 import "dotenv/config";
 
+import { and, desc, eq } from "drizzle-orm";
 import type { ContentJson, MarginRow } from "../../shared/price-table";
+import { priceTableHistory, priceTableSections } from "../../drizzle/schema";
 import {
   confirmarAlvo,
   identificarAlvo,
 } from "../sync/backfill-historico-orcamentos";
+
+const AUTOR_SINCRONIZACAO = "sincronização das tabelas de pintura";
 
 type Secao = {
   id: number;
@@ -116,6 +123,7 @@ function tabelasVisualmenteIguais(a: TabelaMargem, b: TabelaMargem): boolean {
 async function main() {
   const usarProducao = process.argv.includes("--prod");
   const gravar = process.argv.includes("--gravar");
+  const restaurarReferencia = process.argv.includes("--restaurar-referencia");
   if (usarProducao) {
     if (!process.env.PRODUCTION_DATABASE_URL) {
       throw new Error("PRODUCTION_DATABASE_URL não está definida no .env.");
@@ -138,16 +146,46 @@ async function main() {
 
   const { getDb, getPriceTableMeta, listPriceTableSections, updatePriceTableSection } =
     await import("../db/db");
-  const { priceTableSections } = await import("../../drizzle/schema");
   const db = await getDb();
   if (!db) throw new Error("Banco indisponível.");
 
   const secoes = (await db.select().from(priceTableSections)) as Secao[];
   const alteracoes: Array<{ origem: Secao; destino: Secao; contentJson: string }> = [];
+  const restauracoes: Array<{ secao: Secao; contentJson: string }> = [];
   for (const termo of ["Serviço de Pintura Galvanizado", "Serviço de Pintura PVC"]) {
-    const origem = buscarSecao(secoes, 3, termo);
-    const destino = buscarSecao(secoes, 13, termo);
-    const tabelaOrigem = lerTabela(origem);
+    const origem = buscarSecao(secoes, 13, termo);
+    const destino = buscarSecao(secoes, 3, termo);
+    let contentOrigem = origem.contentJson;
+    if (restaurarReferencia) {
+      const [historico] = await db
+        .select()
+        .from(priceTableHistory)
+        .where(
+          and(
+            eq(priceTableHistory.sectionId, origem.id),
+            eq(priceTableHistory.autor, AUTOR_SINCRONIZACAO),
+            eq(priceTableHistory.campoAlterado, "contentJson")
+          )
+        )
+        .orderBy(desc(priceTableHistory.createdAt), desc(priceTableHistory.id))
+        .limit(1);
+      if (!historico?.valorAnterior || !historico.valorNovo) {
+        throw new Error(`Não encontrei no histórico a pintura original de Novo Cliente: ${termo}.`);
+      }
+      if (
+        !tabelasVisualmenteIguais(
+          lerTabela(origem),
+          lerTabela({ ...origem, contentJson: historico.valorNovo })
+        )
+      ) {
+        throw new Error(`A seção de Novo Cliente mudou desde a cópia anterior: ${termo}.`);
+      }
+      contentOrigem = historico.valorAnterior;
+      restauracoes.push({ secao: origem, contentJson: contentOrigem });
+      console.log(`Referência original de Novo Cliente recuperável pelo histórico: ${termo}.`);
+    }
+
+    const tabelaOrigem = lerTabela({ ...origem, contentJson: contentOrigem });
     const tabelaDestino = lerTabela(destino);
     if (tabelasVisualmenteIguais(tabelaOrigem, tabelaDestino)) {
       console.log(`Sem diferença: ${termo}.`);
@@ -156,29 +194,35 @@ async function main() {
     const conteudo = copiarTabelaPreservandoIds(tabelaOrigem, tabelaDestino);
     alteracoes.push({ origem, destino, contentJson: JSON.stringify(conteudo) });
     console.log(
-      `${termo}: página 3 (${tabelaOrigem.rows.length} linhas) → página 13 (${tabelaDestino.rows.length} linhas atuais).`
+      `${termo}: página 13 (${tabelaOrigem.rows.length} linhas) → página 3 (${tabelaDestino.rows.length} linhas atuais).`
     );
   }
 
-  if (!gravar || alteracoes.length === 0) return;
+  if (!gravar || (alteracoes.length === 0 && restauracoes.length === 0)) return;
 
-  const autor = "sincronização das tabelas de pintura";
+  for (const restauracao of restauracoes) {
+    await updatePriceTableSection(
+      restauracao.secao.id,
+      { contentJson: restauracao.contentJson },
+      "restauração da referência Novo Cliente"
+    );
+  }
   for (const alteracao of alteracoes) {
     await updatePriceTableSection(
       alteracao.destino.id,
       { contentJson: alteracao.contentJson },
-      autor
+      AUTOR_SINCRONIZACAO
     );
   }
 
-  const [paginasAntigas, paginasNovos] = await Promise.all([
-    listPriceTableSections(3),
+  const [paginaNovoCliente, paginaClientesAntigos] = await Promise.all([
     listPriceTableSections(13),
+    listPriceTableSections(3),
   ]);
   for (const termo of ["Serviço de Pintura Galvanizado", "Serviço de Pintura PVC"]) {
-    const antiga = lerTabela(buscarSecao(paginasAntigas, 3, termo));
-    const nova = lerTabela(buscarSecao(paginasNovos, 13, termo));
-    if (!tabelasVisualmenteIguais(antiga, nova)) {
+    const referencia = lerTabela(buscarSecao(paginaNovoCliente, 13, termo));
+    const antiga = lerTabela(buscarSecao(paginaClientesAntigos, 3, termo));
+    if (!tabelasVisualmenteIguais(referencia, antiga)) {
       throw new Error(`A verificação pós-gravação falhou para ${termo}.`);
     }
   }

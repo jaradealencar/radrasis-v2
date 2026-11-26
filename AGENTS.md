@@ -389,7 +389,7 @@ server/
                        das Propostas de Alto Valor conta só essas OS, e orçamento ganho só entra nos meses
                        sem OS sincronizada — `contarComprasPorCliente` em services/probabilidadeCompra.ts)
   scripts/             scripts operacionais do server (seeds e backfills de dados; gravações protegidas por alvo)
-                       sincronizar-pintura-novo-cliente.ts copia Galvanizado/PVC da pág. 3 para a pág. 13, preserva IDs da tabela destino e registra histórico; simula por padrão
+                       sincronizar-pintura-novo-cliente.ts usa a pág. 13 como referência e copia Galvanizado/PVC para a pág. 3, preservando IDs; simula por padrão e pode restaurar a referência pelo histórico
   __tests__/           testes do server (*.test.ts)
   _core/               infra do server: auth.ts (Better Auth), context.ts/trpc.ts
                        (contexto e middlewares tRPC), vite dev middleware
