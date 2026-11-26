@@ -107,6 +107,7 @@ import { Fragment, useState, useMemo, useRef, useCallback, useEffect } from "rea
 import { enviarArquivo } from "@/lib/upload";
 import RichTextEditor from "../../components/RichTextEditor";
 import type { ConfigItem, MarginRow, ContentJson } from "@shared/price-table";
+import { formatarValorParaColar } from "@shared/price-table-clipboard";
 import { ajustarTabelaDePintura } from "@shared/price-table-pintura";
 import { PriceTableHistoryDashboard } from "@/components/PriceTableHistoryDashboard";
 import PriceRevenueDashboard from "@/components/PriceRevenueDashboard";
@@ -160,13 +161,6 @@ interface Section {
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
-/** Extrai apenas os dígitos e separadores numéricos de uma string (ex: "31%" → "31", "R$ 1.250,00" → "1.250,00") */
-function extractNumber(val: string): string {
-  // Remove tudo que não seja dígito, vírgula ou ponto
-  const cleaned = val.replace(/[^0-9.,]/g, "").trim();
-  return cleaned || val.trim();
-}
-
 /** Botão de copiar com feedback visual. Por padrão só aparece no hover do
  * grupo pai (`.group`); `forceVisible` mantém sempre visível — usado em
  * IdBadge, onde o objetivo é copiar o ID sem precisar passar o mouse. */
@@ -181,29 +175,43 @@ function CopyButton({
   const handleCopy = useCallback(
     async (e: React.MouseEvent) => {
       e.stopPropagation();
-      const numericValue = extractNumber(value);
+      const numericValue = formatarValorParaColar(value);
       try {
         await navigator.clipboard.writeText(numericValue);
-        setCopied(true);
-        setTimeout(() => setCopied(false), 1500);
       } catch {
         // fallback para browsers sem clipboard API
-        const ta = document.createElement("textarea");
-        ta.value = numericValue;
-        document.body.appendChild(ta);
-        ta.select();
-        document.execCommand("copy");
-        document.body.removeChild(ta);
-        setCopied(true);
-        setTimeout(() => setCopied(false), 1500);
+        try {
+          const ta = document.createElement("textarea");
+          ta.value = numericValue;
+          ta.setAttribute("readonly", "");
+          ta.style.position = "fixed";
+          ta.style.left = "-9999px";
+          document.body.appendChild(ta);
+          let copied = false;
+          try {
+            ta.select();
+            ta.setSelectionRange(0, ta.value.length);
+            copied = document.execCommand("copy");
+          } finally {
+            document.body.removeChild(ta);
+          }
+          if (!copied) throw new Error("Clipboard fallback failed");
+        } catch {
+          toast.error("Não foi possível copiar. Tente selecionar o valor manualmente.");
+          return;
+        }
       }
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
     },
     [value]
   );
   return (
     <button
+      type="button"
       onClick={handleCopy}
-      title={`Copiar ${extractNumber(value)}`}
+      title={`Copiar ${formatarValorParaColar(value)}`}
+      aria-label={`Copiar ${formatarValorParaColar(value)}`}
       className={`ml-1.5 transition-opacity duration-150 text-slate-400 hover:text-blue-600 focus:opacity-100 focus:outline-none ${forceVisible ? "opacity-100" : "opacity-0 group-hover:opacity-100"}`}
     >
       {copied ? (
