@@ -133,6 +133,7 @@ const ADICIONAIS_PINTURA_POR_MATERIAL = {
   },
 } as const;
 const DESCONTO_PRECO_PINTURA_FRONTLIGHT_PCT = 20;
+const TAMANHO_MINIMO_PINTURA_FRONTLIGHT_CM = 60;
 
 type MaterialPintura = keyof typeof ADICIONAIS_PINTURA_POR_MATERIAL;
 
@@ -1245,8 +1246,9 @@ function SectionContent({
           {materialPintura && adicionalPintura && (
             <div className="space-y-2 border-t border-slate-200 pt-4">
               <h3 className="text-sm font-semibold text-slate-800">
-                Frontlight — pintura {rotuloMaterialPintura(materialPintura)} com{" "}
-                {DESCONTO_PRECO_PINTURA_FRONTLIGHT_PCT}% de redução no preço
+                Frontlight — pintura {rotuloMaterialPintura(materialPintura)}
+                para peças maiores que {TAMANHO_MINIMO_PINTURA_FRONTLIGHT_CM} cm
+                ({DESCONTO_PRECO_PINTURA_FRONTLIGHT_PCT}% menor no preço)
               </h3>
               <p className="text-xs text-slate-600">
                 Margens equivalentes para chegar a um preço de pintura{" "}
@@ -2417,7 +2419,7 @@ function gerarPdfTabela(
           const materialPintura = materialSecaoPintura(sec.sectionTitle);
           if (materialPintura && adicionalPintura) {
             const rowsFrontlight = linhasMargemFrontlight(c.rows ?? []);
-            html += `<div class="section-title" style="margin-top:8px">Frontlight — pintura ${rotuloMaterialPintura(materialPintura)} com ${DESCONTO_PRECO_PINTURA_FRONTLIGHT_PCT}% de redução no preço</div>`;
+            html += `<div class="section-title" style="margin-top:8px">Frontlight — pintura ${rotuloMaterialPintura(materialPintura)} para peças maiores que ${TAMANHO_MINIMO_PINTURA_FRONTLIGHT_CM} cm (${DESCONTO_PRECO_PINTURA_FRONTLIGHT_PCT}% menor no preço)</div>`;
             html += `<div class="note-box"><span class="note-icon">⚠️</span><span>Margens equivalentes para chegar a um preço de pintura ${DESCONTO_PRECO_PINTURA_FRONTLIGHT_PCT}% menor que o padrão. Valores em vermelho indicam margem abaixo de zero; revisar custo e preço antes de cotar. Para letras menores que ${adicionalPintura.limiteCm} cm, cobrar também o adicional MubiSys: <strong>${escapeHtml(adicionalPintura.nomeProduto)}</strong>.</span></div>`;
             html += `<table><thead><tr style="background:${color}">`;
             if (hasMultiRows) {
